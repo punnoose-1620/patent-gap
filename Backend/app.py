@@ -4,7 +4,7 @@ import os
 from controller import login_user, get_user_cases, get_open_cases, get_user_profile, get_case_by_id, get_case_related_patents
 
 app = Flask(__name__, 
-            static_folder='Frontend',
+            static_folder='../Assets',
             template_folder='../Frontend')
 CORS(app)
 
@@ -20,6 +20,18 @@ app.config['DEBUG'] = os.environ.get('DEBUG', 'True').lower() == 'true'
 def index():
     """Serve the home page"""
     return render_template('index.html')
+
+@app.route('/favicon.ico')
+def favicon():
+    """Serve the favicon.ico from the Assets directory"""
+    print(f'Serving favicon-white.ico')
+    return app.send_static_file('favicon-white.ico')
+
+@app.route('/images/<path:imageName>')
+def serve_image(imageName):
+    """Serve images from the Assets directory"""
+    return app.send_static_file(f'{imageName}')
+
 
 @app.route('/login')
 def login_page():
