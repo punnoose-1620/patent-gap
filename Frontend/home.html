@@ -599,7 +599,9 @@
 
             detailsBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                window.location.href = `case-details.html?id=${caseData.id}`;
+                console.log('More Details button clicked');
+                console.log('Case ID:', caseData.id);
+                window.location.href = `case-details?id=${caseData.id}`;
             });
 
             // Assemble card
@@ -730,6 +732,49 @@
                 if (data.success) {
                     console.log('Profile loaded:', data.profile);
                     // TODO: Display profile data in the UI
+                    const profileDiv = document.getElementById('profile');
+                    if (profileDiv) {
+                        profileDiv.innerHTML = `
+                            <div class="profile-layout" style="max-width: 420px; margin: 2rem auto; background: #fff; border-radius: 14px; box-shadow: 0 2px 12px rgba(10,31,20,0.08); padding: 2.5rem 2rem 2rem 2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5rem;">
+                                <div style="display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0;">
+                                    <div style="font-size: 2.5rem; background: #EDEADC; color: #191970; border-radius: 50%; width: 65px; height: 65px; display: flex; align-items: center; justify-content: center; padding-bottom: 0.5rem;">
+                                        👤
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 1.3rem; font-weight: 700; color: #191970;">
+                                            ${data.profile.title ? data.profile.title + ' ' : ''}${data.profile.full_name}
+                                        </div>
+                                        <div style="font-size: 1rem; color: #2A2A8A; margin-top: 0.2rem;">
+                                            ${data.profile.role ? data.profile.role.charAt(0).toUpperCase() + data.profile.role.slice(1) : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="width: 100%;">
+                                    <div style="display: flex; flex-direction: column; gap: 0.7rem;">
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #888;">Number of Cases:</span>
+                                            <span style="font-weight: 600;">${data.profile.cases ? data.profile.cases.length : 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #888;">Number of Patents:</span>
+                                            <span style="font-weight: 600;">${data.profile.patents ? data.profile.patents.length : 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #888;">Account Created On:</span>
+                                            <span style="font-weight: 600;">${data.profile.created_on ? data.profile.created_on : '-'}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #888;">Email:</span>
+                                            <span style="font-weight: 600;">${data.profile.email ? data.profile.email : '-'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="case-details-btn" style="margin-top: 1.5rem; align-self: flex-end;" onclick="window.location.href='/change-password'">
+                                    Change Password
+                                </button>
+                            </div>
+                        `;
+                    }
                 }
             } catch (error) {
                 console.error('Error loading profile:', error);

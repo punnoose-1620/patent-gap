@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_cors import CORS
 import os
-from controller import login_user, get_user_cases, get_open_cases, get_user_profile, get_case_by_id, get_case_related_patents
+from controller import *
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -32,7 +32,6 @@ def serve_image(imageName):
     """Serve images from the Assets directory"""
     return app.send_static_file(f'{imageName}')
 
-
 @app.route('/login')
 def login_page():
     """Serve the login page"""
@@ -51,6 +50,13 @@ def case_details_page():
     if 'user_id' not in session:
         return redirect(url_for('login_page'))
     return render_template('case-details.html')
+
+@app.route('/change-password')
+def change_password_page():
+    """Serve the change password page"""
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+    return render_template('change_password.html')
 
 # API Endpoints
 @app.route('/api/login', methods=['POST'])
@@ -187,6 +193,47 @@ def get_case_patents(case_id):
             'success': False,
             'message': f'Error fetching related patents: {str(e)}'
         }), 500
+
+@app.route('/api/verify-password', methods=['POST'])
+def api_verify_password():
+    """Verify if the entered password matches the user's current password"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+    try:
+        data = request.get_json()
+        entered_password = data.get('password')
+        user_id = session['user_id']
+
+        if entered_password is None:
+            return jsonify({'success': False, 'message': 'Password is required'}), 400
+
+        is_valid = verify_password(user_id, entered_password)
+        return jsonify({'success': True, 'valid': is_valid})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error verifying password: {str(e)}'}), 500
+
+@app.route('/api/change-password', methods=['POST'])
+def api_change_password():
+    """Change the user's password"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+    try:
+        data = request.get_json()
+        new_password = data.get('new_password')
+
+        if not new_password:
+            return jsonify({'success': False, 'message': 'New password is required'}), 400
+
+        user_id = session['user_id']
+        result = change_password(user_id, new_password)
+        if result.get('success'):
+            return jsonify({'success': True, 'message': result.get('message')})
+        else:
+            return jsonify({'success': False, 'message': result.get('message')}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error changing password: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = app.config['PORT']

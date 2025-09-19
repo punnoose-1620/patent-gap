@@ -953,8 +953,50 @@ def get_user_profile(user_id):
     """
     for user in mock_users:
         if user['id'] == user_id:
-            return user
+            user_copy = user.copy()
+            if 'password' in user_copy:
+                del user_copy['password']
+            return user_copy
     return None
+
+def verify_password(user_id, entered_password):
+    """
+    Verify if the entered password matches the user's current password.
+
+    Args:
+        user_id (str): User's unique identifier
+        entered_password (str): Password to verify
+
+    Returns:
+        bool: True if password matches, False otherwise
+    """
+    for user in mock_users:
+        if user['id'] == user_id:
+            return user.get('password') == entered_password
+    return False
+
+def change_password(user_id, new_password):
+    """
+    Change the password for a user.
+
+    Args:
+        user_id (str): User's unique identifier
+        new_password (str): The new password to set
+
+    Returns:
+        dict: Result containing success status and message
+    """
+    for user in mock_users:
+        if user['id'] == user_id:
+            user['password'] = new_password
+            return {
+                'success': True,
+                'message': 'Password updated successfully'
+            }
+    return {
+        'success': False,
+        'message': 'User not found'
+    }
 
 def create_case(case_data):
     """
