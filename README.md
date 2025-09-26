@@ -9,6 +9,7 @@ patent-gap/
 ├── Backend/                 # Python backend files
 │   ├── app.py              # Main Flask application
 │   ├── controller.py       # Business logic controllers
+│   ├── swagger.py          # Swagger/OpenAPI configuration
 │   └── env_example.txt     # Environment variables example
 ├── Frontend/               # HTML frontend files
 │   ├── index.html          # Home page
@@ -31,6 +32,7 @@ patent-gap/
 - **Case Details**: Detailed view of individual cases with related patent information
 - **Profile**: User profile management with case statistics
 - **Related Patents**: View patents associated with specific cases
+- **API Documentation**: Interactive Swagger UI for comprehensive API testing and exploration
 
 ## Setup Instructions
 
@@ -97,6 +99,12 @@ pip install --upgrade pip
 # Install required packages
 pip install -r requirements.txt
 ```
+
+**Dependencies included:**
+- `Flask==2.3.3` - Web framework
+- `Flask-CORS==4.0.0` - Cross-origin resource sharing
+- `python-dotenv==1.0.0` - Environment variable management
+- `flasgger==0.9.7.1` - Swagger UI integration for API documentation
 
 #### 3. Environment Configuration
 
@@ -182,26 +190,82 @@ python app.py
 - Check that the virtual environment is activated
 - Verify all dependencies are installed: `pip list`
 
+### Testing Swagger Documentation
+
+To verify that Swagger is properly set up and working:
+
+1. **Start the backend server** (if not already running):
+   ```bash
+   cd Backend
+   python app.py
+   ```
+
+2. **Open your browser** and navigate to:
+   - **Swagger UI**: `http://localhost:5000/swagger/`
+   - **OpenAPI JSON**: `http://localhost:5000/apispec.json`
+
+3. **Verify functionality**:
+   - Swagger UI should load with all API endpoints visible
+   - You should see 9 API endpoints organized by categories
+   - Each endpoint should have detailed documentation with examples
+   - You can test endpoints directly from the interface
+
 ## Demo Credentials
 
 For testing purposes, use these credentials:
 - **Email**: admin@example.com
 - **Password**: password123
 
-## API Endpoints
+## API Documentation
 
-### Authentication
+### Swagger UI Interface
+
+The application includes comprehensive API documentation powered by Swagger UI. This provides an interactive interface to explore and test all API endpoints.
+
+#### Accessing Swagger Documentation
+
+Once the backend is running, you can access the API documentation at:
+
+- **Swagger UI**: `http://localhost:5000/swagger/`
+- **OpenAPI JSON Spec**: `http://localhost:5000/apispec.json`
+
+#### Features of Swagger Documentation
+
+- **Interactive API Testing**: Test endpoints directly from the browser
+- **Request/Response Examples**: See example data for all endpoints
+- **Authentication Support**: Test authenticated endpoints with session management
+- **Schema Validation**: View detailed request/response schemas
+- **Organized by Categories**: Endpoints grouped by functionality (Authentication, Cases, Profile, Patents)
+
+#### Using Swagger UI
+
+1. **Navigate to the Swagger UI**: Open `http://localhost:5000/swagger/` in your browser
+2. **Explore Endpoints**: Click on any endpoint to expand its details
+3. **Test Endpoints**: Click "Try it out" to test endpoints with real data
+4. **View Schemas**: Check the "Models" section to see data structures
+5. **Authentication**: Some endpoints require login - use the `/api/login` endpoint first
+
+### API Endpoints
+
+#### Authentication
 - `POST /api/login` - User login
 - `POST /api/logout` - User logout
 
-### Data
+#### Cases Management
 - `GET /api/my-cases` - Get user's assigned cases
 - `GET /api/open-cases` - Get available cases for assignment
-- `GET /api/profile` - Get user profile and statistics
 - `GET /api/cases/<case_id>` - Get detailed information about a specific case
+- `POST /api/cases/<case_id>/update-status` - Update case information (status, priority, etc.)
+
+#### Profile Management
+- `GET /api/profile` - Get user profile and statistics
+- `POST /api/verify-password` - Verify current password
+- `POST /api/change-password` - Change user password
+
+#### Patent Information
 - `GET /api/cases/<case_id>/patents` - Get related patents for a specific case
 
-### Pages
+#### Web Pages
 - `GET /` - Home page (landing page)
 - `GET /login` - Login page
 - `GET /home` - Dashboard page (requires authentication)
@@ -217,6 +281,8 @@ For testing purposes, use these credentials:
 - Case details page supports URL parameters for case ID (`?id=<case_id>`)
 - Dashboard includes real-time statistics and case management
 - Patent information is displayed in card format with expandable details
+- **API Documentation**: Comprehensive Swagger UI with interactive testing capabilities
+- **OpenAPI 2.0**: Full OpenAPI specification with detailed schemas and examples
 
 ## Future Enhancements
 

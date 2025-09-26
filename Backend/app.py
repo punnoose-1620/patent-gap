@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from flask_cors import CORS
 import os
 from controller import *
+from swagger import initialize_swagger, get_response_models
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -14,6 +15,9 @@ app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 # Configuration
 app.config['PORT'] = int(os.environ.get('PORT', 5000))
 app.config['DEBUG'] = os.environ.get('DEBUG', 'True').lower() == 'true'
+
+# Initialize Swagger
+swagger = initialize_swagger(app)
 
 # Routes for serving HTML pages
 @app.route('/')
@@ -61,7 +65,48 @@ def change_password_page():
 # API Endpoints
 @app.route('/api/login', methods=['POST'])
 def login():
-    """Handle user login"""
+    """
+    Handle user login
+    ---
+    tags:
+      - Authentication
+    summary: Authenticate user and create session
+    description: Validates user credentials and creates a session if successful
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    parameters:
+      - in: body
+        name: login_data
+        description: User login credentials
+        required: true
+        schema:
+          $ref: '#/definitions/LoginRequest'
+    responses:
+      200:
+        description: Login successful
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "Login successful"
+            redirect:
+              type: string
+              example: "/home"
+      401:
+        description: Invalid credentials
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     try:
         data = request.get_json()
         email = data.get('email')
@@ -91,7 +136,31 @@ def login():
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
-    """Handle user logout"""
+    """
+    Handle user logout
+    ---
+    tags:
+      - Authentication
+    summary: Logout user and clear session
+    description: Clears the user session and logs them out
+    produces:
+      - application/json
+    responses:
+      200:
+        description: Logout successful
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "Logged out successfully"
+            redirect:
+              type: string
+              example: "/"
+    """
     session.clear()
     return jsonify({
         'success': True,
@@ -101,7 +170,39 @@ def logout():
 
 @app.route('/api/my-cases')
 def my_cases():
-    """Get user's cases"""
+    """
+    Get user's cases
+    ---
+    tags:
+      - Cases
+    summary: Retrieve cases assigned to the current user
+    description: Returns all cases assigned to the authenticated user
+    produces:
+      - application/json
+    security:
+      - session: []
+    responses:
+      200:
+        description: Cases retrieved successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            cases:
+              type: array
+              items:
+                $ref: '#/definitions/Case'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     
@@ -120,7 +221,33 @@ def my_cases():
 
 @app.route('/api/open-cases')
 def open_cases():
-    """Get open cases"""
+    """
+    Get open cases
+    ---
+    tags:
+      - Cases
+    summary: Retrieve all open cases
+    description: Returns all cases that are currently open (not completed or cancelled)
+    produces:
+      - application/json
+    responses:
+      200:
+        description: Open cases retrieved successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            cases:
+              type: array
+              items:
+                $ref: '#/definitions/Case'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     try:
         cases = get_open_cases()
         return jsonify({
@@ -135,7 +262,37 @@ def open_cases():
 
 @app.route('/api/profile')
 def profile():
-    """Get user profile"""
+    """
+    Get user profile
+    ---
+    tags:
+      - Profile
+    summary: Retrieve current user's profile information
+    description: Returns the profile information for the authenticated user
+    produces:
+      - application/json
+    security:
+      - session: []
+    responses:
+      200:
+        description: Profile retrieved successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            profile:
+              $ref: '#/definitions/UserProfile'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     
@@ -154,7 +311,48 @@ def profile():
 
 @app.route('/api/cases/<case_id>')
 def get_case_details(case_id):
-    """Get detailed information about a specific case"""
+    """
+    Get detailed information about a specific case
+    ---
+    tags:
+      - Cases
+    summary: Retrieve detailed information about a specific case
+    description: Returns comprehensive details about a case by its ID
+    produces:
+      - application/json
+    security:
+      - session: []
+    parameters:
+      - name: case_id
+        in: path
+        type: string
+        required: true
+        description: The unique identifier of the case
+        example: "case_001"
+    responses:
+      200:
+        description: Case details retrieved successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            case:
+              $ref: '#/definitions/Case'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      404:
+        description: Case not found
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     
@@ -176,9 +374,124 @@ def get_case_details(case_id):
             'message': f'Error fetching case details: {str(e)}'
         }), 500
 
+@app.route('/api/cases/<case_id>/update-status', methods=['POST'])
+def update_case_status(case_id):
+    """
+    Update the status of a specific case
+    ---
+    tags:
+      - Cases
+    summary: Update case information
+    description: Updates various fields of a case including status, priority, assignment, etc.
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    security:
+      - session: []
+    parameters:
+      - name: case_id
+        in: path
+        type: string
+        required: true
+        description: The unique identifier of the case
+        example: "case_001"
+      - in: body
+        name: update_data
+        description: Case update information
+        required: true
+        schema:
+          $ref: '#/definitions/CaseUpdateRequest'
+    responses:
+      200:
+        description: Case updated successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "Status updated"
+            updated_case:
+              $ref: '#/definitions/Case'
+      400:
+        description: Invalid input data
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      404:
+        description: Case not found
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+    try:
+        update_data = request.get_json()
+        if not update_data or not isinstance(update_data, dict):
+            return jsonify({'success': False, 'message': 'Invalid input data'}), 400
+
+        result = update_case(case_id, update_data)
+        if result.get('success'):
+            updated_case = get_case_by_id(case_id)
+            return jsonify({'success': True, 'message': result.get('message', 'Status updated'), 'updated_case': updated_case})
+        else:
+            return jsonify({'success': False, 'message': result.get('message', 'Failed to update status')}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error updating case status: {str(e)}'}), 500
+
 @app.route('/api/cases/<case_id>/patents')
 def get_case_patents(case_id):
-    """Get related patents for a specific case"""
+    """
+    Get related patents for a specific case
+    ---
+    tags:
+      - Patents
+    summary: Retrieve patents related to a specific case
+    description: Returns all patents that are related to the specified case
+    produces:
+      - application/json
+    security:
+      - session: []
+    parameters:
+      - name: case_id
+        in: path
+        type: string
+        required: true
+        description: The unique identifier of the case
+        example: "case_001"
+    responses:
+      200:
+        description: Related patents retrieved successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            patents:
+              type: array
+              items:
+                $ref: '#/definitions/Patent'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     
@@ -196,7 +509,51 @@ def get_case_patents(case_id):
 
 @app.route('/api/verify-password', methods=['POST'])
 def api_verify_password():
-    """Verify if the entered password matches the user's current password"""
+    """
+    Verify if the entered password matches the user's current password
+    ---
+    tags:
+      - Profile
+    summary: Verify current password
+    description: Validates if the provided password matches the user's current password
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    security:
+      - session: []
+    parameters:
+      - in: body
+        name: password_data
+        description: Password to verify
+        required: true
+        schema:
+          $ref: '#/definitions/PasswordVerifyRequest'
+    responses:
+      200:
+        description: Password verification result
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            valid:
+              type: boolean
+              example: true
+      400:
+        description: Password is required
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
 
@@ -215,7 +572,44 @@ def api_verify_password():
 
 @app.route('/api/change-password', methods=['POST'])
 def api_change_password():
-    """Change the user's password"""
+    """
+    Change the user's password
+    ---
+    tags:
+      - Profile
+    summary: Change user password
+    description: Updates the authenticated user's password
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    security:
+      - session: []
+    parameters:
+      - in: body
+        name: password_data
+        description: New password information
+        required: true
+        schema:
+          $ref: '#/definitions/PasswordChangeRequest'
+    responses:
+      200:
+        description: Password changed successfully
+        schema:
+          $ref: '#/definitions/SuccessResponse'
+      400:
+        description: Invalid input or password requirements not met
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
 

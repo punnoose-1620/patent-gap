@@ -1083,6 +1083,9 @@ def get_case_by_id(case_id):
     # TODO: Implement actual database query
     for case in mock_cases:
         if case['id'] == case_id:
+            # remove password from case before returning
+            if 'password' in case:
+                del case['password']
             return case
     return None
 

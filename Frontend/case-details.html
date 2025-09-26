@@ -623,9 +623,6 @@
                         <button class="btn btn-secondary" onclick="viewPatentDocuments()">
                             📋 View Patent Documents
                         </button>
-                        <button class="btn btn-primary" onclick="assignCase()">
-                            👤 Assign Case
-                        </button>
                         <button class="btn btn-secondary" onclick="updateStatus()">
                             ✏️ Update Status
                         </button>
@@ -745,6 +742,33 @@
         let caseId = null;
         let caseData = null;
 
+        function renderAcceptSection(accepted_on, accepted_by) {
+            accepted_on_main_element = document.getElementById('acceptedOnItem');
+            accepted_by_main_element = document.getElementById('acceptedByItem');
+
+            accepted_on_element = document.getElementById('acceptedOn');
+            accepted_by_element = document.getElementById('acceptedBy');
+            // Check if the case has been accepted (i.e., has accepted_on and accepted_by)
+            if (caseData && caseData.accepted_on || caseData.accepted_by) {
+                // Case is accepted
+                // Show accepted fields only if they exist
+                if (caseData.accepted_on) {
+                    accepted_on_element.style.display = 'flex';
+                    accepted_on_element.textContent = caseData.accepted_on;
+                }
+
+                if (caseData.accepted_by) {
+                    accepted_by_element.style.display = 'flex';
+                    accepted_by_element.textContent = caseData.accepted_by;
+                }
+            } 
+            else {
+                // Case is not accepted, render the Accept button
+                accepted_on_main_element.style.display = 'flex';
+                accepted_on_main_element.innerHTML = `<button class="accept-btn" onclick="updateStatus()">Accept Case</button>`;
+                accepted_by_main_element.innerHTML = '';
+            }
+        }
         
         function getCaseIdFromUrl() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -808,15 +832,7 @@
             statusDetailElement.className = `status-badge status-${getStatusClass(caseData.status)}`;
 
             // Show accepted fields only if they exist
-            if (caseData.accepted_on) {
-                document.getElementById('acceptedOnItem').style.display = 'flex';
-                document.getElementById('acceptedOn').textContent = caseData.accepted_on;
-            }
-
-            if (caseData.accepted_by) {
-                document.getElementById('acceptedByItem').style.display = 'flex';
-                document.getElementById('acceptedBy').textContent = caseData.accepted_by;
-            }
+            renderAcceptSection(caseData.accepted_on, caseData.accepted_by);
 
             // Update description
             document.getElementById('caseDescription').textContent = caseData.description || 'No description available for this case.';
@@ -977,12 +993,6 @@
         function viewPatentDocuments() {
             if (caseData) {
                 alert(`Opening patent documents for case: ${caseData.title}\n\nThis would typically open all related patent documents.`);
-            }
-        }
-
-        function assignCase() {
-            if (caseData) {
-                alert(`Assigning case: ${caseData.title}\n\nThis would open the case assignment interface.`);
             }
         }
 
