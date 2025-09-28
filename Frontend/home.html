@@ -590,12 +590,30 @@
             // Status
             const status = document.createElement('div');
             status.textContent = caseData.status || 'Unknown';
-            status.className = `case-status ${getStatusClass(caseData.status)}`;
+            status.className = `case-status ${caseData.status.toLowerCase()}`;
+            status.style.textAlign = 'center';
+            status.style.padding = '0.5rem';
 
             // More Details button
             const detailsBtn = document.createElement('button');
             detailsBtn.textContent = 'More Details';
             detailsBtn.className = 'case-details-btn';
+
+            // Accept Case button (green, bottom-aligned)
+            const acceptBtn = document.createElement('button');
+            acceptBtn.textContent = 'Accept Case';
+            acceptBtn.className = 'accept-case-btn';
+            acceptBtn.style.backgroundColor = '#28a745'; // Bootstrap green
+            acceptBtn.style.color = '#fff';
+            acceptBtn.style.bottom = '1rem';
+            acceptBtn.style.left = '50%';
+            acceptBtn.style.width = '100%';
+            acceptBtn.style.fontWeight = 'bold';
+            acceptBtn.style.border = 'none';
+            acceptBtn.style.borderRadius = '0.5rem';
+            acceptBtn.style.padding = '0.5rem 1rem';
+            acceptBtn.style.cursor = 'pointer';
+            acceptBtn.style.boxShadow = '0 2px 8px rgba(40,167,69,0.08)';
 
             detailsBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -607,7 +625,13 @@
             // Assemble card
             card.appendChild(title);
             card.appendChild(referencesCount);
-            card.appendChild(status);
+            // Show "Accept Case" button only if not accepted
+            if (!caseData.accepted_on && !caseData.accepted_by && !caseData.assigned_to) {
+                card.appendChild(acceptBtn);
+            }
+            else {
+                card.appendChild(status);
+            }
             card.appendChild(detailsBtn);
 
             return card;

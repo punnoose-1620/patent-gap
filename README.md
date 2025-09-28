@@ -105,6 +105,9 @@ pip install -r requirements.txt
 - `Flask-CORS==4.0.0` - Cross-origin resource sharing
 - `python-dotenv==1.0.0` - Environment variable management
 - `flasgger==0.9.7.1` - Swagger UI integration for API documentation
+- `psycopg2-binary==2.9.7` - PostgreSQL database adapter
+- `pymongo==4.5.0` - MongoDB database driver
+- `firebase-admin==6.4.0` - Firebase Admin SDK for authentication and cloud services
 
 #### 3. Environment Configuration
 
@@ -121,6 +124,22 @@ cp Backend/env_example.txt Backend/.env
 # DEBUG=True
 # FLASK_ENV=development
 ```
+
+#### Firebase Setup (Optional)
+
+If you plan to use Firebase for authentication or cloud services:
+
+1. **Create a Firebase project** at [Firebase Console](https://console.firebase.google.com/)
+2. **Generate a service account key**:
+   - Go to Project Settings → Service Accounts
+   - Click "Generate new private key"
+   - Download the JSON file
+3. **Configure environment variables**:
+   ```bash
+   # Add to your .env file
+   FIREBASE_CREDENTIALS_PATH=path/to/your/firebase-service-account.json
+   FIREBASE_PROJECT_ID=your-firebase-project-id
+   ```
 
 #### 4. Create Necessary Directories
 
@@ -283,13 +302,15 @@ Once the backend is running, you can access the API documentation at:
 - Patent information is displayed in card format with expandable details
 - **API Documentation**: Comprehensive Swagger UI with interactive testing capabilities
 - **OpenAPI 2.0**: Full OpenAPI specification with detailed schemas and examples
+- **Firebase Integration**: Optional Firebase Admin SDK for authentication and cloud services
 
 ## Future Enhancements
 
-- Database integration (SQLite/PostgreSQL)
-- Real user authentication system
+- Real user authentication system with Firebase
 - Case management functionality
 - File upload capabilities
 - Advanced search and filtering
 - Email notifications
 - User role management
+- Real-time notifications with Firebase
+- Cloud storage integration

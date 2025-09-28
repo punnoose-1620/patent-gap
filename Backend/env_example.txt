@@ -3,8 +3,9 @@ SECRET_KEY=your-secret-key-here
 PORT=5000
 DEBUG=True
 
-# Database Configuration (for future use)
-# DATABASE_URL=sqlite:///patent_gap.db
+# Firebase Configuration (for authentication and cloud services)
+# FIREBASE_CREDENTIALS_PATH=path/to/firebase-service-account.json
+# FIREBASE_PROJECT_ID=your-firebase-project-id
 
 # CORS Configuration
 # CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000

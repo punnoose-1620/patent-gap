@@ -742,6 +742,12 @@
         let caseId = null;
         let caseData = null;
 
+        async function getCurrentUser() {
+            const response = await fetch('/api/profile');
+            const data = await response.json();
+            return data.user;
+        }
+
         function renderAcceptSection(accepted_on, accepted_by) {
             accepted_on_main_element = document.getElementById('acceptedOnItem');
             accepted_by_main_element = document.getElementById('acceptedByItem');
@@ -765,7 +771,7 @@
             else {
                 // Case is not accepted, render the Accept button
                 accepted_on_main_element.style.display = 'flex';
-                accepted_on_main_element.innerHTML = `<button class="accept-btn" onclick="updateStatus()">Accept Case</button>`;
+                accepted_on_main_element.innerHTML = `<button class="accept-btn" onclick="acceptCase()">Accept Case</button>`;
                 accepted_by_main_element.innerHTML = '';
             }
         }
@@ -996,8 +1002,51 @@
             }
         }
 
+        function updateCase() {
+            if (caseData) {
+                fetch(`/api/cases/${encodeURIComponent(caseData.id)}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(caseData),
+                    credentials: 'include'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Case updated successfully!');
+                        loadCaseDetails();
+                    } else {
+                        alert('Failed to update case: ' + (data.message || 'Unknown error'));
+                    }
+                })
+                .catch(err => {
+                    alert('Error updating case: ' + err);
+                });
+            }
+        }
+
+        function acceptCase() {
+            if (caseData) {
+                caseData.accepted_by = getCurrentUser().id;
+                caseData.accepted_on = new Date().toISOString().split('T')[0];
+                updateCase();
+            }
+        }
+
         function updateStatus() {
             if (caseData) {
+                if (!caseData.accepted_by || !caseData.accepted_on) {
+                    // Case has not been accepted yet, proceed with accept logic
+                    caseData.accepted_by = getCurrentUser().id;
+                    caseData.accepted_on = new Date().toISOString().split('T')[0];
+                }
+                // Example: Prompt for new status and send update to backend
+                const newStatus = prompt("Enter new status for this case:", caseData.status || "");
+                if (newStatus && newStatus !== caseData.status) {
+                    updateCase();
+                }
                 alert(`Updating status for case: ${caseData.title}\n\nThis would open the status update interface.`);
             }
         }

@@ -309,7 +309,7 @@ def profile():
             'message': f'Error fetching profile: {str(e)}'
         }), 500
 
-@app.route('/api/cases/<case_id>')
+@app.route('/api/cases/<case_id>', methods=['GET'])
 def get_case_details(case_id):
     """
     Get detailed information about a specific case
@@ -373,6 +373,87 @@ def get_case_details(case_id):
             'success': False,
             'message': f'Error fetching case details: {str(e)}'
         }), 500
+
+@app.route('/api/cases/<case_id>', methods=['POST'])
+def update_case_details(case_id):
+    """
+    Update details of a specific case
+    ---
+    tags:
+      - Cases
+    summary: Update case details
+    description: Updates fields of a case (not just status)
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    security:
+      - session: []
+    parameters:
+      - name: case_id
+        in: path
+        type: string
+        required: true
+        description: The unique identifier of the case
+        example: "case_001"
+      - in: body
+        name: update_data
+        description: Case detail update information
+        required: true
+        schema:
+          $ref: '#/definitions/CaseUpdateRequest'
+    responses:
+      200:
+        description: Case details updated successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "Case details updated"
+            updated_case:
+              $ref: '#/definitions/Case'
+      400:
+        description: Invalid input data
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      404:
+        description: Case not found
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+    try:
+        update_data = request.get_json()
+        if not update_data:
+            return jsonify({'success': False, 'message': 'No update data provided'}), 400
+
+        # Assume update_case_by_id is a function that updates the case and returns the updated case or None if not found
+        result = update_case(case_id, update_data)
+        if result.get('success'):
+            updated_case = get_case_by_id(case_id)
+            return jsonify({
+                'success': True,
+                'message': 'Case details updated',
+                'updated_case': updated_case
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Case not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error updating case details: {str(e)}'}), 500
 
 @app.route('/api/cases/<case_id>/update-status', methods=['POST'])
 def update_case_status(case_id):

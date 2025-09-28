@@ -924,7 +924,7 @@ def get_user_cases(user_id):
     # TODO: Implement actual database query
     user_cases = []
     for case in mock_cases:
-        if case['assigned_to'] == user_id:
+        if case['assigned_to'] == user_id or case['accepted_by'] == user_id:
             user_cases.append(case)
     return user_cases
 
@@ -1036,13 +1036,13 @@ def update_case(case_id, update_data):
     Returns:
         dict: Result containing success status
     """
-    for case in mock_cases:
-        if case['id'] == case_id:
-            case.update(update_data)
-            return {
-                'success': True,
-                'message': 'Case updated successfully'
-            }
+    case = get_case_by_id(case_id, show_password=True)
+    case.update(update_data)
+    if case:
+        return {
+            'success': True,
+            'message': 'Case updated successfully'
+        }
     return {
         'success': False,
         'message': 'Case not found'
@@ -1070,7 +1070,7 @@ def delete_case(case_id):
         'message': 'Case not found'
     }
 
-def get_case_by_id(case_id):
+def get_case_by_id(case_id, show_password=False):
     """
     Get detailed information about a specific case
     
@@ -1084,7 +1084,7 @@ def get_case_by_id(case_id):
     for case in mock_cases:
         if case['id'] == case_id:
             # remove password from case before returning
-            if 'password' in case:
+            if 'password' in case and not show_password:
                 del case['password']
             return case
     return None
