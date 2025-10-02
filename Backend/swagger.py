@@ -61,6 +61,10 @@ swagger_template = {
         {
             "name": "Patents",
             "description": "Patent-related operations"
+        },
+        {
+            "name": "Demo Requests",
+            "description": "Demo request management"
         }
     ]
 }
@@ -282,6 +286,68 @@ def get_response_models():
                 "description": {
                     "type": "string",
                     "example": "Updated case description"
+                }
+            }
+        },
+        "DemoRequest": {
+            "type": "object",
+            "required": ["name", "email", "organization", "role", "date", "time", "timezone"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "example": "John Doe",
+                    "description": "Full name of the requester"
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john.doe@example.com",
+                    "description": "Email address of the requester"
+                },
+                "organization": {
+                    "type": "string",
+                    "example": "Tech Corp",
+                    "description": "Organization name"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "Patent Attorney",
+                    "description": "Role or title of the requester"
+                },
+                "date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2024-01-15",
+                    "description": "Preferred date for the demo"
+                },
+                "time": {
+                    "type": "string",
+                    "format": "time",
+                    "example": "14:30",
+                    "description": "Preferred time for the demo"
+                },
+                "timezone": {
+                    "type": "string",
+                    "example": "UTC-5",
+                    "description": "Time zone for the demo"
+                }
+            }
+        },
+        "DemoRequestResponse": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "boolean",
+                    "example": True
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Demo request submitted successfully"
+                },
+                "request_id": {
+                    "type": "string",
+                    "example": "demo_req_123",
+                    "description": "Unique identifier for the demo request"
                 }
             }
         }

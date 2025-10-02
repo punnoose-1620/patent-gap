@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Demo - Patent Gap</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #EDEADC;
+            color: #0A1F14;
+        }
+
+        .top-nav {
+            background-color: #0A1F14;
+            color: #EDEADC;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-bottom: 3px solid #191970;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Merriweather', serif;
+        }
+
+        .nav-brand img {
+            height: 40px;
+            width: auto;
+        }
+
+        .main-content {
+            padding: 2rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .page-title {
+            font-family: 'Merriweather', serif;
+            font-size: 2.5rem;
+            color: #0A1F14;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            font-size: 1.1rem;
+            color: #0A1F14;
+            opacity: 0.8;
+        }
+
+        .form-container {
+            background: #F8F7F3;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border: 1px solid #D8D6C4;
+            padding: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: #0A1F14;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #D8D6C4;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.3s ease;
+            background-color: #fff;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #191970;
+            box-shadow: 0 0 0 3px rgba(25, 25, 112, 0.1);
+        }
+
+        .form-input.error {
+            border-color: #e74c3c;
+        }
+
+        .form-input.valid {
+            border-color: #28a745;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #D8D6C4;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.3s ease;
+            background-color: #fff;
+            cursor: pointer;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: #191970;
+            box-shadow: 0 0 0 3px rgba(25, 25, 112, 0.1);
+        }
+
+        .form-select.error {
+            border-color: #e74c3c;
+        }
+
+        .form-select.valid {
+            border-color: #28a745;
+        }
+
+        .datetime-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .timezone-group {
+            margin-top: 1rem;
+        }
+
+        .required {
+            color: #e74c3c;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 0.75rem 2rem;
+            background-color: #191970;
+            color: #EDEADC;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 1rem;
+        }
+
+        .submit-btn:hover {
+            background-color: #2A2A8A;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(25, 25, 112, 0.3);
+        }
+
+        .submit-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: #191970;
+            text-decoration: none;
+            font-weight: 500;
+            margin-bottom: 1rem;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: #2A2A8A;
+            text-decoration: underline;
+        }
+
+        .back-link::before {
+            content: "← ";
+            margin-right: 0.25rem;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 1rem;
+            }
+
+            .form-container {
+                padding: 1.5rem;
+            }
+
+            .page-title {
+                font-size: 2rem;
+            }
+
+            .datetime-group {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-nav">
+        <div class="nav-brand">
+            <img src="images/logo-white-nobg.png" alt="Patent Gap Logo">
+            Patent Gap
+        </div>
+    </div>
+
+    <div class="main-content">
+        <a href="/" class="back-link">Back to Home</a>
+        
+        <div class="page-header">
+            <h1 class="page-title">Request a Demo</h1>
+            <p class="page-subtitle">Schedule a personalized demonstration of our patent management platform</p>
+        </div>
+
+        <div class="form-container">
+            <form id="demoRequestForm">
+                <!-- Full Name -->
+                <div class="form-group">
+                    <label for="fullName" class="form-label">
+                        Full Name <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="fullName" 
+                        name="fullName" 
+                        class="form-input" 
+                        placeholder="Enter your full name"
+                        required
+                    >
+                    <div class="error-message" id="fullNameError">
+                        Please enter a valid name (letters and spaces only)
+                    </div>
+                </div>
+
+                <!-- Email Address -->
+                <div class="form-group">
+                    <label for="email" class="form-label">
+                        Email Address <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        class="form-input" 
+                        placeholder="Enter your email address"
+                        required
+                    >
+                    <div class="error-message" id="emailError">
+                        Please enter a valid email address
+                    </div>
+                </div>
+
+                <!-- Organization -->
+                <div class="form-group">
+                    <label for="organization" class="form-label">
+                        Organization <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="organization" 
+                        name="organization" 
+                        class="form-input" 
+                        placeholder="Enter your organization name"
+                        required
+                    >
+                    <div class="error-message" id="organizationError">
+                        Please enter a valid organization name (letters and spaces only)
+                    </div>
+                </div>
+
+                <!-- Role -->
+                <div class="form-group">
+                    <label for="role" class="form-label">
+                        Role <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="role" 
+                        name="role" 
+                        class="form-input" 
+                        placeholder="Enter your role/title"
+                        required
+                    >
+                    <div class="error-message" id="roleError">
+                        Please enter a valid role (letters and spaces only)
+                    </div>
+                </div>
+
+                <!-- Availability Section -->
+                <div class="form-group">
+                    <label class="form-label">
+                        Availability <span class="required">*</span>
+                    </label>
+                    
+                    <!-- Date and Time -->
+                    <div class="datetime-group">
+                        <div>
+                            <label for="date" class="form-label" style="font-size: 0.9rem; margin-bottom: 0.25rem;">
+                                Preferred Date
+                            </label>
+                            <input 
+                                type="date" 
+                                id="date" 
+                                name="date" 
+                                class="form-input" 
+                                required
+                            >
+                            <div class="error-message" id="dateError">
+                                Please select a date
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label for="time" class="form-label" style="font-size: 0.9rem; margin-bottom: 0.25rem;">
+                                Preferred Time
+                            </label>
+                            <input 
+                                type="time" 
+                                id="time" 
+                                name="time" 
+                                class="form-input" 
+                                required
+                            >
+                            <div class="error-message" id="timeError">
+                                Please select a time
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Time Zone -->
+                    <div class="timezone-group">
+                        <label for="timezone" class="form-label" style="font-size: 0.9rem; margin-bottom: 0.25rem;">
+                            Time Zone
+                        </label>
+                        <select 
+                            id="timezone" 
+                            name="timezone" 
+                            class="form-select" 
+                            required
+                        >
+                            <option value="">Select your time zone</option>
+                            <option value="UTC-12">UTC-12 (Baker Island)</option>
+                            <option value="UTC-11">UTC-11 (American Samoa)</option>
+                            <option value="UTC-10">UTC-10 (Hawaii)</option>
+                            <option value="UTC-9">UTC-9 (Alaska)</option>
+                            <option value="UTC-8">UTC-8 (Pacific Time)</option>
+                            <option value="UTC-7">UTC-7 (Mountain Time)</option>
+                            <option value="UTC-6">UTC-6 (Central Time)</option>
+                            <option value="UTC-5">UTC-5 (Eastern Time)</option>
+                            <option value="UTC-4">UTC-4 (Atlantic Time)</option>
+                            <option value="UTC-3">UTC-3 (Brazil)</option>
+                            <option value="UTC-2">UTC-2 (Mid-Atlantic)</option>
+                            <option value="UTC-1">UTC-1 (Azores)</option>
+                            <option value="UTC+0">UTC+0 (Greenwich Mean Time)</option>
+                            <option value="UTC+1">UTC+1 (Central European Time)</option>
+                            <option value="UTC+2">UTC+2 (Eastern European Time)</option>
+                            <option value="UTC+3">UTC+3 (Moscow Time)</option>
+                            <option value="UTC+4">UTC+4 (Gulf Standard Time)</option>
+                            <option value="UTC+5">UTC+5 (Pakistan Standard Time)</option>
+                            <option value="UTC+6">UTC+6 (Bangladesh Standard Time)</option>
+                            <option value="UTC+7">UTC+7 (Indochina Time)</option>
+                            <option value="UTC+8">UTC+8 (China Standard Time)</option>
+                            <option value="UTC+9">UTC+9 (Japan Standard Time)</option>
+                            <option value="UTC+10">UTC+10 (Australian Eastern Time)</option>
+                            <option value="UTC+11">UTC+11 (Solomon Islands)</option>
+                            <option value="UTC+12">UTC+12 (New Zealand)</option>
+                        </select>
+                        <div class="error-message" id="timezoneError">
+                            Please select a time zone
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    Submit Request
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Form validation functions
+        function validateName(value) {
+            const nameRegex = /^[a-zA-Z\s]+$/;
+            return nameRegex.test(value) && value.trim().length > 0;
+        }
+
+        function validateEmail(value) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(value);
+        }
+
+        function validateDate(value) {
+            if (!value) return false;
+            const selectedDate = new Date(value);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            return selectedDate >= today;
+        }
+
+        function validateTime(value) {
+            return value && value.trim() !== '';
+        }
+
+        function validateTimezone(value) {
+            return value && value.trim() !== '';
+        }
+
+        // Show error message
+        function showError(fieldId, errorId) {
+            const field = document.getElementById(fieldId);
+            const error = document.getElementById(errorId);
+            field.classList.remove('valid');
+            field.classList.add('error');
+            error.classList.add('show');
+        }
+
+        // Hide error message
+        function hideError(fieldId, errorId) {
+            const field = document.getElementById(fieldId);
+            const error = document.getElementById(errorId);
+            field.classList.remove('error');
+            field.classList.add('valid');
+            error.classList.remove('show');
+        }
+
+        // Validate individual field
+        function validateField(fieldId, errorId, validator) {
+            const field = document.getElementById(fieldId);
+            const value = field.value.trim();
+            
+            if (validator(value)) {
+                hideError(fieldId, errorId);
+                return true;
+            } else {
+                showError(fieldId, errorId);
+                return false;
+            }
+        }
+
+        // Real-time validation
+        document.getElementById('fullName').addEventListener('input', function() {
+            validateField('fullName', 'fullNameError', validateName);
+        });
+
+        document.getElementById('email').addEventListener('input', function() {
+            validateField('email', 'emailError', validateEmail);
+        });
+
+        document.getElementById('organization').addEventListener('input', function() {
+            validateField('organization', 'organizationError', validateName);
+        });
+
+        document.getElementById('role').addEventListener('input', function() {
+            validateField('role', 'roleError', validateName);
+        });
+
+        document.getElementById('date').addEventListener('change', function() {
+            validateField('date', 'dateError', validateDate);
+        });
+
+        document.getElementById('time').addEventListener('change', function() {
+            validateField('time', 'timeError', validateTime);
+        });
+
+        document.getElementById('timezone').addEventListener('change', function() {
+            validateField('timezone', 'timezoneError', validateTimezone);
+        });
+
+        // Set minimum date to today
+        document.addEventListener('DOMContentLoaded', function() {
+            const dateInput = document.getElementById('date');
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.setAttribute('min', today);
+        });
+
+        // Form submission
+        document.getElementById('demoRequestForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Validate all fields
+            const isFullNameValid = validateField('fullName', 'fullNameError', validateName);
+            const isEmailValid = validateField('email', 'emailError', validateEmail);
+            const isOrganizationValid = validateField('organization', 'organizationError', validateName);
+            const isRoleValid = validateField('role', 'roleError', validateName);
+            const isDateValid = validateField('date', 'dateError', validateDate);
+            const isTimeValid = validateField('time', 'timeError', validateTime);
+            const isTimezoneValid = validateField('timezone', 'timezoneError', validateTimezone);
+
+            // Check if all fields are valid
+            if (isFullNameValid && isEmailValid && isOrganizationValid && isRoleValid && 
+                isDateValid && isTimeValid && isTimezoneValid) {
+                
+                // Collect form data
+                const formData = {
+                    fullName: document.getElementById('fullName').value.trim(),
+                    email: document.getElementById('email').value.trim(),
+                    organization: document.getElementById('organization').value.trim(),
+                    role: document.getElementById('role').value.trim(),
+                    date: document.getElementById('date').value,
+                    time: document.getElementById('time').value,
+                    timezone: document.getElementById('timezone').value
+                };
+
+                console.log('Demo Request Data:', formData);
+                
+                // Disable submit button
+                const submitBtn = document.getElementById('submitBtn');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Submitting...';
+
+                // Call submit function (to be implemented later)
+                submit(formData);
+            } else {
+                // Scroll to first error
+                const firstError = document.querySelector('.error');
+                if (firstError) {
+                    firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        });
+
+        // Submit function (placeholder - to be implemented later)
+        function submit(formData) {
+            // This function will be populated later
+            console.log('Submit function called with data:', formData);
+            
+            // Simulate API call
+            setTimeout(() => {
+                alert('Demo request submitted successfully! We will contact you soon.');
+                
+                // Reset form
+                document.getElementById('demoRequestForm').reset();
+                
+                // Reset button
+                const submitBtn = document.getElementById('submitBtn');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Request';
+                
+                // Clear all validation states
+                document.querySelectorAll('.form-input, .form-select').forEach(field => {
+                    field.classList.remove('error', 'valid');
+                });
+                document.querySelectorAll('.error-message').forEach(error => {
+                    error.classList.remove('show');
+                });
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

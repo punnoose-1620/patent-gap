@@ -72,7 +72,75 @@ def add_patent_page():
         return redirect(url_for('login_page'))
     return render_template('add-patent.html')
 
+@app.route('/request-demo')
+def request_demo_page():
+    """Serve the request demo page"""
+    return render_template('request-demo.html')
+
 # API Endpoints
+@app.route('/api/create-demo-request', methods=['POST'])
+def create_demo_request():
+    """
+    Create a demo request
+    ---
+    tags:
+      - Demo Requests
+    summary: Create a new demo request
+    description: Submit a request for a personalized demonstration of the patent management platform
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    parameters:
+      - in: body
+        name: demo_request
+        description: Demo request information
+        required: true
+        schema:
+          $ref: '#/definitions/DemoRequest'
+    responses:
+      200:
+        description: Demo request created successfully
+        schema:
+          $ref: '#/definitions/DemoRequestResponse'
+      400:
+        description: Invalid input data
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'message': 'No data provided'
+            }), 400
+        
+        name = data.get('name')
+        email = data.get('email')
+        organization = data.get('organization')
+        role = data.get('role')
+        date = data.get('date')
+        time = data.get('time')
+        timezone = data.get('timezone')
+        
+        result = create_demo_request(name, email, organization, role, date, time, timezone)
+        
+        if result['success']:
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error creating demo request: {str(e)}'
+        }), 500
+
 @app.route('/api/login', methods=['POST'])
 def login():
     """

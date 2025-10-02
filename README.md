@@ -14,8 +14,12 @@ patent-gap/
 ├── Frontend/               # HTML frontend files
 │   ├── index.html          # Home page
 │   ├── login.html          # Login page
-│   ├── home.html           # Dashboard page
+│   ├── home.html           # Attorney dashboard page
+│   ├── home-client.html    # Client dashboard page
 │   ├── case-details.html   # Case details page
+│   ├── add-patent.html     # Add new patent page
+│   ├── request-demo.html   # Request demo page
+│   ├── change_password.html # Change password page
 │   └── styles.css          # Shared CSS styles
 ├── Assets/                 # Images, media, documents
 ├── requirements.txt        # Python dependencies
@@ -26,12 +30,18 @@ patent-gap/
 
 - **Home Page**: Landing page with three feature cards showcasing the platform's capabilities
 - **Login System**: Secure authentication with session management
-- **Dashboard**: Personal dashboard with statistics and navigation to different sections
-- **My Cases**: View and manage user's assigned cases with status tracking
-- **Open Cases**: Browse and view available cases for assignment
+- **Dual Dashboard System**: 
+  - **Attorney Dashboard**: Full case management with statistics and navigation
+  - **Client Dashboard**: Simplified view with Active/Closed Patents sections
+- **Case Management**: View and manage user's assigned cases with status tracking
+- **Patent Management**: 
+  - **Add New Patents**: Comprehensive form with file upload capabilities
+  - **Patent Tracking**: Monitor active and closed patents
+  - **Document Upload**: PDF file upload with drag-and-drop functionality
 - **Case Details**: Detailed view of individual cases with related patent information
-- **Profile**: User profile management with case statistics
-- **Related Patents**: View patents associated with specific cases
+- **Profile Management**: User profile with case statistics and password management
+- **Demo Requests**: Request personalized demonstrations with scheduling
+- **User Roles**: Support for both 'client' and 'attorney' user roles
 - **API Documentation**: Interactive Swagger UI for comprehensive API testing and exploration
 
 ## Setup Instructions
@@ -274,6 +284,7 @@ Once the backend is running, you can access the API documentation at:
 - `GET /api/my-cases` - Get user's assigned cases
 - `GET /api/open-cases` - Get available cases for assignment
 - `GET /api/cases/<case_id>` - Get detailed information about a specific case
+- `POST /api/cases/<case_id>` - Update case details
 - `POST /api/cases/<case_id>/update-status` - Update case information (status, priority, etc.)
 
 #### Profile Management
@@ -284,11 +295,17 @@ Once the backend is running, you can access the API documentation at:
 #### Patent Information
 - `GET /api/cases/<case_id>/patents` - Get related patents for a specific case
 
+#### Demo Requests
+- `POST /api/create-demo-request` - Create a new demo request
+
 #### Web Pages
 - `GET /` - Home page (landing page)
 - `GET /login` - Login page
-- `GET /home` - Dashboard page (requires authentication)
+- `GET /home` - Client/Attorney dashboard page (requires authentication)
 - `GET /case-details?id=<case_id>` - Case details page (requires authentication)
+- `GET /add-patent` - Add new patent page (requires authentication)
+- `GET /request-demo` - Request demo page
+- `GET /change-password` - Change password page (requires authentication)
 
 ## Development Notes
 
@@ -298,8 +315,12 @@ Once the backend is running, you can access the API documentation at:
 - The frontend uses vanilla JavaScript for API calls
 - Responsive design works on desktop and mobile devices
 - Case details page supports URL parameters for case ID (`?id=<case_id>`)
-- Dashboard includes real-time statistics and case management
-- Patent information is displayed in card format with expandable details
+- **Dual Dashboard System**: Separate interfaces for attorneys and clients
+- **User Role Management**: Support for 'client' and 'attorney' roles with different permissions
+- **Patent Management**: Full CRUD operations for patent cases with file upload
+- **Form Validation**: Client-side validation with real-time feedback
+- **File Upload**: Drag-and-drop PDF upload with size and type validation
+- **Demo Scheduling**: Time zone-aware scheduling system for demo requests
 - **API Documentation**: Comprehensive Swagger UI with interactive testing capabilities
 - **OpenAPI 2.0**: Full OpenAPI specification with detailed schemas and examples
 - **Firebase Integration**: Optional Firebase Admin SDK for authentication and cloud services

@@ -1584,6 +1584,61 @@ mock_users = [
     }
 ]
 
+demo_requests = [
+    {
+        "id": "request_001",
+        "name": "John Doe",
+        "email": "john.doe@example.com",
+        "organization": "Example Inc.",
+        "role": "Client",
+        "date": "2023-01-01",
+        "time": "10:00",
+        "timezone": "UTC"
+    }
+]
+
+alerts = {
+    "id": "alert_001",
+    'keyword1': ['user_001', 'user_002', 'user_003'],
+    'keyword2': ['user_004', 'user_005', 'user_006'],
+    'keyword3': ['user_007', 'user_008', 'user_009'],
+    'keyword4': ['user_010', 'user_011', 'user_012'],
+    'keyword5': ['user_013', 'user_014', 'user_015'],
+    'keyword6': ['user_016', 'user_017', 'user_018'],
+    'keyword7': ['user_019', 'user_020', 'user_021']
+}
+
+def create_demo_request(name, email, organization, role, date, time, timezone):
+    try:
+        demo_requests.append({
+            "id": "request_001",
+            "name": name,
+            "email": email,
+            "organization": organization,
+            "role": role,
+            "date": date,
+            "time": time,
+            "timezone": timezone
+        })
+        return {
+            "success": True,
+            "message": "Demo request created successfully"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Demo request creation failed: {str(e)}"
+        }
+
+def get_demo_requests():
+    return demo_requests
+
+def get_alerts():
+    return alerts
+
+def trigger_alert(keyword):
+    return alerts[keyword]
+
 def login_user(email, password):
     """
     Authenticate user login
@@ -1824,3 +1879,53 @@ def get_case_related_patents(case_id):
                 patent['similarity_rate'] = matches * 100 / totals
                 related_patents.append(patent)
     return related_patents
+
+def create_demo_request(name, email, organization, role, date, time, timezone):
+    """
+    Create a new demo request
+    
+    Args:
+        name (str): Full name of the requester
+        email (str): Email address of the requester
+        organization (str): Organization name
+        role (str): Role or title of the requester
+        date (str): Preferred date for the demo
+        time (str): Preferred time for the demo
+        timezone (str): Time zone for the demo
+    
+    Returns:
+        dict: Result containing success status and request details
+    """
+    # TODO: Implement actual database storage
+    # For now, just validate and return success
+    
+    if not all([name, email, organization, role, date, time, timezone]):
+        return {
+            'success': False,
+            'message': 'All fields are required'
+        }
+    
+    # Generate a mock request ID
+    import uuid
+    request_id = f"demo_req_{str(uuid.uuid4())[:8]}"
+    
+    # Mock storage (in real implementation, save to database)
+    demo_request = {
+        'id': request_id,
+        'name': name,
+        'email': email,
+        'organization': organization,
+        'role': role,
+        'date': date,
+        'time': time,
+        'timezone': timezone,
+        'status': 'pending',
+        'created_at': '2024-01-01T00:00:00Z'  # In real implementation, use current timestamp
+    }
+    
+    return {
+        'success': True,
+        'message': 'Demo request submitted successfully',
+        'request_id': request_id,
+        'demo_request': demo_request
+    }
