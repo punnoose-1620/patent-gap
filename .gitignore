@@ -1,0 +1,17 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build directories
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+env/
+
+# Logs
+*.log
