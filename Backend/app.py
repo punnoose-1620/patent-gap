@@ -46,6 +46,9 @@ def home_page():
     """Serve the home page after login"""
     if 'user_id' not in session:
         return redirect(url_for('login_page'))
+    userData = get_user_profile(session['user_id'])
+    if userData and userData.get('role') == 'client':
+        return render_template('home-client.html')
     return render_template('home.html')
 
 @app.route('/case-details')
@@ -61,6 +64,13 @@ def change_password_page():
     if 'user_id' not in session:
         return redirect(url_for('login_page'))
     return render_template('change_password.html')
+
+@app.route('/add-patent')
+def add_patent_page():
+    """Serve the add patent page"""
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+    return render_template('add-patent.html')
 
 # API Endpoints
 @app.route('/api/login', methods=['POST'])

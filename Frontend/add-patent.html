@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Patent - Patent Gap</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #EDEADC;
+            color: #0A1F14;
+        }
+
+        .top-nav {
+            background-color: #0A1F14;
+            color: #EDEADC;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-bottom: 3px solid #191970;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Merriweather', serif;
+        }
+
+        .nav-brand img {
+            height: 40px;
+            width: auto;
+        }
+
+        .main-content {
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .page-title {
+            font-family: 'Merriweather', serif;
+            font-size: 2.5rem;
+            color: #0A1F14;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            font-size: 1.1rem;
+            color: #0A1F14;
+            opacity: 0.8;
+        }
+
+        .form-container {
+            background: #F8F7F3;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border: 1px solid #D8D6C4;
+            padding: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: #0A1F14;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #D8D6C4;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.3s ease;
+            background-color: #fff;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #191970;
+            box-shadow: 0 0 0 3px rgba(25, 25, 112, 0.1);
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #D8D6C4;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.3s ease;
+            background-color: #fff;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: #191970;
+            box-shadow: 0 0 0 3px rgba(25, 25, 112, 0.1);
+        }
+
+        .file-upload-area {
+            border: 2px dashed #D8D6C4;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            background-color: #fff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-upload-area:hover {
+            border-color: #191970;
+            background-color: #f8f9fa;
+        }
+
+        .file-upload-area.dragover {
+            border-color: #191970;
+            background-color: #f0f0ff;
+        }
+
+        .file-upload-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #191970;
+        }
+
+        .file-upload-text {
+            font-size: 1rem;
+            color: #0A1F14;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-upload-hint {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .uploaded-files {
+            margin-top: 1rem;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem;
+            background-color: #e8f4f8;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-name {
+            font-size: 0.9rem;
+            color: #0A1F14;
+        }
+
+        .file-remove {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .file-remove:hover {
+            background: #c0392b;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background-color: #191970;
+            color: #EDEADC;
+        }
+
+        .btn-primary:hover {
+            background-color: #2A2A8A;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(25, 25, 112, 0.3);
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+        }
+
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: #c0392b;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+
+        .keywords-hint {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        .keyword-suggestions {
+            display: flex;
+            flex-direction: row;
+            gap: 0.7rem;
+            overflow-x: auto;
+            align-items: flex-start;
+            padding-bottom: 0rem;
+            margin-top: 1rem;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE and Edge */
+        }
+        .keyword-suggestions::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+        }
+
+        .keyword-suggestion-btn {
+            background-color: #191970;
+            color: #EDEADC;
+            border: none;
+            border-radius: 18px;
+            padding: 0.4rem 1.1rem;
+            font-size: 0.95rem;
+            cursor: pointer;
+            width: fit-content !important;
+        }
+
+        .required {
+            color: #e74c3c;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 1rem;
+            }
+
+            .form-container {
+                padding: 1.5rem;
+            }
+
+            .page-title {
+                font-size: 2rem;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-nav">
+        <div class="nav-brand">
+            <img src="images/logo-white-nobg.png" alt="Patent Gap Logo">
+            Patent Gap
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Add New Patent</h1>
+            <p class="page-subtitle">Submit your patent application with supporting documents</p>
+        </div>
+
+        <div class="form-container">
+            <form id="patentForm">
+                <!-- Patent Title -->
+                <div class="form-group">
+                    <label for="patentTitle" class="form-label">
+                        Patent Title <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="patentTitle" 
+                        name="patentTitle" 
+                        class="form-input" 
+                        placeholder="Enter the patent title"
+                        required
+                    >
+                </div>
+
+                <!-- Patent Description -->
+                <div class="form-group">
+                    <label for="patentDescription" class="form-label">
+                        Patent Description <span class="required">*</span>
+                    </label>
+                    <textarea 
+                        id="patentDescription" 
+                        name="patentDescription" 
+                        class="form-textarea" 
+                        placeholder="Provide a detailed description of your patent"
+                        required
+                    ></textarea>
+                </div>
+
+                <!-- Keywords -->
+                <div class="form-group">
+                    <label for="keywords" class="form-label">
+                        Keywords <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="keywords" 
+                        name="keywords" 
+                        class="form-input" 
+                        placeholder="Enter keywords separated by commas (e.g., AI, machine learning, automation)"
+                        required
+                    >
+                    <div class="keyword-suggestions" id="keyword-suggestions"></div>
+                    <div class="keywords-hint">
+                        Separate multiple keywords with commas
+                    </div>
+                </div>
+
+                <!-- Document Upload -->
+                <div class="form-group">
+                    <label class="form-label">
+                        Upload Documents
+                    </label>
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <div class="file-upload-icon">📄</div>
+                        <div class="file-upload-text">Click to upload or drag and drop PDF files</div>
+                        <div class="file-upload-hint">PDF files only (max 10MB each)</div>
+                        <input 
+                            type="file" 
+                            id="fileInput" 
+                            class="file-input" 
+                            multiple 
+                            accept=".pdf"
+                        >
+                    </div>
+                    <div class="uploaded-files" id="uploadedFiles"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">
+                        Submit Patent
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="goBackToDashboard()">
+                        Back to Dashboard
+                    </button>
+                    <button type="button" class="btn btn-danger" onclick="discardChanges()">
+                        Discard
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // File upload functionality
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadedFiles = document.getElementById('uploadedFiles');
+        let selectedFiles = [];
+        let keywordSuggestions = [];
+
+        // Listen for word completion in patent title input
+        const patentTitleInput = document.getElementById('patentTitle');
+        const patentDescriptionInput = document.getElementById('patentDescription');
+        if (patentTitleInput) {
+            patentTitleInput.addEventListener('input', function (e) {
+                // Check if the last character is a space or punctuation (word finished)
+                const val = e.target.value;
+                if (val.length > 0) {
+                    const lastChar = val.slice(-1);
+                    if (/\s|[.,;:!?]/.test(lastChar)) {
+                        fetchKeywordSuggestions();
+                    }
+                }
+            });
+        }
+        if (patentDescriptionInput) {
+            patentDescriptionInput.addEventListener('input', function (e) {
+                // Check if the last character is a space or punctuation (word finished)
+                const val = e.target.value;
+                if (val.length > 0) {
+                    const lastChar = val.slice(-1);
+                    if (/\s|[.,;:!?]/.test(lastChar)) {
+                        fetchKeywordSuggestions();
+                    }
+                }
+            });
+        }
+
+        // Fetch keyword suggestions
+        function fetchKeywordSuggestions() {
+            console.log('Fetching keyword suggestions');
+            keywordSuggestions = ['AI', 'Machine Learning', 'Blockchain', 'Quantum Computing', 'Robotics', 'Internet of Things', 'Big Data', 'Cloud Computing', 'Data Science', 'Cybersecurity', 'Healthcare', 'FinTech', 'Education', 'Transportation', 'Energy', 'Manufacturing', 'Entertainment', 'Media', 'Social Media', 'E-commerce', 'Social Networking', 'Mobile Computing', 'Wearable Technology', 'Virtual Reality', 'Augmented Reality', 'Biotechnology', 'Agriculture', 'Food Technology', 'Fashion', 'Artificial Intelligence', 'Blockchain', 'Quantum Computing', 'Robotics', 'Internet of Things', 'Big Data', 'Cloud Computing', 'Data Science', 'Cybersecurity', 'Healthcare', 'FinTech', 'Education', 'Transportation', 'Energy', 'Manufacturing', 'Entertainment', 'Media', 'Social Media', 'E-commerce', 'Social Networking', 'Mobile Computing', 'Wearable Technology', 'Virtual Reality', 'Augmented Reality', 'Biotechnology', 'Agriculture', 'Food Technology', 'Fashion'];
+            renderKeywordSuggestions();
+        }
+
+        // Add keyword to entry and remove from suggestions
+        function addKeyword(keyword) {
+            const keywordsInput = document.getElementById('keywords');
+            if (keywordsInput) {
+                if (keywordsInput.value.trim() !== '') {
+                    keywordsInput.value += ', ' + keyword;
+                } else {
+                    keywordsInput.value = keyword;
+                }
+            }
+            if (keywordSuggestions.includes(keyword)) {
+                const index = keywordSuggestions.indexOf(keyword);
+                if (index !== -1) {
+                    keywordSuggestions.splice(index, 1);
+                    renderKeywordSuggestions();
+                }
+                return;
+            }
+            keywordSuggestions.push(keyword);
+            renderKeywordSuggestions();
+        }
+
+        // Render keyword suggestions
+        function renderKeywordSuggestions() {
+            const suggestionsContainer = document.getElementById('keyword-suggestions');
+            if (!suggestionsContainer) return;
+
+            console.log('Rendering keyword suggestions');
+            suggestionsContainer.innerHTML = '';
+            keywordSuggestions.forEach(keyword => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'keyword-suggestion-btn';
+                btn.textContent = keyword;
+                btn.onclick = function() {
+                    addKeyword(keyword);
+                };
+                suggestionsContainer.appendChild(btn);
+            });
+        }
+
+        // Click to upload
+        fileUploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Drag and drop functionality
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            handleFiles(files);
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            handleFiles(files);
+        });
+
+        // Handle selected files
+        function handleFiles(files) {
+            const pdfFiles = files.filter(file => file.type === 'application/pdf');
+            
+            if (pdfFiles.length !== files.length) {
+                alert('Only PDF files are allowed. Some files were not added.');
+            }
+
+            pdfFiles.forEach(file => {
+                if (file.size > 10 * 1024 * 1024) { // 10MB limit
+                    alert(`File "${file.name}" is too large. Maximum size is 10MB.`);
+                    return;
+                }
+
+                if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+                    selectedFiles.push(file);
+                }
+            });
+
+            displayUploadedFiles();
+        }
+
+        // Display uploaded files
+        function displayUploadedFiles() {
+            uploadedFiles.innerHTML = '';
+            
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <span class="file-name">${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                    <button type="button" class="file-remove" onclick="removeFile(${index})">Remove</button>
+                `;
+                uploadedFiles.appendChild(fileItem);
+            });
+        }
+
+        // Remove file
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            displayUploadedFiles();
+        }
+
+        // Form submission
+        document.getElementById('patentForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                title: document.getElementById('patentTitle').value,
+                description: document.getElementById('patentDescription').value,
+                keywords: document.getElementById('keywords').value.split(',').map(k => k.trim()).filter(k => k),
+                files: selectedFiles.map(file => ({
+                    name: file.name,
+                    size: file.size,
+                    type: file.type
+                }))
+            };
+
+            console.log('Patent Data Submitted:', formData);
+            console.log('Selected Files:', selectedFiles);
+            
+            // Show success message
+            alert('Patent submitted successfully! Check the console for details.');
+            
+            // Reset form
+            resetForm();
+        });
+
+        // Reset form
+        function resetForm() {
+            document.getElementById('patentForm').reset();
+            selectedFiles = [];
+            displayUploadedFiles();
+        }
+
+        // Go back to dashboard
+        function goBackToDashboard() {
+            if (hasUnsavedChanges()) {
+                if (confirm('You have unsaved changes. Are you sure you want to go back?')) {
+                    window.location.href = '/home';
+                }
+            } else {
+                window.location.href = '/home';
+            }
+        }
+
+        // Discard changes
+        function discardChanges() {
+            if (hasUnsavedChanges()) {
+                if (confirm('Are you sure you want to discard all changes?')) {
+                    resetForm();
+                    window.location.href = '/home';
+                }
+            } else {
+                window.location.href = '/home';
+            }
+        }
+
+        // Check if there are unsaved changes
+        function hasUnsavedChanges() {
+            const title = document.getElementById('patentTitle').value;
+            const description = document.getElementById('patentDescription').value;
+            const keywords = document.getElementById('keywords').value;
+            
+            return title.trim() !== '' || description.trim() !== '' || keywords.trim() !== '' || selectedFiles.length > 0;
+        }
+
+        // Add visual feedback for form validation
+        document.querySelectorAll('.form-input, .form-textarea').forEach(input => {
+            input.addEventListener('blur', function() {
+                if (this.hasAttribute('required') && this.value.trim() === '') {
+                    this.style.borderColor = '#e74c3c';
+                } else {
+                    this.style.borderColor = '#D8D6C4';
+                }
+            });
+
+            input.addEventListener('input', function() {
+                if (this.style.borderColor === 'rgb(231, 76, 60)') {
+                    this.style.borderColor = '#D8D6C4';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

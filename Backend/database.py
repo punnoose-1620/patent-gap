@@ -1,8 +1,9 @@
 import os
-from firebase_admin import credentials, initialize_app, db
 from dotenv import load_dotenv
+from google.cloud import storage
+from firebase_admin import credentials, initialize_app, db
 
-def connect_to_database ():
+def connect_to_database():
     """
     Reads connection strings from .env file and connects to Firebase database.
     Returns the Firebase app instance.
@@ -27,6 +28,21 @@ def connect_to_database ():
         app = initialize_app.get_app()
 
     return app
+
+def connect_to_bucket(bucketName):
+    """
+    Connects to a Google Cloud Storage bucket and returns the bucket instance.
+
+    Args:
+        bucketName (str): The name of the GCP bucket to connect to.
+
+    Returns:
+        google.cloud.storage.bucket.Bucket: The bucket instance.
+    """
+    # Assumes GOOGLE_APPLICATION_CREDENTIALS is set in the environment
+    client = storage.Client()
+    bucket = client.bucket(bucketName)
+    return bucket
 
 def getAllData(app, collectionName):
     """
@@ -102,3 +118,49 @@ def deleteDataById(app, collectionName, entryId):
         return False  # Entry does not exist
     ref.delete()
     return True
+
+def uploadToGcpBucket(bucketName, sourceFile, destinationBlob):
+    """
+    Uploads a file to a Google Cloud Storage bucket.
+
+    Args:
+        bucketName (str): The name of the GCP bucket.
+        sourceFile (str): The local path to the file to upload.
+        destinationBlob (str): The destination path (blob name) in the bucket.
+
+    Returns:
+        bool: True if upload was successful, False otherwise.
+    """
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucketName)
+        blob = bucket.blob(destinationBlob)
+        blob.upload_from_filename(sourceFile)
+        return True
+    except Exception as e:
+        print(f"Error uploading file to bucket: {e}")
+        return False
+
+def loadFromGcpBucket(bucketName, fileName):
+    """
+    Loads a specific file from a Google Cloud Storage bucket into memory.
+
+    Args:
+        bucketName (str): The name of the GCP bucket.
+        fileName (str): The name/path of the file (blob) in the bucket.
+
+    Returns:
+        bytes: The file content as bytes if successful, None otherwise.
+    """
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucketName)
+        blob = bucket.blob(fileName)
+        if not blob.exists():
+            print(f"File '{fileName}' does not exist in bucket '{bucketName}'.")
+            return None
+        file_content = blob.download_as_bytes()
+        return file_content
+    except Exception as e:
+        print(f"Error loading file from bucket: {e}")
+        return None

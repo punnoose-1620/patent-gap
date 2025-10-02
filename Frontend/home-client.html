@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patent Gap - Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #EDEADC;
+            color: #0A1F14;
+        }
+
+        .top-nav {
+            background-color: #0A1F14;
+            color: #EDEADC;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-bottom: 3px solid #191970;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Merriweather', serif;
+        }
+
+        .nav-brand img {
+            height: 40px;
+            width: auto;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: #EDEADC;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: #EDEADC;
+            text-decoration: underline;
+            text-decoration-color: #191970;
+            text-underline-offset: 4px;
+            text-decoration-thickness: 2px;
+        }
+
+        .add-case-btn {
+            background-color: #e74c3c;
+            color: white;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: background-color 0.3s;
+        }
+
+        .add-case-btn:hover {
+            background-color: #c0392b;
+        }
+
+        .logout-btn {
+            background-color: #e74c3c;
+            color: white;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: background-color 0.3s;
+        }
+
+        .logout-btn:hover {
+            background-color: #c0392b;
+        }
+
+        .main-content {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .page-content {
+            display: none;
+        }
+
+        .page-content.active {
+            display: block;
+        }
+
+        .welcome-section {
+            background-color: #0A1F14;
+            color: #EDEADC;
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            text-align: center;
+            box-shadow: 0 12px 24px rgba(10, 31, 20, 0.1);
+        }
+
+        .welcome-title {
+            font-family: 'Merriweather', serif;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: #EDEADC;
+        }
+
+        .welcome-subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            color: #EDEADC;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: #F8F7F3;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border: 1px solid #D8D6C4;
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .empty-state-title {
+            font-family: 'Merriweather', serif;
+            font-size: 1.5rem;
+            color: #0A1F14;
+            margin-bottom: 1rem;
+        }
+
+        .empty-state-description {
+            color: #0A1F14;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            max-width: 500px;
+            margin: 0 auto;
+            opacity: 0.8;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+            color: #EDEADC;
+            font-weight: bold;
+            box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+        }
+
+        .stat-card.total-cases {
+            background-color: #191970;
+        }
+
+        .stat-card.active-cases {
+            background-color: #0A1F14;
+        }
+
+        .stat-card.completed-cases {
+            background-color: #3A5F5A;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #EDEADC;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            opacity: 0.9;
+            color: #EDEADC;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #0A1F14;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #191970;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Case Cards Styling */
+        .case-card {
+            background: #F8F7F3;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border: 1px solid #D8D6C4;
+            padding: 1rem;
+            margin: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .case-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }
+
+        .case-title {
+            font-family: 'Merriweather', serif;
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: #0A1F14;
+            margin: 0 0 0.5rem 0;
+            line-height: 1.2;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .case-references {
+            font-size: 0.8rem;
+            color: #0A1F14;
+            margin: 0.5rem 0;
+            opacity: 0.7;
+        }
+
+        .case-status {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            display: inline-block;
+            margin: 0.5rem 0;
+            color: #EDEADC;
+            font-weight: 500;
+        }
+
+        .case-status.active {
+            background-color: #0A1F14;
+        }
+
+        .case-status.completed {
+            background-color: #3A5F5A;
+        }
+
+        .case-status.pending {
+            background-color: #191970;
+        }
+
+        .case-status.under-review {
+            background-color: #191970;
+        }
+
+        .case-status.in-progress {
+            background-color: #191970;
+        }
+
+        .case-status.new {
+            background-color: #191970;
+        }
+
+        .case-status.cancelled,
+        .case-status.rejected {
+            background-color: #8B4513;
+        }
+
+        .case-details-btn {
+            background-color: #191970;
+            color: #EDEADC;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: auto;
+        }
+
+        .case-details-btn:hover {
+            background-color: #2A2A8A;
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 768px) {
+            .top-nav {
+                padding: 1rem;
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .nav-links {
+                gap: 1rem;
+            }
+
+            .main-content {
+                padding: 1rem;
+            }
+
+            .welcome-section {
+                padding: 1.5rem;
+            }
+
+            .welcome-title {
+                font-size: 1.5rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-nav">
+        <div class="nav-brand">
+            <img src="images/logo-white-nobg.png" alt="Patent Gap Logo">
+            Patent Gap
+        </div>
+        <div class="nav-links">
+            <a href="#" class="nav-link active" onclick="showPage('dashboard')">Dashboard</a>
+            <a href="#" class="nav-link" onclick="showPage('profile')">Profile</a>
+            <button class="add-case-btn" onclick="handleAddPatentCase()">Add Patent</button>
+            <button class="logout-btn" onclick="handleLogout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- Dashboard Page -->
+        <div id="dashboard" class="page-content active">
+            <div class="welcome-section">
+                <h1 class="welcome-title">Welcome to Your Dashboard</h1>
+                <p class="welcome-subtitle">Manage your patent cases and intellectual property portfolio</p>
+            </div>
+
+            <!-- Active Patents Section -->
+            <div id="active-patents-container">
+                <h2 style="margin-bottom: 0.25rem; font-family: 'Merriweather', serif; color: #0A1F14;">Active Patents</h2>
+                <hr style="border: none; border-bottom: 2px solid #D8D6C4; margin-bottom: 1.5rem;">
+                <div class="empty-state" id="active-patents-empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <h2 class="empty-state-title">No active patents at the moment</h2>
+                    <p class="empty-state-description">
+                        There are currently no active patents to display.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Closed Patents Section -->
+            <div id="closed-patents-container" style="margin-top: 3rem;">
+                <h2 style="margin-bottom: 0.25rem; font-family: 'Merriweather', serif; color: #0A1F14;">Closed Patents</h2>
+                <hr style="border: none; border-bottom: 2px solid #D8D6C4; margin-bottom: 1.5rem;">
+                <div class="empty-state" id="closed-patents-empty-state">
+                    <div class="empty-state-icon">✅</div>
+                    <h2 class="empty-state-title">No closed patents at the moment</h2>
+                    <p class="empty-state-description">
+                        There are currently no closed patents to display.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Page -->
+        <div id="profile" class="page-content">
+            <div class="empty-state">
+                <div class="empty-state-icon">👤</div>
+                <h2 class="empty-state-title">Profile</h2>
+                <p class="empty-state-description">
+                    Manage your personal information, preferences, and account settings. 
+                    This section will be available soon with comprehensive profile management features.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function setEmptyState(pageId) {
+            const page = document.getElementById(pageId);
+            if (page=='profile') {
+                page.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">👤</div>
+                    <h2 class="empty-state-title">Profile</h2>
+                    <p class="empty-state-description">
+                        Manage your personal information, preferences, and account settings. 
+                        This section will be available soon with comprehensive profile management features.
+                    </p>
+                </div>`;
+            }
+        }
+
+        // Navigation functionality
+        function showPage(pageId) {
+            // Hide all pages
+            const pages = document.querySelectorAll('.page-content');
+            pages.forEach(page => page.classList.remove('active'));
+
+            // Remove active class from all nav links
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(link => link.classList.remove('active'));
+
+            // Show selected page
+            document.getElementById(pageId).classList.add('active');
+
+            // Add active class to clicked nav link
+            event.target.classList.add('active');
+
+            // Load data for specific pages
+            if (pageId === 'dashboard') {
+                loadDashboardData();
+            }
+            else if (pageId === 'profile') {
+                setEmptyState('profile');
+                loadProfile();
+            }
+        }
+
+        // Load dashboard statistics
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/api/profile');
+                const data = await response.json();
+
+                const my_cases_response = await fetch('/api/my-cases');
+                const my_cases_data = await my_cases_response.json();
+
+                if (data.success && my_cases_data.success) {
+                    // Filter cases into active and closed
+                    const activePatents = my_cases_data.cases.filter(caseItem => 
+                        caseItem.status.toLowerCase() !== 'completed' && 
+                        caseItem.status.toLowerCase() !== 'closed' &&
+                        caseItem.status.toLowerCase() !== 'cancelled' &&
+                        caseItem.status.toLowerCase() !== 'rejected'
+                    );
+                    
+                    const closedPatents = my_cases_data.cases.filter(caseItem => 
+                        caseItem.status.toLowerCase() === 'completed' || 
+                        caseItem.status.toLowerCase() === 'closed' ||
+                        caseItem.status.toLowerCase() === 'cancelled' ||
+                        caseItem.status.toLowerCase() === 'rejected'
+                    );
+
+                    // Render Active Patents
+                    renderPatentSection('active-patents-container', activePatents, 'active-patents-empty-state', renderActivePatent);
+                    
+                    // Render Closed Patents
+                    renderPatentSection('closed-patents-container', closedPatents, 'closed-patents-empty-state', renderClosedPatent);
+                }
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+            }
+        }
+
+        // Helper function to render patent sections
+        function renderPatentSection(containerId, patents, emptyStateId, renderFunction) {
+            const container = document.getElementById(containerId);
+            const emptyState = document.getElementById(emptyStateId);
+            
+            if (patents.length === 0) {
+                emptyState.style.display = 'block';
+                // Hide any existing grid
+                const existingGrid = container.querySelector('.patent-grid');
+                if (existingGrid) {
+                    existingGrid.style.display = 'none';
+                }
+            } else {
+                emptyState.style.display = 'none';
+                
+                // Create or update grid
+                let grid = container.querySelector('.patent-grid');
+                if (!grid) {
+                    grid = document.createElement('div');
+                    grid.className = 'patent-grid';
+                    grid.style.display = 'grid';
+                    grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(12rem, 1fr))';
+                    grid.style.gap = '1rem';
+                    grid.style.alignItems = 'stretch';
+                    container.appendChild(grid);
+                }
+                
+                grid.innerHTML = '';
+                patents.forEach(patent => {
+                    const patentCard = renderFunction(patent);
+                    grid.appendChild(patentCard);
+                });
+                grid.style.display = 'grid';
+            }
+        }
+
+        // Render active patent card
+        function renderActivePatent(cardData) {
+            const card = document.createElement('div');
+            card.className = 'case-card';
+
+            // Patent title
+            const title = document.createElement('h3');
+            title.textContent = cardData.title || 'Untitled Patent';
+            title.className = 'case-title';
+
+            // References count
+            const referencesCount = document.createElement('div');
+            referencesCount.textContent = `References: ${cardData.references ? cardData.references.length : 0}`;
+            referencesCount.className = 'case-references';
+
+            // More Details button
+            const detailsBtn = document.createElement('button');
+            detailsBtn.textContent = 'More Details';
+            detailsBtn.className = 'case-details-btn';
+            detailsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('More Details button clicked');
+                console.log('Patent ID:', cardData.id);
+                window.location.href = `case-details?id=${cardData.id}`;
+            });
+
+            // Assemble card
+            card.appendChild(title);
+            card.appendChild(referencesCount);
+            card.appendChild(detailsBtn);
+
+            return card;
+        }
+
+        // Render closed patent card
+        function renderClosedPatent(cardData) {
+            const card = document.createElement('div');
+            card.className = 'case-card';
+
+            // Patent title
+            const title = document.createElement('h3');
+            title.textContent = cardData.title || 'Untitled Patent';
+            title.className = 'case-title';
+
+            // References count
+            const referencesCount = document.createElement('div');
+            referencesCount.textContent = `References: ${cardData.references ? cardData.references.length : 0}`;
+            referencesCount.className = 'case-references';
+
+            // More Details button
+            const detailsBtn = document.createElement('button');
+            detailsBtn.textContent = 'More Details';
+            detailsBtn.className = 'case-details-btn';
+            detailsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('More Details button clicked');
+                console.log('Patent ID:', cardData.id);
+                window.location.href = `case-details?id=${cardData.id}`;
+            });
+
+            // Assemble card
+            card.appendChild(title);
+            card.appendChild(referencesCount);
+            card.appendChild(detailsBtn);
+
+            return card;
+        }
+
+        // Load profile data (placeholder)
+        async function loadProfile() {
+            try {
+                const response = await fetch('/api/profile');
+                const data = await response.json();
+                
+                if (data.success) {
+                    console.log('Profile loaded:', data.profile);
+                    // TODO: Display profile data in the UI
+                    const profileDiv = document.getElementById('profile');
+                    if (profileDiv) {
+                        profileDiv.innerHTML = `
+                            <div class="profile-layout" style="max-width: 420px; margin: 2rem auto; background: #fff; border-radius: 14px; box-shadow: 0 2px 12px rgba(10,31,20,0.08); padding: 2.5rem 2rem 2rem 2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5rem;">
+                                <div style="display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0;">
+                                    <div style="font-size: 2.5rem; background: #EDEADC; color: #191970; border-radius: 50%; width: 65px; height: 65px; display: flex; align-items: center; justify-content: center; padding-bottom: 0.5rem;">
+                                        👤
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 1.3rem; font-weight: 700; color: #191970;">
+                                            ${data.profile.title ? data.profile.title + ' ' : ''}${data.profile.full_name}
+                                        </div>
+                                        <div style="font-size: 1rem; color: #2A2A8A; margin-top: 0.2rem;">
+                                            ${data.profile.role ? data.profile.role.charAt(0).toUpperCase() + data.profile.role.slice(1) : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="width: 100%;">
+                                    <div style="display: flex; flex-direction: column; gap: 0.7rem;">
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #888;">Number of Cases:</span>
+                                            <span style="font-weight: 600;">${data.profile.cases ? data.profile.cases.length : 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #888;">Number of Patents:</span>
+                                            <span style="font-weight: 600;">${data.profile.patents ? data.profile.patents.length : 0}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #888;">Account Created On:</span>
+                                            <span style="font-weight: 600;">${data.profile.created_on ? data.profile.created_on : '-'}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #888;">Email:</span>
+                                            <span style="font-weight: 600;">${data.profile.email ? data.profile.email : '-'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="case-details-btn" style="margin-top: 1.5rem; align-self: flex-end;" onclick="window.location.href='/change-password'">
+                                    Change Password
+                                </button>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading profile:', error);
+            }
+        }
+
+        function handleAddPatentCase() {
+            window.location.href = '/add-patent';
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            try {
+                const response = await fetch('/api/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    window.location.href = data.redirect || '/';
+                } else {
+                    console.error('Logout failed:', data.message);
+                    // Force redirect even if logout fails
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Force redirect even if logout fails
+                window.location.href = '/';
+            }
+        }
+
+        // Load initial dashboard data
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboardData();
+        });
+    </script>
+</body>
+</html>

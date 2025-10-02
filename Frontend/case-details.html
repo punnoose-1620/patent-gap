@@ -379,6 +379,7 @@
         .patents-list {
             display: grid;
             gap: 1.5rem;
+            padding: 0rem 1.5rem;
         }
 
         .patent-card {
@@ -387,12 +388,13 @@
             padding: 1.5rem;
             background: #EDEADC;
             transition: all 0.3s ease;
+            margin: 1rem 0;
         }
 
         .patent-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-            border-color: #191970;
+            border-color: #191970;            
         }
 
         .patent-header {
@@ -541,6 +543,124 @@
                 flex-direction: column;
             }
         }
+
+        .icon-btn-white {
+            background: none;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.3em;
+            margin-left: auto;
+            width: 2em;
+            height: 2em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            padding: 0.1rem 0.3rem 0.3rem 0.3rem;
+            color: white;
+        }
+
+        .icon-btn-white:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            transform: scale(1.05);
+        }
+
+        .icon-btn-white span {
+            font-size: 1.3em;
+            line-height: 1;
+        }
+
+        .close-popup-btn {
+            font-size: 2rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: white;
+            padding: 0rem 1rem;
+        }
+
+        .keywords-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            padding: 0rem;
+            z-index: 1000;
+            min-width: 300px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .keywords-popup input {
+            width: 60%;
+            padding: 0.8rem 1rem;
+            border: 1px solid black;
+            border-radius: 10px;
+            font-size: 1.5rem;
+            background: white;
+            color: #0A1F14;
+            transition: all 0.3s ease;
+        }
+
+        .keywords-popup-disabled {
+            display: none;
+        }
+
+        .keywords-popup-header {
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            margin-bottom: 1rem; 
+            background-color: #0A1F14; 
+            color: white;
+            padding: 2rem 1rem;
+        }
+
+        .keywords-list {
+            padding: 1rem 3rem;
+            list-style: none;
+        }
+
+        .keywords-input {
+            margin: 0.5rem 0.5rem 2rem 2rem;
+        }
+
+        .keyword-card {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #0A1F14;
+            border: 2px solid white;
+            border-radius: 12px;
+            padding: 0.5rem 1rem;
+            color: white;
+        }
+
+        .keyword-card .keyword-text {
+            margin-right: 1rem;
+        }
+
+        .keyword-card .delete-keyword-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 1rem;
+            background: none;
+            border: 2px solid white;
+            border-radius: 50%;
+            height: 3rem;
+            width: 3rem;
+            padding: 2px 3px;
+            cursor: pointer;
+            color: white;
+            font-size: 1.5rem;
+        }
     </style>
 </head>
 <body>
@@ -557,22 +677,6 @@
         <div class="case-header">
             <h1 class="case-title" id="caseTitle">Loading Case Details...</h1>
             <p class="case-subtitle" id="caseSubtitle">Patent Application Analysis</p>
-            <div class="case-meta">
-                <div class="meta-item">
-                    <div class="meta-label">Case ID</div>
-                    <div class="meta-value" id="caseId">-</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">Filing Date</div>
-                    <div class="meta-value" id="filingDate">-</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">Status</div>
-                    <div class="meta-value">
-                        <span id="caseStatus" class="status-badge">-</span>
-                    </div>
-                </div>
-            </div>
         </div>
 
         
@@ -666,8 +770,15 @@
 
        
         <div class="section-card">
-            <div class="section-header">
-                Keywords
+            <div class="section-header" style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Keywords</span>
+                <button 
+                    class="icon-btn-white" 
+                    title="Add Keyword"
+                    onclick="renderKeywordsPopup()"
+                >
+                    <span>&#43;</span>
+                </button>
             </div>
             <div class="section-content">
                 <div class="keywords-container">
@@ -748,6 +859,11 @@
             return data.user;
         }
 
+        function getCaseIdFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('id');
+        }
+
         function renderAcceptSection(accepted_on, accepted_by) {
             accepted_on_main_element = document.getElementById('acceptedOnItem');
             accepted_by_main_element = document.getElementById('acceptedByItem');
@@ -776,9 +892,75 @@
             }
         }
         
-        function getCaseIdFromUrl() {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('id');
+        function renderReferencesSection(references) {
+            references_element = document.getElementById('referencesList');
+            references_element.innerHTML = '';
+            references.forEach(reference => {
+                let referenceItem = `<li class="reference-item">
+                    <a href="${reference.url || '#'}" class="reference-link" target="_blank" rel="noopener noreferrer">${reference.title}</a>
+                    <div class="reference-meta">Filed: ${reference.granted_date}</div>
+                </li>`;
+                references_element.innerHTML += referenceItem;
+
+            });
+        }
+
+        // Functions related to Edit Keywords Popup
+        function removeKeyword(keyword) {
+            if (caseData) {
+                caseData.keywords = caseData.keywords.filter(k => k !== keyword);
+                updateCase();
+            }
+        }
+        function submitKeywords() {
+            let keywords = document.getElementById('keywordsInput').value;
+            keywords = keywords.split(',');
+            keywords = keywords.map(keyword => keyword.trim());
+            if (caseData) {
+                caseData.keywords = keywords;
+                updateCase();
+            }
+        }
+        function closePopup() {
+            var popup = document.getElementById('keywordsPopup');
+            popup.style.display = 'none';
+            popup.className = 'keywords-popup-disabled';
+            if (popup) {
+                popup.parentNode.removeChild(popup);
+            }
+        }
+        function renderKeywordsPopup() {
+            let keywordsPopup = document.getElementById('keywordsPopup');
+            if (!keywordsPopup) {
+                keywordsPopup = document.createElement('div');
+                keywordsPopup.id = 'keywordsPopup';
+                document.body.appendChild(keywordsPopup);
+            }
+            keywordsPopup.style.display = 'block';
+            document.getElementById('keywordsPopup').innerHTML = `
+                <div class="keywords-popup">
+                    <div class="keywords-popup-header">
+                        <h3 style="margin: 0;">Add Keywords</h3>
+                        <button class="close-popup-btn" onclick="closePopup()" title="Close"> &times;</button>
+                    </div>
+                    <ul id="keywordsList" class="keywords-list">
+                        ${
+                            (caseData && Array.isArray(caseData.keywords) && caseData.keywords.length > 0)
+                            ? caseData.keywords.map(keyword => `
+                                <li class="keyword-card">
+                                    <span class="keyword-text">${keyword}</span>
+                                    <button class="delete-keyword-btn" onclick="removeKeyword('${keyword.replace(/'/g, "\\'")}')" title="Remove keyword">
+                                        &#128465;
+                                    </button>
+                                </li>
+                              `).join('')
+                            : '<li class="no-keywords">No keywords added yet.</li>'
+                        }
+                    </ul>
+                    <input type="text" id="keywordsInput" class="keywords-input" placeholder="Telecom, Software, Medicine">
+                    <button onclick="submitKeywords()" class="btn btn-primary" style="margin: 0rem 2rem 0rem 0rem;">Submit</button>
+                </div>
+            `;
         }
 
         async function loadCaseDetails() {
@@ -821,13 +1003,6 @@
 
             // Update header
             document.getElementById('caseTitle').textContent = caseData.title || 'Untitled Case';
-            document.getElementById('caseId').textContent = caseData.id || 'N/A';
-            document.getElementById('filingDate').textContent = caseData.filing_date || 'N/A';
-            
-            // Update status
-            const statusElement = document.getElementById('caseStatus');
-            statusElement.textContent = caseData.status || 'Unknown';
-            statusElement.className = `status-badge status-${getStatusClass(caseData.status)}`;
 
             // Update details section
             document.getElementById('caseTitleDetail').textContent = caseData.title || 'N/A';
@@ -839,6 +1014,9 @@
 
             // Show accepted fields only if they exist
             renderAcceptSection(caseData.accepted_on, caseData.accepted_by);
+
+            // Show references section
+            renderReferencesSection(caseData.references);
 
             // Update description
             document.getElementById('caseDescription').textContent = caseData.description || 'No description available for this case.';
@@ -888,6 +1066,7 @@
                 const data = await response.json();
                 
                 if (data.success) {
+                    console.log('Related Patent Data: '+data.patents);
                     displayRelatedPatents(data.patents);
                 } else {
                     throw new Error(data.message || 'Failed to load related patents');
@@ -929,13 +1108,7 @@
             card.innerHTML = `
                 <div class="patent-header">
                     <div class="patent-title">${patent.title || 'N/A'}</div>
-                    <div class="similarity-rate">${patent.similarity_rate || 0}%</div>
-                </div>
-                <div class="patent-details">
-                    <div class="patent-detail-item">
-                        <div class="patent-detail-label">Patent Granted On</div>
-                        <div class="patent-detail-value">${patent.granted_date || 'N/A'}</div>
-                    </div>
+                    <div class="similarity-rate">Similarity Rate: ${patent.similarity_rate || 0}%</div>
                 </div>
                 <div class="patent-actions">
                     <button class="btn btn-primary btn-small" onclick="viewPatentDocument('${patent.id}')">
@@ -1053,6 +1226,20 @@
 
         function viewPatentDocument(patentId) {
             alert(`Opening patent document: ${patentId}\n\nThis would typically open the specific patent document.`);
+        }
+
+        function addKeyword(keyword) {
+            if (caseData) {
+                caseData.keywords.push(keyword);
+                updateCase();
+            }
+        }
+
+        function removeKeyword(keyword) {
+            if (caseData) {
+                caseData.keywords = caseData.keywords.filter(k => k !== keyword);
+                updateCase();
+            }
         }
 
         // Initialize page
