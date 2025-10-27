@@ -118,6 +118,10 @@ pip install -r requirements.txt
 - `psycopg2-binary==2.9.7` - PostgreSQL database adapter
 - `pymongo==4.5.0` - MongoDB database driver
 - `firebase-admin==6.4.0` - Firebase Admin SDK for authentication and cloud services
+- `PyPDF2==3.0.1` - PDF file processing
+- `openai>=1.0.0` - OpenAI API for text embeddings (requires API key)
+- `numpy>=1.24.0` - Numerical computing library
+- `scikit-learn>=1.3.0` - Machine learning library for TF-IDF embeddings
 
 #### 3. Environment Configuration
 
@@ -150,6 +154,22 @@ If you plan to use Firebase for authentication or cloud services:
    FIREBASE_CREDENTIALS_PATH=path/to/your/firebase-service-account.json
    FIREBASE_PROJECT_ID=your-firebase-project-id
    ```
+
+#### OpenAI API Setup (Optional - For Text Embeddings)
+
+If you plan to use OpenAI embeddings for patent analysis:
+
+1. **Create an OpenAI account** at [OpenAI Platform](https://platform.openai.com/)
+2. **Generate an API key**:
+   - Go to [API Keys](https://platform.openai.com/api-keys)
+   - Click "Create new secret key"
+   - Copy the key (starts with `sk-`)
+3. **Configure environment variable**:
+   ```bash
+   # Add to your .env file
+   OPENAI_API_KEY=sk-your-key-here
+   ```
+4. **Note**: Without an API key, you can still use the offline TF-IDF embedding method (`getEmbeddingOffline`) for patent analysis.
 
 #### 4. Create Necessary Directories
 

@@ -136,10 +136,11 @@ def uploadToGcpBucket(bucketName, sourceFile, destinationBlob):
         bucket = storage_client.bucket(bucketName)
         blob = bucket.blob(destinationBlob)
         blob.upload_from_filename(sourceFile)
-        return True
+        # Return the URL to the file as 'bucket-name/file-name'
+        return f"{bucketName}/{destinationBlob}"
     except Exception as e:
         print(f"Error uploading file to bucket: {e}")
-        return False
+        return None
 
 def loadFromGcpBucket(bucketName, fileName):
     """

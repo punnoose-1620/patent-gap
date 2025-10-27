@@ -215,6 +215,19 @@
             flex-wrap: wrap;
         }
 
+        .accept-btn {
+            background: rgb(0, 148, 0);
+            color: #EDEADC;
+            padding: 1rem 2rem;
+            font-size: 18px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            font-weight: bold;
+        }
+
         .btn {
             padding: 0.8rem 1.5rem;
             border: none;
@@ -887,7 +900,7 @@
             else {
                 // Case is not accepted, render the Accept button
                 accepted_on_main_element.style.display = 'flex';
-                accepted_on_main_element.innerHTML = `<button class="accept-btn" onclick="acceptCase()">Accept Case</button>`;
+                accepted_on_main_element.innerHTML = `<button class="accept-btn" onclick="acceptCase()"><span style="font-size:1.5em;font-weight:bold;vertical-align:middle;margin-right:0.5em;">&#10003;</span>Accept Case</button>`;
                 accepted_by_main_element.innerHTML = '';
             }
         }

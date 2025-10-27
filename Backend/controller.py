@@ -1,3 +1,5 @@
+import uuid
+import datetime
 """
 Controller functions for handling business logic
 """
@@ -36,7 +38,8 @@ mock_cases = [
                 'similarity_rate': 68
             }
         ],
-        'keywords': ['AI', 'patent analysis', 'document analysis', 'artificial intelligence', 'system']
+        'keywords': ['AI', 'patent analysis', 'document analysis', 'artificial intelligence', 'system'],
+        'documents': ['/patent-docs/case_001/application.pdf', '/patent-docs/case_001/claims.docx', '/patent-docs/case_001/drawings.pdf']
     },
     {
         'id': 'case_002',
@@ -65,7 +68,8 @@ mock_cases = [
                 'similarity_rate': 82
             }
         ],
-        'keywords': ['blockchain', 'IP management', 'decentralized', 'intellectual property', 'platform']
+        'keywords': ['blockchain', 'IP management', 'decentralized', 'intellectual property', 'platform'],
+        'documents': ['/patent-docs/case_002/application.pdf', '/patent-docs/case_002/claims.docx', '/patent-docs/case_002/drawings.pdf']
     },
     {
         'id': 'case_003',
@@ -94,7 +98,8 @@ mock_cases = [
                 'similarity_rate': 76
             }
         ],
-        'keywords': ['machine learning', 'patent search', 'search engine', 'ML algorithms', 'patent database']
+        'keywords': ['machine learning', 'patent search', 'search engine', 'ML algorithms', 'patent database'],
+        'documents': ['/patent-docs/case_003/application.pdf', '/patent-docs/case_003/claims.docx', '/patent-docs/case_003/drawings.pdf']
     },
     {
         'id': 'case_004',
@@ -123,7 +128,8 @@ mock_cases = [
                 'similarity_rate': 84
             }
         ],
-        'keywords': ['legal document', 'drafting', 'automation', 'AI', 'system']
+        'keywords': ['legal document', 'drafting', 'automation', 'AI', 'system'],
+        'documents': ['/patent-docs/case_004/application.pdf', '/patent-docs/case_004/claims.docx', '/patent-docs/case_004/drawings.pdf']
     },
     {
         'id': 'case_005',
@@ -152,7 +158,8 @@ mock_cases = [
                 'similarity_rate': 79
             }
         ],
-        'keywords': ['IP portfolio', 'management', 'tool', 'enterprise', 'intellectual property']
+        'keywords': ['IP portfolio', 'management', 'tool', 'enterprise', 'intellectual property'],
+        'documents': ['/patent-docs/case_005/application.pdf', '/patent-docs/case_005/claims.docx', '/patent-docs/case_005/drawings.pdf']
     },
     {
         'id': 'case_006',
@@ -181,7 +188,8 @@ mock_cases = [
                 'similarity_rate': 86
             }
         ],
-        'keywords': ['trademark', 'infringement', 'detection', 'AI', 'intellectual property']
+        'keywords': ['trademark', 'infringement', 'detection', 'AI', 'intellectual property'],
+        'documents': ['/patent-docs/case_006/application.pdf', '/patent-docs/case_006/claims.docx', '/patent-docs/case_006/drawings.pdf']
     },
     {
         'id': 'case_007',
@@ -210,7 +218,8 @@ mock_cases = [
                 'similarity_rate': 81
             }
         ],
-        'keywords': ['patent', 'valuation', 'platform', 'automation', 'intellectual property']
+        'keywords': ['patent', 'valuation', 'platform', 'automation', 'intellectual property'],
+        'documents': ['/patent-docs/case_007/application.pdf', '/patent-docs/case_007/claims.docx', '/patent-docs/case_007/drawings.pdf']
     },
     {
         'id': 'case_008',
@@ -239,7 +248,8 @@ mock_cases = [
                 'similarity_rate': 83
             }
         ],
-        'keywords': ['copyright', 'management', 'system', 'registration', 'intellectual property']
+        'keywords': ['copyright', 'management', 'system', 'registration', 'intellectual property'],
+        'documents': ['/patent-docs/case_008/application.pdf', '/patent-docs/case_008/claims.docx', '/patent-docs/case_008/drawings.pdf']
     },
     {
         'id': 'case_009',
@@ -268,7 +278,8 @@ mock_cases = [
                 'similarity_rate': 77
             }
         ],
-        'keywords': ['IP', 'litigation', 'analytics', 'platform', 'trends']
+        'keywords': ['IP', 'litigation', 'analytics', 'platform', 'trends'],
+        'documents': ['/patent-docs/case_009/application.pdf', '/patent-docs/case_009/claims.docx', '/patent-docs/case_009/drawings.pdf']
     },
     {
         'id': 'case_010',
@@ -297,7 +308,8 @@ mock_cases = [
                 'similarity_rate': 82
             }
         ],
-        'keywords': ['patent', 'expiry', 'notification', 'service', 'reminder']
+        'keywords': ['patent', 'expiry', 'notification', 'service', 'reminder'],
+        'documents': ['/patent-docs/case_010/application.pdf', '/patent-docs/case_010/claims.docx', '/patent-docs/case_010/drawings.pdf']
     },
     {
         'id': 'case_011',
@@ -326,7 +338,8 @@ mock_cases = [
                 'similarity_rate': 79
             }
         ],
-        'keywords': ['trademark', 'renewal', 'automation', 'system', 'intellectual property']
+        'keywords': ['trademark', 'renewal', 'automation', 'system', 'intellectual property'],
+        'documents': ['/patent-docs/case_011/application.pdf', '/patent-docs/case_011/claims.docx', '/patent-docs/case_011/drawings.pdf']
     },
     {
         'id': 'case_012',
@@ -355,7 +368,8 @@ mock_cases = [
                 'similarity_rate': 84
             }
         ],
-        'keywords': ['IP', 'risk assessment', 'tool', 'risk', 'intellectual property']
+        'keywords': ['IP', 'risk assessment', 'tool', 'risk', 'intellectual property'],
+        'documents': ['/patent-docs/case_012/application.pdf', '/patent-docs/case_012/claims.docx', '/patent-docs/case_012/drawings.pdf']
     },
     {
         'id': 'case_013',
@@ -384,7 +398,8 @@ mock_cases = [
                 'similarity_rate': 81
             }
         ],
-        'keywords': ['patent', 'licensing', 'marketplace', 'opportunities', 'intellectual property']
+        'keywords': ['patent', 'licensing', 'marketplace', 'opportunities', 'intellectual property'],
+        'documents': ['/patent-docs/case_013/application.pdf', '/patent-docs/case_013/claims.docx', '/patent-docs/case_013/drawings.pdf']
     },
     {
         'id': 'case_014',
@@ -413,7 +428,8 @@ mock_cases = [
                 'similarity_rate': 78
             }
         ],
-        'keywords': ['IP', 'due diligence', 'automation', 'transactions', 'intellectual property']
+        'keywords': ['IP', 'due diligence', 'automation', 'transactions', 'intellectual property'],
+        'documents': ['/patent-docs/case_014/application.pdf', '/patent-docs/case_014/claims.docx', '/patent-docs/case_014/drawings.pdf']
     },
     {
         'id': 'case_015',
@@ -442,7 +458,8 @@ mock_cases = [
                 'similarity_rate': 83
             }
         ],
-        'keywords': ['patent', 'family tree', 'visualization', 'relationships', 'tool']
+        'keywords': ['patent', 'family tree', 'visualization', 'relationships', 'tool'],
+        'documents': ['/patent-docs/case_015/application.pdf', '/patent-docs/case_015/claims.docx', '/patent-docs/case_015/drawings.pdf']
     },
     {
         'id': 'case_016',
@@ -471,7 +488,8 @@ mock_cases = [
                 'similarity_rate': 80
             }
         ],
-        'keywords': ['trademark', 'watch', 'service', 'monitor', 'filings']
+        'keywords': ['trademark', 'watch', 'service', 'monitor', 'filings'],
+        'documents': ['/patent-docs/case_016/application.pdf', '/patent-docs/case_016/claims.docx', '/patent-docs/case_016/drawings.pdf']
     },
     {
         'id': 'case_017',
@@ -500,7 +518,8 @@ mock_cases = [
                 'similarity_rate': 85
             }
         ],
-        'keywords': ['IP asset', 'valuation', 'engine', 'automation', 'intellectual property']
+        'keywords': ['IP asset', 'valuation', 'engine', 'automation', 'intellectual property'],
+        'documents': ['/patent-docs/case_017/application.pdf', '/patent-docs/case_017/claims.docx', '/patent-docs/case_017/drawings.pdf']
     },
     {
         'id': 'case_018',
@@ -529,7 +548,8 @@ mock_cases = [
                 'similarity_rate': 82
             }
         ],
-        'keywords': ['patent', 'application', 'drafting', 'assistant', 'AI']
+        'keywords': ['patent', 'application', 'drafting', 'assistant', 'AI'],
+        'documents': ['/patent-docs/case_018/application.pdf', '/patent-docs/case_018/claims.docx', '/patent-docs/case_018/drawings.pdf']
     },
     {
         'id': 'case_019',
@@ -558,7 +578,8 @@ mock_cases = [
                 'similarity_rate': 79
             }
         ],
-        'keywords': ['IP rights', 'transfer', 'platform', 'security', 'intellectual property']
+        'keywords': ['IP rights', 'transfer', 'platform', 'security', 'intellectual property'],
+        'documents': ['/patent-docs/case_019/application.pdf', '/patent-docs/case_019/claims.docx', '/patent-docs/case_019/drawings.pdf']
     },
     {
         'id': 'case_020',
@@ -587,7 +608,8 @@ mock_cases = [
                 'similarity_rate': 84
             }
         ],
-        'keywords': ['trademark', 'similarity', 'checker', 'tool', 'comparison']
+        'keywords': ['trademark', 'similarity', 'checker', 'tool', 'comparison'],
+        'documents': ['/patent-docs/case_020/application.pdf', '/patent-docs/case_020/claims.docx', '/patent-docs/case_020/drawings.pdf']
     },
     {
         'id': 'case_021',
@@ -616,7 +638,8 @@ mock_cases = [
                 'similarity_rate': 77
             }
         ],
-        'keywords': ['patent', 'filing', 'deadline', 'tracker', 'reminder']
+        'keywords': ['patent', 'filing', 'deadline', 'tracker', 'reminder'],
+        'documents': ['/patent-docs/case_021/application.pdf', '/patent-docs/case_021/claims.docx', '/patent-docs/case_021/drawings.pdf']
     },
     {
         'id': 'case_022',
@@ -645,7 +668,8 @@ mock_cases = [
                 'similarity_rate': 82
             }
         ],
-        'keywords': ['IP', 'dispute', 'resolution', 'portal', 'online']
+        'keywords': ['IP', 'dispute', 'resolution', 'portal', 'online'],
+        'documents': ['/patent-docs/case_022/application.pdf', '/patent-docs/case_022/claims.docx', '/patent-docs/case_022/drawings.pdf']
     },
     {
         'id': 'case_023',
@@ -674,7 +698,8 @@ mock_cases = [
                 'similarity_rate': 86
             }
         ],
-        'keywords': ['patent', 'prior art', 'search', 'engine', 'intellectual property']
+        'keywords': ['patent', 'prior art', 'search', 'engine', 'intellectual property'],
+        'documents': ['/patent-docs/case_023/application.pdf', '/patent-docs/case_023/claims.docx', '/patent-docs/case_023/drawings.pdf']
     },
     {
         'id': 'case_024',
@@ -703,7 +728,8 @@ mock_cases = [
                 'similarity_rate': 81
             }
         ],
-        'keywords': ['IP', 'licensing', 'agreement', 'generator', 'intellectual property']
+        'keywords': ['IP', 'licensing', 'agreement', 'generator', 'intellectual property'],
+        'documents': ['/patent-docs/case_024/application.pdf', '/patent-docs/case_024/claims.docx', '/patent-docs/case_024/drawings.pdf']
     },
     {
         'id': 'case_025',
@@ -732,7 +758,8 @@ mock_cases = [
                 'similarity_rate': 83
             }
         ],
-        'keywords': ['trademark', 'portfolio', 'dashboard', 'management', 'intellectual property']
+        'keywords': ['trademark', 'portfolio', 'dashboard', 'management', 'intellectual property'],
+        'documents': ['/patent-docs/case_025/application.pdf', '/patent-docs/case_025/claims.docx', '/patent-docs/case_025/drawings.pdf']
     },
     {
         'id': 'case_026',
@@ -761,7 +788,8 @@ mock_cases = [
                 'similarity_rate': 78
             }
         ],
-        'keywords': ['patent', 'assignment', 'workflow', 'system', 'intellectual property']
+        'keywords': ['patent', 'assignment', 'workflow', 'system', 'intellectual property'],
+        'documents': ['/patent-docs/case_026/application.pdf', '/patent-docs/case_026/claims.docx', '/patent-docs/case_026/drawings.pdf']
     },
     {
         'id': 'case_027',
@@ -790,7 +818,8 @@ mock_cases = [
                 'similarity_rate': 80
             }
         ],
-        'keywords': ['IP asset', 'insurance', 'platform', 'intellectual property', 'risk']
+        'keywords': ['IP asset', 'insurance', 'platform', 'intellectual property', 'risk'],
+        'documents': ['/patent-docs/case_027/application.pdf', '/patent-docs/case_027/claims.docx', '/patent-docs/case_027/drawings.pdf']
     },
     {
         'id': 'case_028',
@@ -819,7 +848,8 @@ mock_cases = [
                 'similarity_rate': 79
             }
         ],
-        'keywords': ['trademark', 'application', 'status', 'tracker', 'monitor']
+        'keywords': ['trademark', 'application', 'status', 'tracker', 'monitor'],
+        'documents': ['/patent-docs/case_028/application.pdf', '/patent-docs/case_028/claims.docx', '/patent-docs/case_028/drawings.pdf']
     },
     {
         'id': 'case_029',
@@ -848,7 +878,8 @@ mock_cases = [
                 'similarity_rate': 76
             }
         ],
-        'keywords': ['patent', 'maintenance fee', 'calculator', 'cost', 'intellectual property']
+        'keywords': ['patent', 'maintenance fee', 'calculator', 'cost', 'intellectual property'],
+        'documents': ['/patent-docs/case_029/application.pdf', '/patent-docs/case_029/claims.docx', '/patent-docs/case_029/drawings.pdf']
     },
     {
         'id': 'case_030',
@@ -877,7 +908,8 @@ mock_cases = [
                 'similarity_rate': 85
             }
         ],
-        'keywords': ['IP asset', 'marketplace', 'buy', 'sell', 'intellectual property']
+        'keywords': ['IP asset', 'marketplace', 'buy', 'sell', 'intellectual property'],
+        'documents': ['/patent-docs/case_030/application.pdf', '/patent-docs/case_030/claims.docx', '/patent-docs/case_030/drawings.pdf']
     },
     {
         'id': 'case_031',
@@ -906,7 +938,8 @@ mock_cases = [
                 'similarity_rate': 81
             }
         ],
-        'keywords': ['trademark', 'classifier', 'tool', 'classification', 'intellectual property']
+        'keywords': ['trademark', 'classifier', 'tool', 'classification', 'intellectual property'],
+        'documents': ['/patent-docs/case_031/application.pdf', '/patent-docs/case_031/claims.docx', '/patent-docs/case_031/drawings.pdf']
     },
     {
         'id': 'case_032',
@@ -935,7 +968,8 @@ mock_cases = [
                 'similarity_rate': 83
             }
         ],
-        'keywords': ['patent', 'document', 'translation', 'service', 'language']
+        'keywords': ['patent', 'document', 'translation', 'service', 'language'],
+        'documents': ['/patent-docs/case_032/application.pdf', '/patent-docs/case_032/claims.docx', '/patent-docs/case_032/drawings.pdf']
     },
     {
         'id': 'case_033',
@@ -964,7 +998,8 @@ mock_cases = [
                 'similarity_rate': 84
             }
         ],
-        'keywords': ['IP', 'litigation', 'support', 'system', 'cases']
+        'keywords': ['IP', 'litigation', 'support', 'system', 'cases'],
+        'documents': ['/patent-docs/case_033/application.pdf', '/patent-docs/case_033/claims.docx', '/patent-docs/case_033/drawings.pdf']
     },
     {
         'id': 'case_034',
@@ -993,7 +1028,8 @@ mock_cases = [
                 'similarity_rate': 78
             }
         ],
-        'keywords': ['trademark', 'opposition', 'management', 'tool', 'intellectual property']
+        'keywords': ['trademark', 'opposition', 'management', 'tool', 'intellectual property'],
+        'documents': ['/patent-docs/case_034/application.pdf', '/patent-docs/case_034/claims.docx', '/patent-docs/case_034/drawings.pdf']
     },
     {
         'id': 'case_035',
@@ -1022,7 +1058,8 @@ mock_cases = [
                 'similarity_rate': 87
             }
         ],
-        'keywords': ['patent', 'search', 'automation', 'tool', 'intellectual property']
+        'keywords': ['patent', 'search', 'automation', 'tool', 'intellectual property'],
+        'documents': ['/patent-docs/case_035/application.pdf', '/patent-docs/case_035/claims.docx', '/patent-docs/case_035/drawings.pdf']
     },
     {
         'id': 'case_036',
@@ -1051,7 +1088,8 @@ mock_cases = [
                 'similarity_rate': 82
             }
         ],
-        'keywords': ['IP asset', 'tracking', 'system', 'monitor', 'intellectual property']
+        'keywords': ['IP asset', 'tracking', 'system', 'monitor', 'intellectual property'],
+        'documents': ['/patent-docs/case_036/application.pdf', '/patent-docs/case_036/claims.docx', '/patent-docs/case_036/drawings.pdf']
     },
     {
         'id': 'case_037',
@@ -1080,7 +1118,8 @@ mock_cases = [
                 'similarity_rate': 80
             }
         ],
-        'keywords': ['trademark', 'filing', 'assistant', 'application', 'intellectual property']
+        'keywords': ['trademark', 'filing', 'assistant', 'application', 'intellectual property'],
+        'documents': ['/patent-docs/case_037/application.pdf', '/patent-docs/case_037/claims.docx', '/patent-docs/case_037/drawings.pdf']
     },
     {
         'id': 'case_038',
@@ -1109,7 +1148,8 @@ mock_cases = [
                 'similarity_rate': 85
             }
         ],
-        'keywords': ['patent', 'analytics', 'dashboard', 'data', 'intellectual property']
+        'keywords': ['patent', 'analytics', 'dashboard', 'data', 'intellectual property'],
+        'documents': ['/patent-docs/case_038/application.pdf', '/patent-docs/case_038/claims.docx', '/patent-docs/case_038/drawings.pdf']
     },
     {
         'id': 'case_039',
@@ -1138,7 +1178,8 @@ mock_cases = [
                 'similarity_rate': 81
             }
         ],
-        'keywords': ['IP rights', 'enforcement', 'platform', 'intellectual property', 'compliance']
+        'keywords': ['IP rights', 'enforcement', 'platform', 'intellectual property', 'compliance'],
+        'documents': ['/patent-docs/case_039/application.pdf', '/patent-docs/case_039/claims.docx', '/patent-docs/case_039/drawings.pdf']
     },
     {
         'id': 'case_040',
@@ -1167,7 +1208,8 @@ mock_cases = [
                 'similarity_rate': 78
             }
         ],
-        'keywords': ['trademark', 'renewal', 'reminder', 'service', 'intellectual property']
+        'keywords': ['trademark', 'renewal', 'reminder', 'service', 'intellectual property'],
+        'documents': ['/patent-docs/case_040/application.pdf', '/patent-docs/case_040/claims.docx', '/patent-docs/case_040/drawings.pdf']
     },
     {
         'id': 'case_041',
@@ -1196,7 +1238,8 @@ mock_cases = [
                 'similarity_rate': 83
             }
         ],
-        'keywords': ['patent', 'application', 'status', 'monitor', 'intellectual property']
+        'keywords': ['patent', 'application', 'status', 'monitor', 'intellectual property'],
+        'documents': ['/patent-docs/case_041/application.pdf', '/patent-docs/case_041/claims.docx', '/patent-docs/case_041/drawings.pdf']
     },
     {
         'id': 'case_042',
@@ -1225,7 +1268,8 @@ mock_cases = [
                 'similarity_rate': 80
             }
         ],
-        'keywords': ['IP asset', 'sale', 'platform', 'marketplace', 'intellectual property']
+        'keywords': ['IP asset', 'sale', 'platform', 'marketplace', 'intellectual property'],
+        'documents': ['/patent-docs/case_042/application.pdf', '/patent-docs/case_042/claims.docx', '/patent-docs/case_042/drawings.pdf']
     },
     {
         'id': 'case_043',
@@ -1254,7 +1298,8 @@ mock_cases = [
                 'similarity_rate': 84
             }
         ],
-        'keywords': ['trademark', 'dispute', 'analytics', 'intellectual property', 'analysis']
+        'keywords': ['trademark', 'dispute', 'analytics', 'intellectual property', 'analysis'],
+        'documents': ['/patent-docs/case_043/application.pdf', '/patent-docs/case_043/claims.docx', '/patent-docs/case_043/drawings.pdf']
     },
     {
         'id': 'case_044',
@@ -1283,7 +1328,8 @@ mock_cases = [
                 'similarity_rate': 81
             }
         ],
-        'keywords': ['patent', 'family', 'management', 'tool', 'intellectual property']
+        'keywords': ['patent', 'family', 'management', 'tool', 'intellectual property'],
+        'documents': ['/patent-docs/case_044/application.pdf', '/patent-docs/case_044/claims.docx', '/patent-docs/case_044/drawings.pdf']
     },
     {
         'id': 'case_045',
@@ -1312,7 +1358,8 @@ mock_cases = [
                 'similarity_rate': 82
             }
         ],
-        'keywords': ['IP asset', 'evaluation', 'tool', 'assessment', 'intellectual property']
+        'keywords': ['IP asset', 'evaluation', 'tool', 'assessment', 'intellectual property'],
+        'documents': ['/patent-docs/case_045/application.pdf', '/patent-docs/case_045/claims.docx', '/patent-docs/case_045/drawings.pdf']
     },
     {
         'id': 'case_046',
@@ -1341,7 +1388,8 @@ mock_cases = [
                 'similarity_rate': 79
             }
         ],
-        'keywords': ['trademark', 'assignment', 'workflow', 'process', 'intellectual property']
+        'keywords': ['trademark', 'assignment', 'workflow', 'process', 'intellectual property'],
+        'documents': ['/patent-docs/case_046/application.pdf', '/patent-docs/case_046/claims.docx', '/patent-docs/case_046/drawings.pdf']
     },
     {
         'id': 'case_047',
@@ -1370,7 +1418,8 @@ mock_cases = [
                 'similarity_rate': 85
             }
         ],
-        'keywords': ['patent', 'expiry', 'analytics', 'upcoming', 'intellectual property']
+        'keywords': ['patent', 'expiry', 'analytics', 'upcoming', 'intellectual property'],
+        'documents': ['/patent-docs/case_047/application.pdf', '/patent-docs/case_047/claims.docx', '/patent-docs/case_047/drawings.pdf']
     },
     {
         'id': 'case_048',
@@ -1399,7 +1448,8 @@ mock_cases = [
                 'similarity_rate': 80
             }
         ],
-        'keywords': ['IP asset', 'portfolio', 'dashboard', 'management', 'intellectual property']
+        'keywords': ['IP asset', 'portfolio', 'dashboard', 'management', 'intellectual property'],
+        'documents': ['/patent-docs/case_048/application.pdf', '/patent-docs/case_048/claims.docx', '/patent-docs/case_048/drawings.pdf']
     },
     {
         'id': 'case_049',
@@ -1428,7 +1478,8 @@ mock_cases = [
                 'similarity_rate': 77
             }
         ],
-        'keywords': ['trademark', 'filing', 'deadline', 'tracker', 'reminder']
+        'keywords': ['trademark', 'filing', 'deadline', 'tracker', 'reminder'],
+        'documents': ['/patent-docs/case_049/application.pdf', '/patent-docs/case_049/claims.docx', '/patent-docs/case_049/drawings.pdf']
     },
     {
         'id': 'case_050',
@@ -1457,7 +1508,8 @@ mock_cases = [
                 'similarity_rate': 86
             }
         ],
-        'keywords': ['patent', 'litigation', 'analytics', 'cases', 'intellectual property']
+        'keywords': ['patent', 'litigation', 'analytics', 'cases', 'intellectual property'],
+        'documents': ['/patent-docs/case_050/application.pdf', '/patent-docs/case_050/claims.docx', '/patent-docs/case_050/drawings.pdf']
     }
 ]
 
@@ -1611,7 +1663,7 @@ alerts = {
 def create_demo_request(name, email, organization, role, date, time, timezone):
     try:
         demo_requests.append({
-            "id": "request_001",
+            "id": f"{role}_{int(timezone.datetime.now().timestamp())}",
             "name": name,
             "email": email,
             "organization": organization,
@@ -1896,8 +1948,6 @@ def create_demo_request(name, email, organization, role, date, time, timezone):
     Returns:
         dict: Result containing success status and request details
     """
-    # TODO: Implement actual database storage
-    # For now, just validate and return success
     
     if not all([name, email, organization, role, date, time, timezone]):
         return {
@@ -1920,7 +1970,7 @@ def create_demo_request(name, email, organization, role, date, time, timezone):
         'time': time,
         'timezone': timezone,
         'status': 'pending',
-        'created_at': '2024-01-01T00:00:00Z'  # In real implementation, use current timestamp
+        'created_at': datetime.datetime.utcnow().isoformat() + 'Z'  # Use current UTC timestamp
     }
     
     return {
@@ -1928,4 +1978,27 @@ def create_demo_request(name, email, organization, role, date, time, timezone):
         'message': 'Demo request submitted successfully',
         'request_id': request_id,
         'demo_request': demo_request
+    }
+
+def create_patent(patent_data):
+    """
+    Create a new patent
+    
+    Args:
+        patent_data (dict): Patent information
+    
+    Returns:
+        dict: Result containing success status and patent_id if successful
+    """
+    patent_id = f"patent_{str(uuid.uuid4())[:8]}"
+    patent_data['id'] = patent_id
+    # Change the key 'files' to 'references' if it exists in patent_data
+    if 'files' in patent_data:
+        patent_data['references'] = patent_data.pop('files')
+
+    return {
+        'success': True,
+        'message': 'Patent created successfully',
+        'patent_id': patent_id,
+        'patent': patent_data
     }

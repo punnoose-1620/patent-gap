@@ -3,6 +3,9 @@ SECRET_KEY=your-secret-key-here
 PORT=5000
 DEBUG=True
 
+# OpenAI API Configuration (for text embeddings)
+# OPENAI_API_KEY=sk-your-key-here
+
 # Firebase Configuration (for authentication and cloud services)
 # FIREBASE_CREDENTIALS_PATH=path/to/firebase-service-account.json
 # FIREBASE_PROJECT_ID=your-firebase-project-id

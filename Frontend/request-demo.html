@@ -557,30 +557,41 @@
         });
 
         // Submit function (placeholder - to be implemented later)
-        function submit(formData) {
+        async function submit(formData) {
             // This function will be populated later
             console.log('Submit function called with data:', formData);
-            
-            // Simulate API call
-            setTimeout(() => {
-                alert('Demo request submitted successfully! We will contact you soon.');
-                
-                // Reset form
-                document.getElementById('demoRequestForm').reset();
-                
-                // Reset button
-                const submitBtn = document.getElementById('submitBtn');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit Request';
-                
-                // Clear all validation states
-                document.querySelectorAll('.form-input, .form-select').forEach(field => {
-                    field.classList.remove('error', 'valid');
-                });
-                document.querySelectorAll('.error-message').forEach(error => {
-                    error.classList.remove('show');
-                });
-            }, 1000);
+
+            let parameters = {
+                name: formData.fullName,
+                email: formData.email,
+                organization: formData.organization,
+                role: formData.role,
+                date: formData.date,
+                time: formData.time,
+                timezone: formData.timezone,
+            };
+
+            const response = await fetch('/api/create-demo-request', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(parameters),
+            });
+
+            if(response.ok && response.status === 200) {
+                const data = await response.json();
+                if (data && data.success === true) {
+                    alert('Demo request submitted successfully! We will contact you soon.');
+                    window.location.href = '/';
+                }
+                else {
+                    alert('Demo request submission failed! Please try again.');
+                }
+            } 
+            else {
+                alert('Demo request submission failed! Please try again.');
+            }
         }
     </script>
 </body>

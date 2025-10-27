@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_cors import CORS
 import os
+from database import *
 from controller import *
 from swagger import initialize_swagger, get_response_models
 
@@ -787,6 +788,116 @@ def api_change_password():
             return jsonify({'success': False, 'message': result.get('message')}), 400
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error changing password: {str(e)}'}), 500
+  
+@app.route('/api/add-patent', methods=['POST'])
+def add_patent():
+    """
+    Add a new patent
+    ---
+    tags:
+      - Patents
+    summary: Add a new patent
+    description: Adds a new patent to the database
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    security:
+      - session: []
+    parameters:
+      - in: body
+        name: patent_data
+        description: Patent information
+        required: true
+        schema:
+          $ref: '#/definitions/Patent'
+    responses:
+      200:
+        description: Patent added successfully
+        schema:
+          $ref: '#/definitions/PatentResponse'
+    """
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+
+        result = create_patent(data)
+        if result.get('success'):
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error adding patent: {str(e)}'}), 500
+
+@app.route('/api/upload-file/<case_id>', methods=['POST'])
+def upload_file(case_id):
+    """
+    Upload a file
+    ---
+    tags:
+      - Files
+    summary: Upload a file
+    description: Uploads a file to the database
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    security:
+      - session: []
+    parameters:
+      - in: body
+        name: file
+        description: The file to upload
+        required: true
+        schema:
+          type: string
+          format: binary
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'message': 'No data provided'}), 400
+
+    # Use uploadToGcpBucket from database.py to upload the file
+    # Expecting data to have: 'bucketName', 'sourceFile', 'destinationBlob'
+    bucket_name = data.get('bucketName')
+    source_file = data.get('sourceFile')
+    destination_blob = data.get('destinationBlob')
+
+    if not all([bucket_name, source_file, destination_blob]):
+        result = {'success': False, 'message': 'Missing required file upload parameters'}
+    else:
+        #TODO: Update File's url to case entry using case_id
+        case_data = get_case_by_id(case_id)
+        upload_url = uploadToGcpBucket(bucket_name, source_file, destination_blob)
+        if upload_url is not None:
+            # Add upload_url to the references list in case_data
+            if case_data is not None:
+                references = case_data.get('references', [])
+                if not isinstance(references, list):
+                    references = []
+                references.append(upload_url)
+                case_data['references'] = references
+                # Update the case entry in the database
+                updateDataById(app=None, collectionName='cases', entryData={'_id': case_id, 'references': references})
+            result = {
+                'success': True,
+                'message': 'File uploaded successfully',
+                'bucket': bucket_name,
+                'blob': destination_blob
+            }
+        else:
+            result = {
+                'success': False,
+                'message': 'File upload failed'
+            }
+    if result.get('success'):
+        return jsonify(result)
+    else:
+        return jsonify(result), 400
 
 if __name__ == '__main__':
     port = app.config['PORT']
