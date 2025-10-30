@@ -9,6 +9,7 @@ patent-gap/
 ├── Backend/                 # Python backend files
 │   ├── app.py              # Main Flask application
 │   ├── controller.py       # Business logic controllers
+│   ├── data_processor.py  # PDF processing and text embedding functions
 │   ├── swagger.py          # Swagger/OpenAPI configuration
 │   └── env_example.txt     # Environment variables example
 ├── Frontend/               # HTML frontend files
@@ -326,6 +327,105 @@ Once the backend is running, you can access the API documentation at:
 - `GET /add-patent` - Add new patent page (requires authentication)
 - `GET /request-demo` - Request demo page
 - `GET /change-password` - Change password page (requires authentication)
+
+## Data Processing Module
+
+The `data_processor.py` module provides functionality for processing patent documents and generating text embeddings for similarity analysis.
+
+### Available Functions
+
+#### `readPdf(pdf_path)`
+Extracts text content from PDF files.
+
+- **Parameters**: `pdf_path` (str) - Path to the PDF file
+- **Returns**: Text content as a string
+- **Libraries**: PyPDF2
+
+**Example:**
+```python
+text = readPdf('patent_document.pdf')
+```
+
+#### `getEmbedding(text, api_key=None)`
+Generates semantic embeddings using OpenAI's text-embedding-3-small model.
+
+- **Parameters**: 
+  - `text` (str) - Text to embed
+  - `api_key` (str, optional) - OpenAI API key. If not provided, uses `OPENAI_API_KEY` from environment
+- **Returns**: List of floats (1536-dimensional vector)
+- **Libraries**: openai
+- **Requirements**: OpenAI API key in environment variables
+
+**Example:**
+```python
+from data_processor import getEmbedding
+embedding = getEmbedding("Patent text content here")
+# Returns: [0.123, -0.456, 0.789, ...] (1536 elements)
+```
+
+#### `getEmbeddingOffline(text)`
+Generates TF-IDF embeddings for offline text similarity analysis.
+
+- **Parameters**: `text` (str) - Text to embed
+- **Returns**: numpy.ndarray - TF-IDF feature vector
+- **Libraries**: scikit-learn, numpy
+- **Requirements**: No API key needed (works offline)
+
+**Example:**
+```python
+from data_processor import getEmbeddingOffline
+embedding = getEmbeddingOffline("Patent text content here")
+# Returns: numpy array of TF-IDF features
+```
+
+#### `getSimilarityScore(embedding1, embedding2)`
+Calculates the cosine similarity between two embedding vectors.
+
+- **Parameters**: 
+  - `embedding1` - The first embedding vector
+  - `embedding2` - The second embedding vector
+- **Returns**: float - The similarity score between the two embeddings (range: -1 to 1)
+- **Libraries**: numpy
+- **Performance**: O(n) time complexity, very fast for single comparisons
+
+**Example:**
+```python
+from data_processor import getSimilarityScore
+score = getSimilarityScore(embedding1, embedding2)
+# Returns: 0.85 (85% similarity)
+```
+
+#### `getBulkSimilarityScore(reference_embedding, embeddings_list)`
+Calculates similarity scores between a reference embedding and a list of embeddings.
+
+- **Parameters**: 
+  - `reference_embedding` - The embedding vector to compare others against
+  - `embeddings_list` - List of embedding vectors to compare with the reference
+- **Returns**: List of float similarity scores
+- **Libraries**: numpy
+- **Performance**: O(n*m) where n=embedding dimension, m=number of embeddings
+
+**Example:**
+```python
+from data_processor import getBulkSimilarityScore
+scores = getBulkSimilarityScore(query_embedding, patent_embeddings)
+# Returns: [0.85, 0.72, 0.91, 0.68, ...]
+```
+
+### Use Cases
+
+1. **PDF Text Extraction**: Extract text from patent documents for analysis
+2. **OpenAI Embeddings**: Generate high-quality semantic embeddings for similarity search (requires internet)
+3. **TF-IDF Embeddings**: Generate statistical embeddings for offline patent analysis
+4. **Similarity Calculation**: Compare patent documents for similarity analysis
+5. **Batch Similarity**: Find similar patents from a database of embeddings
+
+### Environment Variables
+
+For OpenAI embeddings, set in your `.env` file:
+```bash
+OPENAI_API_KEY=sk-your-key-here
+```
 
 ## Development Notes
 

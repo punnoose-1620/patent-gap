@@ -1,5 +1,7 @@
 import uuid
+import time
 import datetime
+from data_processor import *
 """
 Controller functions for handling business logic
 """
@@ -1659,6 +1661,17 @@ alerts = {
     'keyword6': ['user_016', 'user_017', 'user_018'],
     'keyword7': ['user_019', 'user_020', 'user_021']
 }
+#TODO: Change Alert Structure to the below format:
+'''
+{
+    "alert_id": '01',
+    "triggered_by": 'case_001',
+    "triggered_at": '2025-01-01',
+    "alert_users": ['user_001', 'user_002', 'user_003'],
+    "opened_receipts": ['user_001', 'user_002', 'user_003'],
+    "sent_receipts": ['user_001', 'user_002', 'user_003'],
+}
+'''
 
 def create_demo_request(name, email, organization, role, date, time, timezone):
     try:
@@ -2002,3 +2015,74 @@ def create_patent(patent_data):
         'patent_id': patent_id,
         'patent': patent_data
     }
+
+def process_new_patent(patent_id):
+    """
+    Process a new patent by extracting embeddings from its documents, comparing them
+    with existing cases for similarity, and creating an alert if similar cases are found.
+    
+    The function reads all PDF documents associated with the patent, generates embeddings
+    for them, and compares these embeddings with embeddings from all other cases using
+    a similarity threshold of 0.8. Cases with similarity scores above the threshold are
+    flagged, and an alert is created containing the users who created those similar cases.
+    
+    Args:
+        patent_id (str): Patent identifier to process
+    
+    Returns:
+        dict: Result containing success status, message, and alert_id if successful
+    """
+    # Find the case in mock_cases with the given patent_id and get its 'documents' list
+    threshold = 0.8         # Threshold for similarity score. Score will always be between 0 and 1.
+    patentIds = []          # Reference for patent id: embeddings based on index
+    alert_cases = []        # Reference for case ids that have been flagged as similar (beyond threshold) for this case
+    patentDocuments = []    # Reference documents for this patent
+    patentEmbeddings = []   # Embeddings from all documents for this patent
+    other_embeddings = []   # Embeddings for all other cases
+    # Get the case and its documents
+    for case in mock_cases:
+        if case.get('id') == patent_id:
+            patentDocuments = case.get('documents', [])
+            break
+    # Read the documents and get the embeddings
+    if len(patentDocuments) > 0:
+        for document in patentDocuments:
+            documentText = readPdf(document)
+            documentEmbedding = getPatentEmbedding(documentText)
+            patentEmbeddings.extend(documentEmbedding)
+    # Get the similarity scores
+    # Get the 'embeddings' for every entry in mock_cases *excluding* the current case
+    for case in mock_cases:
+        if case.get('id') != patent_id:
+            patentIds.append(case.get('id'))
+            embeddings = case.get('embeddings', [])
+            if embeddings:
+                other_embeddings.append(embeddings)
+    similarity_scores = getBulkSimilarityScore(patentEmbeddings, other_embeddings)
+    # Flag cases that have a similarity score greater than the threshold
+    for i in range(len(similarity_scores)):
+        if similarity_scores[i] > threshold:
+            alert_cases.append(patentIds[i])
+    newAlert = {
+        "_id": str(int(time.time())),
+        "triggered_by": 'case_001',
+        "triggered_at": '2025-01-01',
+        "alert_users": [],
+        "opened_receipts": [],
+        "sent_receipts": [],
+    }
+    # Add the users list for this alert. Users are the ones who have created the cases that have been flagged as similar.
+    for c_id in alert_cases:
+        for case in mock_cases:
+            if case.get('id') == c_id:
+                newAlert['alert_users'].append(case.get('created_by'))
+                break
+    # Add this new alert to the alerts logs
+    alerts.append(newAlert)
+    return {
+        'success': True,
+        'message': 'Alert created successfully',
+        'alert_id': newAlert['_id']
+    }
+
+    
