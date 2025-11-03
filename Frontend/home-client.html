@@ -227,6 +227,23 @@
             margin: 0 auto 1rem;
         }
 
+        .icon-bell {
+            background: none;
+            border: none; 
+            font-size: 1.6rem; 
+            cursor: pointer; 
+            margin-right: 0.5rem; 
+            padding: 0rem 0.35rem; 
+            border-radius: 50%; 
+            transition: background 0.15s;
+            display: inline-block;
+            width: 1.6em;
+            height: 1.6em;
+            vertical-align: middle;
+            color: #E63946; /* Red */
+            fill: currentColor;
+        }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -367,6 +384,11 @@
         <div class="nav-links">
             <a href="#" class="nav-link active" onclick="showPage('dashboard')">Dashboard</a>
             <a href="#" class="nav-link" onclick="showPage('profile')">Profile</a>
+            <button class="icon-bell" title="Alerts" onclick="showAlerts()">
+                <svg xmlns="http://www.w3.org/2000/svg" height="1.2em" viewBox="0 0 24 24" width="1.6em" aria-label="Alerts" role="img" style="vertical-align:middle;">
+                    <path d="M12 22c1.1 0 2-.9 2-2h-4a2 2 0 0 0 2 2zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 1 0-3 0v.68C7.64 5.36 6 7.92 6 11v5l-1.29 1.29A1 1 0 0 0 6 19h12a1 1 0 0 0 .71-1.71L18 16zm-2 .9V11c0-2.48-1.51-4.5-4-4.5S8 8.52 8 11v5.9l-1 .97V17h10v-.13l-1-.97z"/>
+                </svg>
+            </button>
             <button class="add-case-btn" onclick="handleAddPatentCase()">Add Patent</button>
             <button class="logout-btn" onclick="handleLogout()">Logout</button>
         </div>
@@ -496,6 +518,170 @@
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
             }
+        }
+
+        async function loadAlerts() {
+            const profile_response = await fetch('/api/profile');
+            const profile_data = await profile_response.json();
+            try {
+                // Get the current user's id from localStorage/session or page context
+                const user_id = profile_data['profile']['id'];
+                console.log('User ID:', user_id);
+                const response = await fetch(`/api/alerts/${user_id}`);
+                const data = await response.json();
+                console.log('Alerts loaded:', data);
+                for(let alert of data['alerts']) {
+                    let case_data = await getCaseData(alert['triggered_by']);
+                    console.log('Case data:', case_data);
+                    alert['case'] = case_data;
+                }
+                return data;
+            } catch (error) {
+                console.error('Error loading alerts:', error);
+                return { 'success': False, 'message': 'Error loading alerts', 'alerts': [] };
+            }
+        }
+
+        async function getCaseData(case_id) {
+            // Fetches case data from the backend using case_id
+            try {
+                const response = await fetch(`/api/cases/${case_id}`);
+                const data = await response.json();
+                if (data.success && data.case) {
+                    return data['case'];
+                } else {
+                    console.error('Failed to get case data:', data.message);
+                    return null;
+                }
+            } catch (error) {
+                console.error('Error fetching case data:', error);
+                return null;
+            }
+        }
+
+        function renderNotificationCard(alert) {
+            const card = document.createElement('div');
+            card.style.cursor = 'pointer';
+            card.className = 'notification-card';
+            card.style.background = '#fff';
+            card.style.border = '1px solid #efefef';
+            card.style.borderRadius = '12px';
+            card.style.padding = '18px 16px';
+            card.style.marginBottom = '1rem';
+            card.style.boxShadow = '0 2px 10px rgba(32,32,32,0.04)';
+            card.style.display = 'flex';
+            card.style.flexDirection = 'column';
+            card.style.position = 'relative';
+
+            card.addEventListener('click', function() {
+                // For example, open the referenced case in a new page or modal
+                if (alert.similar_case) {
+                    window.location.href = `/case/${alert.similar_case}`;
+                }
+                else {
+                    console.log('No similar case found');
+                }
+            });
+
+            // You can add alert content to the card here, for example:
+            card.innerHTML = `
+                <div style="font-weight:500;font-size:1.1rem; margin-bottom:0.25rem;">${alert.case.title || 'Alert'}</div>
+                <div style="font-size:0.97rem;opacity:0.85; margin-bottom:0.1rem;">${alert.case.description || ''}</div>
+                <div style="font-size:0.85rem; color:#a6a6a6;">${alert.triggered_at || ''}</div>
+            `;
+
+            return card;
+        }
+
+        async function showAlerts() {
+            let results = await loadAlerts();
+            let alerts = results['alerts'];
+            console.log('Alerts:', alerts);
+
+            let existing = document.getElementById('alert-popup-panel');
+            if (existing) existing.remove();
+
+            // Create the popup element
+            const popup = document.createElement('div');
+            popup.id = 'alert-popup-panel';
+            popup.style.position = 'fixed';
+            popup.style.top = '65px';
+            popup.style.right = '36px';
+            popup.style.width = '370px';
+            popup.style.height = (window.innerHeight / 2) + 'px';
+            popup.style.background = '#fff7fe';
+            popup.style.border = '1px solid #d8d6c4';
+            popup.style.boxShadow = '0 8px 32px rgba(24,24,48,0.20)';
+            popup.style.borderRadius = '18px';
+            popup.style.zIndex = 5555;
+            popup.style.padding = '0.75rem 1rem 1rem 1rem';
+            popup.style.overflowY = 'auto';
+            popup.style.display = 'flex';
+            popup.style.flexDirection = 'column';
+
+            // Add close button
+            const closeBtn = document.createElement('button');
+            closeBtn.innerHTML = '&times;';
+            closeBtn.setAttribute('aria-label', 'Close alerts popup');
+            // closeBtn.style.position = 'absolute';
+            closeBtn.style.top = '10px';
+            closeBtn.style.right = '10px';
+            closeBtn.style.background = 'none';
+            closeBtn.style.border = 'none';
+            closeBtn.style.fontSize = '1.8rem';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.style.color = '#0A1F14';
+            closeBtn.style.opacity = '0.6';
+            closeBtn.onmouseenter = function() { closeBtn.style.opacity = '1'; };
+            closeBtn.onmouseleave = function() { closeBtn.style.opacity = '0.6'; };
+            closeBtn.onclick = function() {
+                console.log('Close button clicked');
+                popup.remove();
+            };
+
+            const notificationTitle = document.createElement('div');
+            notificationTitle.innerHTML = `
+                <div style="display:flex; flex-direction:row; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                    <div style="font-size:1.2rem; font-weight:600;">Notifications</div>
+                    ${closeBtn.outerHTML}
+                </div>
+            `;
+            popup.appendChild(notificationTitle);
+            const notificationDivider = document.createElement('div');
+            notificationDivider.innerHTML = `
+                <div style="height:1px; background:#e5e2e2; width:100%; margin-bottom:1rem;"></div>
+            `;
+            popup.appendChild(notificationDivider);
+
+            // Placeholder content (to be populated later)
+            const content = document.createElement('div');
+            content.innerHTML = `<div style="text-align:center;padding-top:4rem;opacity:0.3;font-size:1.4rem;">No alerts yet!</div>`;
+            popup.appendChild(content);
+            if (alerts.length > 0) {
+                // Add title "Notifications" with a divider
+                content.innerHTML = ``;
+                for (let alert of alerts) {
+                    let notificationCard = renderNotificationCard(alert);
+                    console.log('Content Card:', content);
+                    content.appendChild(notificationCard);
+                }
+            } 
+            else {
+                content.innerHTML = `<div style="text-align:center;padding-top:4rem;opacity:0.3;font-size:1.4rem;">No alerts yet!</div>`;
+            }
+
+            // Dismiss popup on click outside
+            function handleOutsideClick(event) {
+                if (!popup.contains(event.target) && event.target.className !== 'icon-bell') {
+                    popup.remove();
+                    document.removeEventListener('mousedown', handleOutsideClick);
+                }
+            }
+            setTimeout(() => {
+                document.addEventListener('mousedown', handleOutsideClick);
+            }, 150);
+
+            document.body.appendChild(popup);
         }
 
         // Helper function to render patent sections

@@ -353,17 +353,32 @@
                 });
 
                 const data = await response.json();
+                const userResponse = await fetch('/api/profile', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                const userData = await userResponse.json();
 
                 if (data.success) {
+                    console.log('Login successful data:', userData['profile']);
+                    console.log('Login successful data:', userData['profile']['id']);
+                    if (data.user_id) {
+                        localStorage.setItem('user_id', userData['profile']['id']);
+                        sessionStorage.setItem('user_id', userData['profile']['id']);
+                    }
                     showSuccess('Login successful! Redirecting...');
                     setTimeout(() => {
                         window.location.href = data.redirect || '/home';
                     }, 1000);
-                } else {
+                } 
+                else {
                     showError(data.message || 'Login failed. Please try again.');
                     setLoading(false);
                 }
-            } catch (error) {
+            } 
+            catch (error) {
                 console.error('Login error:', error);
                 showError('Network error. Please check your connection and try again.');
                 setLoading(false);

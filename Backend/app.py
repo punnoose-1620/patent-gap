@@ -1,9 +1,14 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
-from flask_cors import CORS
 import os
+from flask_cors import CORS
+from swagger import initialize_swagger, get_response_models
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+
+from models.demo import *
+from models.cases import *
+from models.users import *
+from models.alerts import *
 from database import *
 from controller import *
-from swagger import initialize_swagger, get_response_models
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -287,7 +292,7 @@ def my_cases():
     
     try:
         user_id = session['user_id']
-        cases = get_user_cases(user_id)
+        cases = get_case_related_to_user(user_id)
         return jsonify({
             'success': True,
             'cases': cases
@@ -520,7 +525,7 @@ def update_case_details(case_id):
         if not update_data:
             return jsonify({'success': False, 'message': 'No update data provided'}), 400
 
-        # Assume update_case_by_id is a function that updates the case and returns the updated case or None if not found
+        # Assume update_case is a function that updates the case and returns the updated case or None if not found
         result = update_case(case_id, update_data)
         if result.get('success'):
             updated_case = get_case_by_id(case_id)
@@ -898,6 +903,44 @@ def upload_file(case_id):
         return jsonify(result)
     else:
         return jsonify(result), 400
+
+@app.route('/api/alerts', methods=['GET'])
+def get_all_alerts():
+    """
+    Get all alerts
+    ---
+    tags:
+      - Alerts
+    summary: Get all alerts
+    description: Returns all alerts
+    """
+    try:
+        alerts = get_alerts()
+        return jsonify({
+            'success': True,
+            'alerts': alerts
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error getting all alerts: {str(e)}'}), 500
+
+@app.route('/api/alerts/<user_id>', methods=['GET'])
+def get_user_alerts(user_id):
+    """
+    Get all alerts related to a specific user
+    ---
+    tags:
+      - Alerts
+    summary: Get all alerts related to a specific user
+    description: Returns all alerts related to the specified user
+    """
+    try:
+        user_alerts = get_alerts_for_user(user_id)
+        return jsonify({
+            'success': True,
+            'alerts': user_alerts
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error getting all alerts: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = app.config['PORT']

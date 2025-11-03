@@ -7,12 +7,16 @@ def readPdf(pdf_path):
     """
     Read a PDF file and return the text content.
     """
-    with open(pdf_path, 'rb') as file:
-        reader = PyPDF2.PdfReader(file)
-        text = ''
-        for page in reader.pages:
-            text += page.extract_text()
-        return text
+    try:
+        with open(pdf_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            text = ''
+            for page in reader.pages:
+                text += page.extract_text()
+            return text
+    except Exception as e:
+        print(f"Error reading PDF {pdf_path}: {e}")
+        return ""
 
 def getEmbeddingOnline(text, api_key=None):
     """
@@ -114,6 +118,22 @@ def getBulkSimilarityScore(reference_embedding, embeddings_list):
         score = getSimilarityScore(reference_embedding, emb)
         scores.append(score)
     return scores
+
+def getEmbeddingsFromDocuments(documents):
+    """
+    Get the embeddings from the documents using the OpenAI API.
+    Args:
+        documents: List of document paths
+    Returns:
+        List of embeddings
+    """
+    embeddings = []
+    for document in documents:
+        documentText = readPdf(document)
+        if documentText:
+            documentEmbedding = getPatentEmbedding(documentText)
+            embeddings.extend(documentEmbedding)
+    return embeddings
 
 def getPatentEmbedding(text, api_key=None):
     """
