@@ -10,7 +10,13 @@ patent-gap/
 │   ├── app.py              # Main Flask application
 │   ├── controller.py       # Business logic controllers
 │   ├── data_processor.py  # PDF processing and text embedding functions
+│   ├── database.py         # Database and cloud storage connectivity (Firebase, GCP)
 │   ├── swagger.py          # Swagger/OpenAPI configuration
+│   ├── models/             # Data models organized by domain
+│   │   ├── alerts.py       # Alert management models
+│   │   ├── cases.py        # Case management models
+│   │   ├── demo.py         # Demo request models
+│   │   └── users.py        # User management models
 │   └── env_example.txt     # Environment variables example
 ├── Frontend/               # HTML frontend files
 │   ├── index.html          # Home page
@@ -41,6 +47,11 @@ patent-gap/
   - **Document Upload**: PDF file upload with drag-and-drop functionality
 - **Case Details**: Detailed view of individual cases with related patent information
 - **Profile Management**: User profile with case statistics and password management
+- **Alert & Notification System**: 
+  - Real-time alert notifications for similar patent cases
+  - Alert popup panel with case details and similarity scores
+  - Navigate directly to related cases from notifications
+  - User-specific alerts based on case relationships
 - **Demo Requests**: Request personalized demonstrations with scheduling
 - **User Roles**: Support for both 'client' and 'attorney' user roles
 - **API Documentation**: Interactive Swagger UI for comprehensive API testing and exploration
@@ -138,6 +149,10 @@ cp Backend/env_example.txt Backend/.env
 # PORT=5000
 # DEBUG=True
 # FLASK_ENV=development
+# FIREBASE_CREDENTIALS=path/to/firebase-service-account.json
+# FIREBASE_DATABASE_URL=https://your-project.firebaseio.com
+# GOOGLE_APPLICATION_CREDENTIALS=path/to/gcp-service-account.json
+# OPENAI_API_KEY=sk-your-key-here
 ```
 
 #### Firebase Setup (Optional)
@@ -152,8 +167,9 @@ If you plan to use Firebase for authentication or cloud services:
 3. **Configure environment variables**:
    ```bash
    # Add to your .env file
-   FIREBASE_CREDENTIALS_PATH=path/to/your/firebase-service-account.json
-   FIREBASE_PROJECT_ID=your-firebase-project-id
+   FIREBASE_CREDENTIALS=path/to/your/firebase-service-account.json
+   FIREBASE_DATABASE_URL=https://your-project.firebaseio.com
+   GOOGLE_APPLICATION_CREDENTIALS=path/to/your/gcp-service-account.json
    ```
 
 #### OpenAI API Setup (Optional - For Text Embeddings)
@@ -316,6 +332,10 @@ Once the backend is running, you can access the API documentation at:
 #### Patent Information
 - `GET /api/cases/<case_id>/patents` - Get related patents for a specific case
 
+#### Alert & Notification Management
+- `GET /api/alerts` - Get all alerts
+- `GET /api/alerts/<user_id>` - Get alerts for a specific user with similarity analysis
+
 #### Demo Requests
 - `POST /api/create-demo-request` - Create a new demo request
 
@@ -346,8 +366,8 @@ Extracts text content from PDF files.
 text = readPdf('patent_document.pdf')
 ```
 
-#### `getEmbedding(text, api_key=None)`
-Generates semantic embeddings using OpenAI's text-embedding-3-small model.
+#### `getEmbeddingOnline(text, api_key=None)`
+Generates semantic embeddings using OpenAI's text-embedding-3-small model (replaces previous `getEmbedding`).
 
 - **Parameters**: 
   - `text` (str) - Text to embed
@@ -358,8 +378,8 @@ Generates semantic embeddings using OpenAI's text-embedding-3-small model.
 
 **Example:**
 ```python
-from data_processor import getEmbedding
-embedding = getEmbedding("Patent text content here")
+from data_processor import getEmbeddingOnline
+embedding = getEmbeddingOnline("Patent text content here")
 # Returns: [0.123, -0.456, 0.789, ...] (1536 elements)
 ```
 
@@ -412,6 +432,37 @@ scores = getBulkSimilarityScore(query_embedding, patent_embeddings)
 # Returns: [0.85, 0.72, 0.91, 0.68, ...]
 ```
 
+#### `getPatentEmbedding(text, api_key=None)`
+Main embedding function that automatically falls back to offline TF-IDF if OpenAI API fails.
+
+- **Parameters**: 
+  - `text` (str) - Text to embed
+  - `api_key` (str, optional) - OpenAI API key
+- **Returns**: List of floats or numpy array
+- **Fallback**: Automatically uses `getEmbeddingOffline` if OpenAI API is unavailable
+
+**Example:**
+```python
+from data_processor import getPatentEmbedding
+embedding = getPatentEmbedding("Patent text content here")
+# Returns: OpenAI embedding if available, otherwise TF-IDF embedding
+```
+
+#### `getEmbeddingsFromDocuments(documents)`
+Extracts embeddings from multiple PDF documents.
+
+- **Parameters**: 
+  - `documents` (list) - List of PDF file paths
+- **Returns**: List of embeddings (combined from all documents)
+
+**Example:**
+```python
+from data_processor import getEmbeddingsFromDocuments
+documents = ['doc1.pdf', 'doc2.pdf', 'doc3.pdf']
+embeddings = getEmbeddingsFromDocuments(documents)
+# Returns: Combined list of embeddings from all documents
+```
+
 ### Use Cases
 
 1. **PDF Text Extraction**: Extract text from patent documents for analysis
@@ -419,6 +470,7 @@ scores = getBulkSimilarityScore(query_embedding, patent_embeddings)
 3. **TF-IDF Embeddings**: Generate statistical embeddings for offline patent analysis
 4. **Similarity Calculation**: Compare patent documents for similarity analysis
 5. **Batch Similarity**: Find similar patents from a database of embeddings
+6. **Document Processing**: Process multiple PDF documents and extract embeddings
 
 ### Environment Variables
 
@@ -427,23 +479,191 @@ For OpenAI embeddings, set in your `.env` file:
 OPENAI_API_KEY=sk-your-key-here
 ```
 
+## Architecture Overview
+
+The backend follows a modular architecture with clear separation of concerns:
+
+### Models (`Backend/models/`)
+Domain-specific data models organized by entity:
+- **`alerts.py`**: Alert creation, retrieval, and user-specific alert filtering with similarity analysis
+- **`cases.py`**: Case management including CRUD operations, case relationships, and document handling
+- **`demo.py`**: Demo request creation and management
+- **`users.py`**: User authentication, profile management, and password operations
+
+### Database Module (`Backend/database.py`)
+Provides connectivity and operations for:
+- **Firebase Realtime Database**: CRUD operations for collections and entries
+- **Google Cloud Storage**: File upload/download operations for document storage
+- Connection management and configuration via environment variables
+
+### Controller (`Backend/controller.py`)
+Business logic layer that orchestrates:
+- Patent creation and processing
+- Similarity analysis and alert generation
+- Case-related patent retrieval
+- Coordinates between models and data processing modules
+
+### Data Processor (`Backend/data_processor.py`)
+Text processing and embedding generation:
+- PDF text extraction
+- OpenAI embeddings (online) or TF-IDF embeddings (offline fallback)
+- Similarity calculations for patent analysis
+
+## Database Module
+
+The `database.py` module provides database connectivity and cloud storage operations.
+
+### Available Functions
+
+#### Firebase Realtime Database
+
+##### `connect_to_database()`
+Connects to Firebase Realtime Database using credentials from environment variables.
+
+- **Returns**: Firebase app instance
+- **Required Environment Variables**:
+  - `FIREBASE_CREDENTIALS`: Path to Firebase service account JSON file
+  - `FIREBASE_DATABASE_URL`: Firebase database URL
+
+**Example:**
+```python
+from database import connect_to_database
+app = connect_to_database()
+```
+
+##### `getAllData(app, collectionName)`
+Fetches all data from a Firebase collection.
+
+- **Parameters**: 
+  - `app`: Firebase app instance
+  - `collectionName` (str): Collection/database path name
+- **Returns**: dict - All data from the collection, or None if not found
+
+**Example:**
+```python
+from database import getAllData
+all_cases = getAllData(app, 'cases')
+```
+
+##### `getDataById(app, collectionName, entryId)`
+Fetches a specific entry by ID from a Firebase collection.
+
+- **Parameters**: 
+  - `app`: Firebase app instance
+  - `collectionName` (str): Collection name
+  - `entryId` (str): Entry ID to retrieve
+- **Returns**: dict - Entry data, or None if not found
+
+**Example:**
+```python
+from database import getDataById
+case = getDataById(app, 'cases', 'case_001')
+```
+
+##### `updateDataById(app, collectionName, entryData)`
+Updates a specific entry in Firebase (entry must include `_id` key).
+
+- **Parameters**: 
+  - `app`: Firebase app instance
+  - `collectionName` (str): Collection name
+  - `entryData` (dict): Data to update (must include `_id`)
+- **Returns**: bool - True if successful
+
+**Example:**
+```python
+from database import updateDataById
+entry_data = {'_id': 'case_001', 'status': 'Active'}
+success = updateDataById(app, 'cases', entry_data)
+```
+
+##### `deleteDataById(app, collectionName, entryId)`
+Deletes a specific entry by ID from Firebase.
+
+- **Parameters**: 
+  - `app`: Firebase app instance
+  - `collectionName` (str): Collection name
+  - `entryId` (str): Entry ID to delete
+- **Returns**: bool - True if successful
+
+**Example:**
+```python
+from database import deleteDataById
+success = deleteDataById(app, 'cases', 'case_001')
+```
+
+#### Google Cloud Storage
+
+##### `connect_to_bucket(bucketName)`
+Connects to a Google Cloud Storage bucket.
+
+- **Parameters**: `bucketName` (str) - GCP bucket name
+- **Returns**: Bucket instance
+- **Requirements**: `GOOGLE_APPLICATION_CREDENTIALS` environment variable must be set
+
+**Example:**
+```python
+from database import connect_to_bucket
+bucket = connect_to_bucket('my-patent-bucket')
+```
+
+##### `uploadToGcpBucket(bucketName, sourceFile, destinationBlob)`
+Uploads a file to GCP Storage.
+
+- **Parameters**: 
+  - `bucketName` (str): GCP bucket name
+  - `sourceFile` (str): Local file path
+  - `destinationBlob` (str): Destination path in bucket
+- **Returns**: str - Bucket URL (`bucket-name/file-name`) or None if failed
+
+**Example:**
+```python
+from database import uploadToGcpBucket
+url = uploadToGcpBucket('my-bucket', 'local_file.pdf', 'documents/file.pdf')
+# Returns: 'my-bucket/documents/file.pdf'
+```
+
+##### `loadFromGcpBucket(bucketName, fileName)`
+Loads a file from GCP Storage into memory.
+
+- **Parameters**: 
+  - `bucketName` (str): GCP bucket name
+  - `fileName` (str): File path in bucket
+- **Returns**: bytes - File content, or None if failed
+
+**Example:**
+```python
+from database import loadFromGcpBucket
+file_content = loadFromGcpBucket('my-bucket', 'documents/file.pdf')
+```
+
 ## Development Notes
 
 - The application uses Flask sessions for authentication
 - CORS is enabled for cross-origin requests
-- All controller functions are currently using mock data
+- **Modular Architecture**: Backend organized into models (domain logic), controllers (business logic), and data processors
+- **Model Organization**: Domain-specific models separated into `models/` directory (alerts, cases, demo, users)
+- **Database Integration**: Firebase Realtime Database and Google Cloud Storage support via `database.py`
+- Controller functions coordinate between models and data processing modules
+- Models currently use mock data with TODOs for database integration
 - The frontend uses vanilla JavaScript for API calls
 - Responsive design works on desktop and mobile devices
 - Case details page supports URL parameters for case ID (`?id=<case_id>`)
 - **Dual Dashboard System**: Separate interfaces for attorneys and clients
 - **User Role Management**: Support for 'client' and 'attorney' roles with different permissions
 - **Patent Management**: Full CRUD operations for patent cases with file upload
+- **Alert & Notification System**: 
+  - Interactive alert bell icon in navigation bar
+  - Popup notification panel showing user-specific alerts
+  - Notification cards displaying case titles, descriptions, and trigger dates
+  - Click-to-navigate functionality for similar cases
+  - Automatic similarity analysis for case relationships
 - **Form Validation**: Client-side validation with real-time feedback
 - **File Upload**: Drag-and-drop PDF upload with size and type validation
 - **Demo Scheduling**: Time zone-aware scheduling system for demo requests
 - **API Documentation**: Comprehensive Swagger UI with interactive testing capabilities
 - **OpenAPI 2.0**: Full OpenAPI specification with detailed schemas and examples
-- **Firebase Integration**: Optional Firebase Admin SDK for authentication and cloud services
+- **Firebase Integration**: Firebase Admin SDK for authentication and cloud services
+- **GCP Storage**: Google Cloud Storage integration for document management
 
 ## Future Enhancements
 
