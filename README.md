@@ -2,7 +2,18 @@
 
 A Flask-based web application for patent management with a modern HTML frontend.
 
-## Project Structure
+## 📖 Document Navigation
+
+This README uses emoji badges to help you quickly identify different types of content:
+
+- **👥 For Users** - User-facing features, guides, and credentials
+- **🔧 Setup & Configuration** - Installation, setup, and running instructions
+- **⚙️ Technical/Developer** - Technical documentation, architecture, API details, and development notes
+- **🚀 Future Enhancements** - Planned features and improvements
+
+---
+
+## ⚙️ Project Structure
 
 ```
 patent-gap/
@@ -33,7 +44,7 @@ patent-gap/
 └── README.md              # This file
 ```
 
-## Features
+## 👥 Features
 
 - **Home Page**: Landing page with three feature cards showcasing the platform's capabilities
 - **Login System**: Secure authentication with session management
@@ -56,7 +67,7 @@ patent-gap/
 - **User Roles**: Support for both 'client' and 'attorney' user roles
 - **API Documentation**: Interactive Swagger UI for comprehensive API testing and exploration
 
-## Setup Instructions
+## 🔧 Setup Instructions
 
 ### Quick Installation (Recommended)
 
@@ -215,7 +226,7 @@ python app.py
 - The application will be available at `http://localhost:5000`
 - Press `Ctrl+C` to stop the server
 
-### Running the Application
+### 🔧 Running the Application
 
 #### Using Generated Scripts (After Installation)
 
@@ -256,7 +267,7 @@ python app.py
 - Check that the virtual environment is activated
 - Verify all dependencies are installed: `pip list`
 
-### Testing Swagger Documentation
+### ⚙️ Testing Swagger Documentation
 
 To verify that Swagger is properly set up and working:
 
@@ -276,13 +287,13 @@ To verify that Swagger is properly set up and working:
    - Each endpoint should have detailed documentation with examples
    - You can test endpoints directly from the interface
 
-## Demo Credentials
+## 👥 Demo Credentials
 
 For testing purposes, use these credentials:
 - **Email**: admin@example.com
 - **Password**: password123
 
-## API Documentation
+## ⚙️ API Documentation
 
 ### Swagger UI Interface
 
@@ -348,7 +359,7 @@ Once the backend is running, you can access the API documentation at:
 - `GET /request-demo` - Request demo page
 - `GET /change-password` - Change password page (requires authentication)
 
-## Data Processing Module
+## ⚙️ Data Processing Module
 
 The `data_processor.py` module provides functionality for processing patent documents and generating text embeddings for similarity analysis.
 
@@ -479,7 +490,7 @@ For OpenAI embeddings, set in your `.env` file:
 OPENAI_API_KEY=sk-your-key-here
 ```
 
-## Architecture Overview
+## ⚙️ Architecture Overview
 
 The backend follows a modular architecture with clear separation of concerns:
 
@@ -509,7 +520,7 @@ Text processing and embedding generation:
 - OpenAI embeddings (online) or TF-IDF embeddings (offline fallback)
 - Similarity calculations for patent analysis
 
-## Database Module
+## ⚙️ Database Module
 
 The `database.py` module provides database connectivity and cloud storage operations.
 
@@ -636,7 +647,7 @@ from database import loadFromGcpBucket
 file_content = loadFromGcpBucket('my-bucket', 'documents/file.pdf')
 ```
 
-## Development Notes
+## ⚙️ Development Notes
 
 - The application uses Flask sessions for authentication
 - CORS is enabled for cross-origin requests
@@ -665,13 +676,22 @@ file_content = loadFromGcpBucket('my-bucket', 'documents/file.pdf')
 - **Firebase Integration**: Firebase Admin SDK for authentication and cloud services
 - **GCP Storage**: Google Cloud Storage integration for document management
 
-## Future Enhancements
+## 🚀 Future Enhancements
 
-- Real user authentication system with Firebase
-- Case management functionality
-- File upload capabilities
-- Advanced search and filtering
-- Email notifications
-- User role management
-- Real-time notifications with Firebase
-- Cloud storage integration
+For a comprehensive list of planned features, bugs to resolve, and research items, please see [`TODO.md`](./TODO.md).
+
+### Upcoming Features
+- **AI Model**: AI chatbot for user interactions with case embeddings
+- **Firebase Integration**: Complete Firebase notification connections and alert initiation
+- **Document Separation**: Separate technical documents from case files for better similarity matching
+- **Enhanced Styling**: Improved UI/UX with unique design elements
+- **Additional Sources**: More patent data sources from global and regional providers
+- **Database Integration**: Full Firebase database connection with proper collections
+- **Analytics Integration**: Firebase Analytics integration for usage tracking
+- **Alert Handlers**: Frontend alert message handlers for better user experience
+
+### Active Development Areas
+- **Bug Fixes**: Resolving empty document embedding issues that trigger spam alerts
+- **Research**: Patent sources, translation methods, and AI model selection for chatbot
+
+For detailed information on all planned features, current bugs, and research items, see the [`TODO.md`](./TODO.md) file.
