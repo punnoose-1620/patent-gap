@@ -40,6 +40,7 @@ patent-gap/
 │   ├── change_password.html # Change password page
 │   └── styles.css          # Shared CSS styles
 ├── Assets/                 # Images, media, documents
+├── Screenshots/            # Application screenshots
 ├── requirements.txt        # Python dependencies
 └── README.md              # This file
 ```
