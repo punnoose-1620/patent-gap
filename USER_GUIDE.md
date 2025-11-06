@@ -4,6 +4,8 @@
 
 Patent Gap AI is an AI-powered patent management and monitoring platform designed for attorneys and innovators. It helps protect intellectual property and monitor potential infringements through automated similarity detection and smart alert systems.
 
+![Platform Flow Diagram](Assets/Platform-Flow.png)
+
 ---
 
 ## What Can Patent Gap AI Do?
