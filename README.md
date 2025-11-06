@@ -2,6 +2,8 @@
 
 A Flask-based web application for patent management with a modern HTML frontend.
 
+> **ℹ️ For a non-technical, client-facing description of the platform, please see our [User Guide](./USER_GUIDE.md).**
+
 ## 📖 Document Navigation
 
 This README uses emoji badges to help you quickly identify different types of content:
