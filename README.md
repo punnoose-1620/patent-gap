@@ -44,6 +44,13 @@ patent-gap/
 └── README.md              # This file
 ```
 
+## 👥 Flowcharts
+
+![⚙️ Technical/Developer-side Flowchart](./Assets/Function_Flowchart.png)
+
+![👥 Non-technical/Client-side Flowchart](./Assets/Platform-Flow.png)
+
+
 ## 👥 Features
 
 - **Home Page**: Landing page with three feature cards showcasing the platform's capabilities

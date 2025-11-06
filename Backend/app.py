@@ -83,6 +83,7 @@ def request_demo_page():
     """Serve the request demo page"""
     return render_template('request-demo.html')
 
+
 # API Endpoints
 @app.route('/api/create-demo-request', methods=['POST'])
 def create_demo_request():
