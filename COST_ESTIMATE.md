@@ -2,7 +2,7 @@ This is a complex request as the maximum number of supported users depends entir
 
 I have added the requested columns:
 1.  **Supported Live Users (Estimated)**: A reasonable estimate of concurrent users the hardware can support before requiring immediate scaling. This is based primarily on the 2x E2-standard-8 VM capacity.
-2.  **Projected Change ($\Delta 10$ Users)**: A projection of cost change based on the assumption that **variable costs** (Network Egress and Firebase Download) scale proportionally.
+2.  **Projected Change (per 10 Users)**: A projection of cost change based on the assumption that **variable costs** (Network Egress and Firebase Download) scale proportionally.
 
 ---
 
@@ -18,13 +18,13 @@ The figures in the user-based columns are **highly speculative** and are derived
 
 These costs are **fixed** and do not change until the current hardware (2x E2-standard-8) is fully saturated and the system needs to scale out (add a 3rd VM) or scale up (upgrade to C2/N2 series).
 
-| Component | Specification | CUD Monthly Cost (2 VMs) | Supported Live Users (Estimated) | Projected Change ($\Delta 10$ Users) |
+| Component | Specification | CUD Monthly Cost (2 VMs) | Supported Live Users (Estimated) | Projected Change per 10 Users |
 | :--- | :--- | :--- | :--- | :--- |
-| **VM Instance** (CUD Applied) | E2-standard-8 (8 vCPU, 32 GB RAM) | **\$273.26** | Up to 1,000 Concurrent Users | $\mathbf{\$0.00}$ (Fixed until $\text{Cap reached}$) |
-| **Boot Disk** | 100 GB Balanced PD (SSD) | **\$26.20** | Up to 1,000 Concurrent Users | $\mathbf{\$0.00}$ (Fixed until $\text{Cap reached}$) |
-| **Temporary Disk** | 200 GB Balanced PD (SSD) | **\$52.40** | Up to 1,000 Concurrent Users | $\mathbf{\$0.00}$ (Fixed until $\text{Cap reached}$) |
-| **Standard Storage** (Initial/Growth) | 500 GB Initial + 200 GB/month Growth | **\$14.00** | N/A (Based on Document Volume) | $\mathbf{\$0.00}$ (Until $\text{Cap reached}$) |
-| **Nearline Storage** | 250 GB Archived Docs | **\$2.50** | N/A (Based on Document Volume) | $\mathbf{\$0.00}$ (Until $\text{Cap reached}$) |
+| **VM Instance** (CUD Applied) | E2-standard-8 (8 vCPU, 32 GB RAM) | **\$273.26** | Up to 1,000 Concurrent Users | $0.00 (Fixed until Cap reached) |
+| **Boot Disk** | 100 GB Balanced PD (SSD) | **\$26.20** | Up to 1,000 Concurrent Users | $0.00 (Fixed until Cap reached) |
+| **Temporary Disk** | 200 GB Balanced PD (SSD) | **\$52.40** | Up to 1,000 Concurrent Users | $0.00 (Fixed until Cap reached) |
+| **Standard Storage** (Initial/Growth) | 500 GB Initial + 200 GB/month Growth | **\$14.00** | N/A (Based on Document Volume) | 0.00 (Until Cap reached) |
+| **Nearline Storage** | 250 GB Archived Docs | **\$2.50** | N/A (Based on Document Volume) | $0.00 (Until Cap reached) |
 | **Subtotal (Compute & Storage)** | | **\$368.36** | | **\$0.00** |
 
 ---
@@ -33,12 +33,12 @@ These costs are **fixed** and do not change until the current hardware (2x E2-st
 
 Variable costs will change immediately with user activity. The **Internet Egress** is the main driver of cost in this section.
 
-| Component | Usage Estimate | Monthly Cost | Supported Live Users (Estimated) | Projected Change ($\Delta 10$ Users) |
+| Component | Usage Estimate | Monthly Cost | Supported Live Users (Estimated) | Projected Change (per 10 Users) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Load Balancer** (Base + Data) | 5 TB Data Processed | **\$59.21** | 1,000 Concurrent Users | $\approx \$0.08$ |
-| **Internet Egress** (Outbound) | 5 TB Data Transfer to Users | **\$600.00** | 1,000 Concurrent Users | $\approx \mathbf{\$6.00}$ |
-| **Storage Operations + Serverless** | High Volume | **\$25.00** | N/A (Based on Processing) | $\approx \$0.25$ |
-| **Subtotal (Network & Ops)** | | **\$684.21** | | $\approx \mathbf{\$6.33}$ |
+| **Load Balancer** (Base + Data) | 5 TB Data Processed | **\$59.21** | 1,000 Concurrent Users | ~ $0.08 |
+| **Internet Egress** (Outbound) | 5 TB Data Transfer to Users | **\$600.00** | 1,000 Concurrent Users | ~ $6.00 |
+| **Storage Operations + Serverless** | High Volume | **\$25.00** | N/A (Based on Processing) | ~ $0.25 |
+| **Subtotal (Network & Ops)** | | **\$684.21** | | ~ $6.33 |
 
 ---
 
@@ -48,10 +48,10 @@ These costs are highly sensitive to the number of active users receiving real-ti
 
 | Component | Usage Estimate | Monthly Cost | Supported Live Users (Estimated) | Projected Change ($\Delta 10$ Users) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Realtime DB Storage** | 4 GB | **\$20.00** | N/A (Based on Stored Data) | $\mathbf{\$0.00}$ |
-| **Realtime DB Download** | 200 GB Outbound | **\$200.00** | 1,000 Concurrent Users | $\approx \mathbf{\$2.00}$ |
-| **FCM & Analytics** | Unlimited / Free | **\$0.00** | Unlimited | $\mathbf{\$0.00}$ |
-| **Subtotal (Firebase)** | | **\$220.00** | | $\approx \mathbf{\$2.00}$ |
+| **Realtime DB Storage** | 4 GB | **\$20.00** | N/A (Based on Stored Data) | $0.00 |
+| **Realtime DB Download** | 200 GB Outbound | **\$200.00** | 1,000 Concurrent Users | ~ $2.00$ |
+| **FCM & Analytics** | Unlimited / Free | **\$0.00** | Unlimited | $0.00 |
+| **Subtotal (Firebase)** | | **\$220.00** | | ~ $2.00 |
 
 ---
 
@@ -61,10 +61,10 @@ These fixed subscription costs are **per license/organization** and do not chang
 
 | Service | Highest Tier Plan | Monthly Cost (USD) | Supported Live Users (Estimated) | Projected Change ($\Delta 10$ Users) |
 | :--- | :--- | :--- | :--- | :--- |
-| **ChatGPT** | ChatGPT Pro | **\$200.00** | N/A (Per License) | $\mathbf{\$0.00}$ |
-| **Cursor** | Ultra | **\$200.00** | N/A (Per License) | $\mathbf{\$0.00}$ |
-| **Gemini** | Google AI Ultra | **\$249.99** | N/A (Per License) | $\mathbf{\$0.00}$ |
-| **TOTAL Subscription Fee** | (Per licensed user/organization) | **\$649.99** | | $\mathbf{\$0.00}$ |
+| **ChatGPT** | ChatGPT Pro | **\$200.00** | N/A (Per License) | $0.00 |
+| **Cursor** | Ultra | **\$200.00** | N/A (Per License) | $0.00 |
+| **Gemini** | Google AI Ultra | **\$249.99** | N/A (Per License) | $0.00 |
+| **TOTAL Subscription Fee** | (Per licensed user/organization) | **\$649.99** | | $0.00 |
 
 ---
 
@@ -72,11 +72,11 @@ These fixed subscription costs are **per license/organization** and do not chang
 
 | Cost Category | Monthly Estimate (USD) | Projected Change ($\Delta 10$ Users) |
 | :--- | :--- | :--- |
-| **I. Core GCP Compute & Storage (With CUD)** | $\approx \$ 368.36$ | **\$0.00** |
-| **II. Networking & Operations (High Egress)** | $\approx \$ 684.21$ | $\approx \$ 6.33$ |
-| **III. Firebase Services (High Real-time Use)** | $\approx \$ 220.00$ | $\approx \$ 2.00$ |
-| **IV. Fixed AI/Dev Subscriptions (1 User)** | $\approx \$ 649.99$ | **\$0.00** |
-| **TOTAL ESTIMATE (High Usage + Subscriptions)** | $\approx$ **\$1,922.56+** | $\approx \mathbf{\$8.33}$ |
+| **I. Core GCP Compute & Storage (With CUD)** | ~ $368.36 | **\$0.00** |
+| **II. Networking & Operations (High Egress)** | ~ $684.21 | ~ **\$ 6.33** |
+| **III. Firebase Services (High Real-time Use)** | ~ $220.00 | **~ \$ 2.00** |
+| **IV. Fixed AI/Dev Subscriptions (1 User)** | ~ $649.99 | **\$0.00** |
+| **TOTAL ESTIMATE (High Usage + Subscriptions)** | ~ **\$1,922.56+** | **~ $8.33** |
 
 ### 🔍 User Scaling Strategy
 
@@ -84,9 +84,9 @@ The platform is designed to handle user expansion by absorbing initial growth wi
 
 
 
-* **Initial Capacity (Up to 1,000 Users):** Growth is covered by the current fixed $\approx\$368.36$ VM cost. The only scaling cost is the $\approx\mathbf{\$8.33}$ per 10 users for variable network/data usage.
-* **Scaling Threshold:** Once the 1,000 user cap is reached, the platform will automatically provision a **3rd VM Instance**. This adds a new fixed cost of $\approx\$136.63$ (CUD cost per VM) to the monthly bill, but increases the capacity to $\approx 1,500$ concurrent users.
-* **Egress and Real-Time:** The variable costs (Networking and Firebase) will continue to scale linearly by $\approx\mathbf{\$8.33}$ per 10 new users regardless of the VM count.
+* **Initial Capacity (Up to 1,000 Users):** Growth is covered by the current fixed ~$368.36 VM cost. The only scaling cost is the ~ $8.33 per 10 users for variable network/data usage.
+* **Scaling Threshold:** Once the 1,000 user cap is reached, the platform will automatically provision a **3rd VM Instance**. This adds a new fixed cost of \$136.63 (CUD cost per VM) to the monthly bill, but increases the capacity to ~ \$1,500 concurrent users.
+* **Egress and Real-Time:** The variable costs (Networking and Firebase) will continue to scale linearly by ~ \$8.33 per 10 new users regardless of the VM count.
 
 ---
 
