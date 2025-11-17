@@ -1,7 +1,168 @@
+import os
 import PyPDF2
 import openai
 import numpy as np
+from dotenv import load_dotenv
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sources.USPTO import USPTOPatentAPI, MissingAPIKeyError
+
+# Module-level variable to store USPTO API instance
+_uspto_api_instance = None
+
+def initialize_uspto_api():
+    """
+    Initialize the USPTO Patent API client using the API key from environment variables.
+    The instance is stored as a module-level variable for reuse.
+    
+    Returns:
+        USPTOPatentAPI: The initialized USPTO API client instance
+        
+    Raises:
+        MissingAPIKeyError: If USPTO_API_KEY is not set in environment variables
+        
+    Example:
+        >>> api = initialize_uspto_api()
+        >>> results = api.search_patents("Utility", limit=10)
+    """
+    global _uspto_api_instance
+    
+    # Load environment variables
+    load_dotenv()
+    
+    # Get API key from environment
+    api_key = os.getenv('USPTO_API_KEY')
+    
+    if not api_key:
+        raise MissingAPIKeyError(
+            "USPTO_API_KEY environment variable is not set.\n"
+            "Please add USPTO_API_KEY=your-api-key to your .env file.\n"
+            "Get your API key at: https://account.uspto.gov/api-manager/"
+        )
+    
+    # Initialize if not already initialized
+    if _uspto_api_instance is None:
+        _uspto_api_instance = USPTOPatentAPI(api_key=api_key)
+    
+    return _uspto_api_instance
+
+def get_uspto_api():
+    """
+    Get the USPTO API client instance. Initializes it if not already initialized.
+    
+    Returns:
+        USPTOPatentAPI: The USPTO API client instance
+    """
+    global _uspto_api_instance
+    
+    if _uspto_api_instance is None:
+        return initialize_uspto_api()
+    
+    return _uspto_api_instance
+
+def extract_keywords_from_documents(document_urls, top_n=15):
+    """
+    Reads the content from a list of document URLs and isolates an array of relevant keywords.
+
+    Args:
+        document_urls (list): List of URLs/paths to documents (PDFs or text files).
+        top_n (int): Number of top keywords to extract from each document (default 15).
+
+    Returns:
+        dict: Mapping of each document URL to its list of extracted keywords.
+    """
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    import requests
+
+    def fetch_text_from_url(url):
+        # If URL is a http/https path, fetch and (if PDF, extract text)
+        # If it's a local file path, open and read contents
+        if url.startswith("http"):
+            try:
+                response = requests.get(url)
+                response.raise_for_status()
+                # Basic guess: PDF if endswith .pdf, else treat as text
+                if url.lower().endswith('.pdf'):
+                    import io
+                    reader = PyPDF2.PdfReader(io.BytesIO(response.content))
+                    text = ''
+                    for page in reader.pages:
+                        text += page.extract_text() or ""
+                    return text
+                else:
+                    return response.text
+            except Exception as e:
+                print(f"Could not fetch {url}: {e}")
+                return ""
+        else:
+            # Local file
+            try:
+                if url.lower().endswith('.pdf'):
+                    return readPdf(url)
+                else:
+                    with open(url, 'r', encoding='utf-8') as f:
+                        return f.read()
+            except Exception as e:
+                print(f"Could not open {url}: {e}")
+                return ""
+
+    results = {}
+    for doc_url in document_urls:
+        text = fetch_text_from_url(doc_url)
+        if not text or len(text) < 25:
+            results[doc_url] = []
+            continue
+
+        # Use TF-IDF to extract keywords
+        try:
+            # Split into sentences for vectorizer
+            documents = [text]
+            vectorizer = TfidfVectorizer(
+                stop_words='english', 
+                lowercase=True, 
+                ngram_range=(1,2), 
+                max_features=1000
+            )
+            X = vectorizer.fit_transform(documents)
+            indices = X[0].toarray().argsort()[0][::-1]
+            feature_names = vectorizer.get_feature_names_out()
+
+            # Get top keywords by TF-IDF score
+            keywords = []
+            sorted_indices = X[0].toarray()[0].argsort()[::-1]
+            for idx in sorted_indices[:top_n]:
+                keywords.append(feature_names[idx])
+            results[doc_url] = keywords
+        except Exception as e:
+            print(f"TF-IDF failed on {doc_url}: {e}")
+            results[doc_url] = []
+
+    return results
+
+def getKeywordDocumentsUSPTO(keywords:list[str]):
+    """
+    Get all documents/patents from the USPTO API related to the given keywords.
+    
+    Args:
+        keywords: List of keywords or a single keyword string
+    
+    Returns:
+        Dictionary containing search results with patents matching any of the keywords
+    """
+    # Use the module-level instance if available, otherwise initialize it
+    global _uspto_api_instance
+    
+    if _uspto_api_instance is None:
+        api = get_uspto_api()
+    else:
+        api = _uspto_api_instance
+    
+    # Merge keywords using OR operator
+    query = " OR ".join(keywords)
+    
+    # Search for patents matching the query
+    results = api.search_patents(query=query, limit=100)  # Increased limit to get more results
+    
+    return results
 
 def readPdf(pdf_path):
     """

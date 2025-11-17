@@ -63,6 +63,7 @@ def add_to_alerts(triggered_by, triggered_at, alert_users):
         "sent_receipts": []
     }
     alerts.append(newAlert)
+    trigger_alert(alert_users)
     return newAlert['_id']
 
 def get_alerts():
@@ -104,6 +105,6 @@ def get_alerts_for_user(user_id):
         print(f"Error in get_alerts_for_user: {str(e)}")
     return user_alerts
 
-def trigger_alert(keyword):
-    # TODO: Implement actual alert triggering logic
-    return alerts[keyword]
+def trigger_alert(alert_users):
+    # TODO: Implement actual alert triggering logic to send alerts to the users
+    return True

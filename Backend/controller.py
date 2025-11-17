@@ -5,10 +5,10 @@ from models.cases import *
 from models.users import *
 from models.alerts import *
 from data_processor import *
+
 """
 Controller functions for handling business logic
 """
-
 def get_case_related_patents(case_id):
     """
     Get patents related to a specific case

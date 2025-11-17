@@ -13,6 +13,9 @@ This README uses emoji badges to help you quickly identify different types of co
 - **⚙️ Technical/Developer** - Technical documentation, architecture, API details, and development notes
 - **🚀 Future Enhancements** - Planned features and improvements
 
+**Additional Documentation**:
+- [Technical Requirements](./TechnicalRequirements.md) - GCP infrastructure requirements and specifications for hosting the platform
+
 ---
 
 ## ⚙️ Project Structure
