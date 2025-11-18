@@ -347,7 +347,9 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
     print(json.dumps(results['patentFileWrapperDataBag'][0]['eventDataBag'], indent=4))
     finalResults = []
     for result in results['patentFileWrapperDataBag']:
-        finalResults.append(isolateDataFromUSPTOResults(result))
+        tempResult = isolateDataFromUSPTOResults(result)
+        print('tempResult: ', json.dumps(tempResult, indent=4))
+        finalResults.append(tempResult)
     
     return results
 
