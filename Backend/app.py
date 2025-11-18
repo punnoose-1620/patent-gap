@@ -29,6 +29,9 @@ swagger = initialize_swagger(app)
 @app.route('/')
 def index():
     """Serve the home page"""
+    testKeywords = ['AI', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence']
+    testDocuments = getKeywordDocumentsUSPTO(testKeywords)
+    # print('Test Documents:', testDocuments)
     return render_template('index.html')
 
 @app.route('/favicon.ico')

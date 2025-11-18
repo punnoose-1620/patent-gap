@@ -1,4 +1,5 @@
 import os
+import json
 import PyPDF2
 import openai
 import numpy as np
@@ -138,12 +139,194 @@ def extract_keywords_from_documents(document_urls, top_n=15):
 
     return results
 
+def isolateDataFromUSPTOResults(result):
+    """
+    Structure of Result Input:
+        result
+        |-> eventDataBag: list of dictionaries
+        |   |-> eventCode: string
+        |   |-> eventDescriptionText: string
+        |   |-> eventDate: Date (YYYY-MM-DD)
+        |-> applicationMetaData: dictionary
+        |   |-> applicationStatusCode: number
+        |   |-> applicationTypeCode: string
+        |   |-> entityStatusData: dictionary
+        |   |   |-> smallEntityStatusIndicator: boolean
+        |   |   |-> businessEntityStatusCategory: string
+        |   |-> filingDate: Date (YYYY-MM-DD)
+        |   |-> inventorBag: list of dictionaries
+        |   |   |-> firstName: string
+        |   |   |-> lastName: string
+        |   |   |-> inventorNameText: string
+        |   |   |-> correspondenceAddressBag: list of dictionaries
+        |   |   |   |-> cityName: string
+        |   |   |   |-> geographicRegionName: string
+        |   |   |   |-> geographicRegionCode: string
+        |   |   |   |-> countryCode: string
+        |   |   |   |-> NameLineOneText: string
+        |   |   |   |-> countryName: string
+        |   |   |   |-> postalAddressCategory: string
+        |   |-> applicationStatusDescriptionText: string
+        |   |-> customerNumber: number
+        |   |-> groupArtUnitNumber: number
+        |   |-> inventionTitle: string
+        |   |-> nationalStageIndicator: boolean
+        |   |-> firstInventorName: string
+        |   |-> applicationConfirmationNumber: number
+        |   |-> effectiveFilingDate: Date (YYYY-MM-DD)
+        |   |-> applicationTypeLabelName: string
+        |   |-> publicationCategoryBag: list of strings
+        |   |-> applicationStatusDate: Date (YYYY-MM-DD)
+        |   |-> class: number
+        |   |-> docketNumber: string
+        |   |-> applicationTypeCategory: string
+        |-> parentContinuityBag: list of dictionaries
+        |   |-> parentApplicationStatusCode: number
+        |   |-> fifrstInventorToFileIndicator: boolean
+        |   |-> claimParentageTypeCode: string
+        |   |-> claimParentageTypeCodeDescriptionText: string
+        |   |-> parentApplicationStatusDescriptionText: string
+        |   |-> parentApplicationNumberText: number
+        |   |-> parentApplicationFilingDate: Date (YYYY-MM-DD)
+        |   |-> childApplicationNumberText: number
+        |   |-> parentpatentNumber: number
+        |-> lastIngestionDateTime : DateTime(YYYY-MM-DDTHH:MM:SS.sssZ)
+        |-> recordAttorney : dictionary
+        |   |-> powerOfAttorneyBag: list of dictionaries
+        |   |   |-> activeIndicator: string
+        |   |   |-> firstName: string
+        |   |   |-> lastName: string
+        |   |   |-> registrationNumber: string
+        |   |   |-> attorneyAddressBag: list of dictionaries
+        |   |   |   |-> cityName: string
+        |   |   |   |-> geographicRegionName: string
+        |   |   |   |-> geographicRegionCode: string
+        |   |   |   |-> countryCode: string
+        |   |   |   |-> postalCode: number
+        |   |   |   |-> nameLineOneText: string
+        |   |   |   |-> countryName: string
+        |   |   |   |-> addressLineOneText: string
+        |   |   |   |-> addressLineTwoText: string
+        |   |   |-> telecommunicationAddressBag: list of dictionaries
+        |   |   |   |-> telecommunicationNumber: string
+        |   |   |   |-> telecommunicationType: string
+        |-> attorneyBag: list of dictionaries
+        |-> applicationNumberText : number
+        |-> correspondenceAddressBag: list of dictionaries
+        |   |-> cityName
+        |   |-> geographicRegionName
+        |   |-> geographicRegionCode
+        |   |-> countryCode
+        |   |-> postalCode
+        |   |-> nameLineOneText
+        |   |-> countryName
+        |   |-> addressLineOneText
+        |   |-> addressLineTwoText
+    """
+    finalResult = {
+        'applicationNumber': None,
+        'title': None,
+        'currentStatus': None,
+        'currentStatusCode': None,
+        'currentStatusDate': None,
+        'attorneys': [],    # Name, Registration Number, Contact
+        'inventors': [],    # List of names
+        'mailingAddresses': [],  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, nameLineText
+        'filingDate': None
+    }
+    return finalResult
+
 def getKeywordDocumentsUSPTO(keywords:list[str]):
     """
     Get all documents/patents from the USPTO API related to the given keywords.
-    
+
     Args:
         keywords: List of keywords or a single keyword string
+
+    Structure of Results:
+        results
+        |-> count: number
+        |-> patentFileWrapperDataBag: list of dictionaries
+        |   |-> eventDataBag: list of dictionaries
+        |   |   |-> eventCode: string
+        |   |   |-> eventDescriptionText: string
+        |   |   |-> eventDate: Date (YYYY-MM-DD)
+        |   |-> applicationMetaData: dictionary
+        |   |   |-> applicationStatusCode: number
+        |   |   |-> applicationTypeCode: string
+        |   |   |-> entityStatusData: dictionary
+        |   |   |   |-> smallEntityStatusIndicator: boolean
+        |   |   |   |-> businessEntityStatusCategory: string
+        |   |   |-> filingDate: Date (YYYY-MM-DD)
+        |   |   |-> inventorBag: list of dictionaries
+        |   |   |   |-> firstName: string
+        |   |   |   |-> lastName: string
+        |   |   |   |-> inventorNameText: string
+        |   |   |   |-> correspondenceAddressBag: list of dictionaries
+        |   |   |   |   |-> cityName: string
+        |   |   |   |   |-> geographicRegionName: string
+        |   |   |   |   |-> geographicRegionCode: string
+        |   |   |   |   |-> countryCode: string
+        |   |   |   |   |-> NameLineOneText: string
+        |   |   |   |   |-> countryName: string
+        |   |   |   |   |-> postalAddressCategory: string
+        |   |   |-> applicationStatusDescriptionText: string
+        |   |   |-> customerNumber: number
+        |   |   |-> groupArtUnitNumber: number
+        |   |   |-> inventionTitle: string
+        |   |   |-> nationalStageIndicator: boolean
+        |   |   |-> firstInventorName: string
+        |   |   |-> applicationConfirmationNumber: number
+        |   |   |-> effectiveFilingDate: Date (YYYY-MM-DD)
+        |   |   |-> applicationTypeLabelName: string
+        |   |   |-> publicationCategoryBag: list of strings
+        |   |   |-> applicationStatusDate: Date (YYYY-MM-DD)
+        |   |   |-> class: number
+        |   |   |-> docketNumber: string
+        |   |   |-> applicationTypeCategory: string
+        |   |-> parentContinuityBag: list of dictionaries
+        |   |   |-> parentApplicationStatusCode: number
+        |   |   |-> fifrstInventorToFileIndicator: boolean
+        |   |   |-> claimParentageTypeCode: string
+        |   |   |-> claimParentageTypeCodeDescriptionText: string
+        |   |   |-> parentApplicationStatusDescriptionText: string
+        |   |   |-> parentApplicationNumberText: number
+        |   |   |-> parentApplicationFilingDate: Date (YYYY-MM-DD)
+        |   |   |-> childApplicationNumberText: number
+        |   |   |-> parentpatentNumber: number
+        |   |-> lastIngestionDateTime : DateTime(YYYY-MM-DDTHH:MM:SS.sssZ)
+        |   |-> recordAttorney : dictionary
+        |   |   |-> powerOfAttorneyBag: list of dictionaries
+        |   |   |   |-> activeIndicator: string
+        |   |   |   |-> firstName: string
+        |   |   |   |-> lastName: string
+        |   |   |   |-> registrationNumber: string
+        |   |   |   |-> attorneyAddressBag: list of dictionaries
+        |   |   |   |   |-> cityName: string
+        |   |   |   |   |-> geographicRegionName: string
+        |   |   |   |   |-> geographicRegionCode: string
+        |   |   |   |   |-> countryCode: string
+        |   |   |   |   |-> postalCode: number
+        |   |   |   |   |-> nameLineOneText: string
+        |   |   |   |   |-> countryName: string
+        |   |   |   |   |-> addressLineOneText: string
+        |   |   |   |   |-> addressLineTwoText: string
+        |   |   |   |-> telecommunicationAddressBag: list of dictionaries
+        |   |   |   |   |-> telecommunicationNumber: string
+        |   |   |   |   |-> telecommunicationType: string
+        |   |   |-> attorneyBag: list of dictionaries
+        |   |-> applicationNumberText : number
+        |   |-> correspondenceAddressBag: list of dictionaries
+        |   |   |-> cityName
+        |   |   |-> geographicRegionName
+        |   |   |-> geographicRegionCode
+        |   |   |-> countryCode
+        |   |   |-> postalCode
+        |   |   |-> nameLineOneText
+        |   |   |-> countryName
+        |   |   |-> addressLineOneText
+        |   |   |-> addressLineTwoText
+        |-> requestIdentifier
     
     Returns:
         Dictionary containing search results with patents matching any of the keywords
@@ -161,6 +344,10 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
     
     # Search for patents matching the query
     results = api.search_patents(query=query, limit=100)  # Increased limit to get more results
+    print(json.dumps(results['patentFileWrapperDataBag'][0]['eventDataBag'], indent=4))
+    finalResults = []
+    for result in results['patentFileWrapperDataBag']:
+        finalResults.append(isolateDataFromUSPTOResults(result))
     
     return results
 
