@@ -1,11 +1,16 @@
+import io
 import os
+import ast
 import json
+import uuid
 import PyPDF2
 import openai
+import requests
 import numpy as np
 from dotenv import load_dotenv
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sources.USPTO import USPTOPatentAPI, MissingAPIKeyError
+from file_controller import readDocumentFromUrl
 
 # Module-level variable to store USPTO API instance
 _uspto_api_instance = None
@@ -71,9 +76,6 @@ def extract_keywords_from_documents(document_urls, top_n=15):
     Returns:
         dict: Mapping of each document URL to its list of extracted keywords.
     """
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    import requests
-
     def fetch_text_from_url(url):
         # If URL is a http/https path, fetch and (if PDF, extract text)
         # If it's a local file path, open and read contents
@@ -83,7 +85,6 @@ def extract_keywords_from_documents(document_urls, top_n=15):
                 response.raise_for_status()
                 # Basic guess: PDF if endswith .pdf, else treat as text
                 if url.lower().endswith('.pdf'):
-                    import io
                     reader = PyPDF2.PdfReader(io.BytesIO(response.content))
                     text = ''
                     for page in reader.pages:
@@ -98,7 +99,7 @@ def extract_keywords_from_documents(document_urls, top_n=15):
             # Local file
             try:
                 if url.lower().endswith('.pdf'):
-                    return readPdf(url)
+                    return readDocumentFromUrl(url)
                 else:
                     with open(url, 'r', encoding='utf-8') as f:
                         return f.read()
@@ -139,8 +140,95 @@ def extract_keywords_from_documents(document_urls, top_n=15):
 
     return results
 
+def getKeywordsFromContentOnline(content, api_key=None, model="gpt-3.5-turbo"):
+    """
+    Extract keywords from `content` using the OpenAI API.
+    Args:
+        content (str): The text to extract keywords from.
+        api_key (str, optional): OpenAI API key; if not provided, uses OPENAI_API_KEY environment var.
+    Returns:
+        list: List of extracted keyword strings.
+    """
+    api_key = api_key or os.getenv('OPENAI_API_KEY')
+    client = openai.OpenAI(api_key=api_key)
+
+    prompt = (
+        "Extract the most important, domain-specific keywords from the following text. "
+        "Only output a Python list of keywords as strings, no explanations or comments.\n\n"
+        f"Text:\n{content}\n\nKeywords:"
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are an expert assistant that extracts keywords as a Python list."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=128,
+        )
+        raw = response.choices[0].message.content.strip()
+        # Safely evaluate Python list string to actual list
+        keywords = ast.literal_eval(raw)
+        if not isinstance(keywords, list):
+            return []
+        # Ensure all keywords are strings and deduped
+        keywords = [str(k).strip() for k in keywords if isinstance(k, str)]
+        return keywords
+    except Exception as e:
+        print(f"OpenAI keyword extraction failed: {e}")
+        return []
+
+def getKeywordsFromContentOffline(content):
+    """
+    Extract keywords from `content` using TF-IDF.
+    Args:
+        content (str): The text to extract keywords from.
+    Returns:
+        list: List of top keyword strings.
+    """
+    # Treat the content as a single document; TF-IDF needs at least one doc
+    docs = [content]
+    vectorizer = TfidfVectorizer(stop_words="english", max_features=20)
+    tfidf_matrix = vectorizer.fit_transform(docs)
+    feature_names = vectorizer.get_feature_names_out()
+    scores = tfidf_matrix.toarray()[0]
+
+    # Get indices of top N scores
+    N = 10
+    top_indices = np.argsort(scores)[::-1][:N]
+    keywords = [feature_names[i] for i in top_indices if scores[i] > 0]
+
+    return keywords
+
+def getKeywordsFromContent(content, api_key=None, model="gpt-3.5-turbo"):
+    """
+    Extract keywords from `content` using both online and offline methods.
+    Args:
+        content (str): The text to extract keywords from.
+    Returns:
+        list: List of top keyword strings.
+    """
+    if api_key is not None:
+        try:
+            return getKeywordsFromContentOnline(content, api_key, model)
+        except Exception as e:
+            print(f"OpenAI keyword extraction failed: {e}")
+            return getKeywordsFromContentOffline(content)
+    else:
+        return getKeywordsFromContentOffline(content)
+
 def isolateDataFromUSPTOResults(result):
     """
+    This function extracts key structured information from a raw USPTO API result dictionary.
+    - From the `eventDataBag` list, it collects all eventCode, eventDescriptionText, and eventDate for each event.
+    - From the `applicationMetaData`, it pulls core application fields such as applicationStatusCode, applicationTypeCode, entityStatusData, filingDate, inventorBag (with full name and correspondenceAddressBag), applicationStatusDescriptionText, inventionTitle, firstInventorName, etc.
+    - It checks for existence of nested keys before extracting values; if some keys are missing, their values may be set as None or skipped.
+    - From the `parentContinuityBag`, it extracts all parent continuation application relationships, collecting fields like parentApplicationStatusCode, claimParentageTypeCode, and parentApplicationNumberText, if present.
+    - The function also takes top-level fields such as lastIngestionDateTime if available.
+    The extraction is performed conditionally depending on the presence of sections and keys in the result dictionary to ensure robust handling of incomplete or malformed data.
+
     Structure of Result Input:
         result
         |-> eventDataBag: list of dictionaries
@@ -223,22 +311,94 @@ def isolateDataFromUSPTOResults(result):
         |   |-> addressLineOneText
         |   |-> addressLineTwoText
     """
+    def processAddressLineText(address):
+        address['addressLineText'] = ''
+        if 'nameLineOneText' in address.keys():
+            if address['nameLineOneText'] is not None:
+                address['addressLineText'] = address.pop('nameLineOneText')
+        if 'addressLineOneText' in address.keys():
+            if address['addressLineOneText'] is not None:
+                address['addressLineText'] = address['addressLineText'] + ',' + address.pop('addressLineOneText')
+        if 'addressLineTwoText' in address.keys():
+            if address['addressLineTwoText'] is not None:
+                address['addressLineText'] = address['addressLineText'] + ',' + address.pop('addressLineTwoText')
+
+    applicationNumber = None
+    titleData = None
+    currentStatusData = None
+    currentStatusCode = None
+    currentStatusDate = None
+    attorneys = []
+    inventors = []
+    mailingAddresses = []
+    filingDate = None
+
+    correspondenceAddressBag = result.get('correspondenceAddressBag')
+    recordAttorney = result.get('recordAttorney')
+    applicationMetaData = result.get('applicationMetaData')
+
+    if result.get('applicationNumberText') is not None:
+        applicationNumber = f"uspto_{result.get('applicationNumberText')}"
+    else:
+        applicationNumber = f"uspto_{uuid.uuid4().hex}"
+
+    if applicationMetaData is not None:
+        titleData = applicationMetaData.get('inventionTitle')
+        filingDate = applicationMetaData.get('filingDate')
+        tempInventors = applicationMetaData.get('inventorBag')
+        currentStatusCode = applicationMetaData.get('applicationStatusCode')
+        currentStatusDate = applicationMetaData.get('applicationStatusDate')
+        currentStatusData = applicationMetaData.get('applicationStatusDescriptionText')
+        if type(tempInventors) is list:
+            for inventor in tempInventors:
+                inventors.append(inventor.get('inventorNameText'))
+            tempInventorAddresses = inventor.get('correspondenceAddressBag')
+            if type(tempInventorAddresses) is list:
+                for address in tempInventorAddresses:
+                    mailingAddresses.append(processAddressLineText(address))
+    if type(correspondenceAddressBag) is list:
+        for address in correspondenceAddressBag:
+            mailingAddresses.append(processAddressLineText(address))
+    # From recordAttorney, get the power of attorney name, registration number & contact numbers
+    # Append attorney address to mailing address (if active attorney)
+    if recordAttorney is not None:
+        powerOfAttorney = recordAttorney.get('powerOfAttorneyBag')
+        if type(powerOfAttorney) is list:
+            for tempAttorney in powerOfAttorney:
+                # Only consider active attorneys
+                if tempAttorney.get('activeIndicator') in ['ACTIVE', 'active']:
+                    addressBag = tempAttorney.get('attorneyAddressBag')
+                    if type(addressBag) is list:
+                        for address in addressBag:
+                            mailingAddresses.append(processAddressLineText(address))
+                    communicationBag = tempAttorney.get('telecommunicationAddressBag')
+                    contactNumbers = []
+                    for communication in communicationBag:
+                        contactNumbers.append(communication.get('telecommunicationNumber'))
+                    attorneys.append({
+                        'name': tempAttorney.get('firstName') + ' ' + tempAttorney.get('lastName'),
+                        'registrationNumber': tempAttorney.get('registrationNumber'),
+                        'contact': contactNumbers
+                    })
+
     finalResult = {
-        'applicationNumber': None,
-        'title': None,
-        'currentStatus': None,
-        'currentStatusCode': None,
-        'currentStatusDate': None,
-        'attorneys': [],    # Name, Registration Number, Contact
-        'inventors': [],    # List of names
-        'mailingAddresses': [],  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, nameLineText
-        'filingDate': None
+        'applicationNumber': applicationNumber,
+        'title': titleData,
+        'currentStatus': currentStatusData,
+        'currentStatusCode': currentStatusCode,
+        'currentStatusDate': currentStatusDate,
+        'attorneys': attorneys,    # Name, Registration Number, Contact
+        'inventors': inventors,    # List of names
+        'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
+        'filingDate': filingDate
     }
     return finalResult
 
 def getKeywordDocumentsUSPTO(keywords:list[str]):
     """
-    Get all documents/patents from the USPTO API related to the given keywords.
+    Retrieve all relevant documents and patent applications from the USPTO API that are associated with the specified keywords. 
+    The function initializes or uses an existing USPTO API client, constructs a keyword-based OR search query, and requests up to 100 matching patent records from the API. 
+    It returns the results as a structured dictionary containing meta-data, event histories, application data, inventors, attorneys, and additional patent information for each relevant document.
 
     Args:
         keywords: List of keywords or a single keyword string
@@ -330,6 +490,19 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
     
     Returns:
         Dictionary containing search results with patents matching any of the keywords
+        |-> applicationNumber: string
+        |-> title: string
+        |-> currentStatus: string
+        |-> currentStatusCode: number
+        |-> currentStatusDate: Date (YYYY-MM-DD)
+        |-> attorneys: list of dictionaries
+        |-> inventors: list of strings
+        |-> mailingAddresses: list of dictionaries
+        |-> filingDate: Date (YYYY-MM-DD)
+        |-> document_urls: list of dictionaries
+        |   |-> source: string
+        |   |-> url: string
+        |-> keywords: list of strings
     """
     # Use the module-level instance if available, otherwise initialize it
     global _uspto_api_instance
@@ -344,31 +517,52 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
     
     # Search for patents matching the query
     results = api.search_patents(query=query, limit=100)  # Increased limit to get more results
-    print(json.dumps(results['patentFileWrapperDataBag'][0]['eventDataBag'], indent=4))
+
     finalResults = []
     for result in results['patentFileWrapperDataBag']:
+        application_number = result.get('applicationNumberText')
+        print('application_number: ', application_number)
         tempResult = isolateDataFromUSPTOResults(result)
-        print('tempResult: ', json.dumps(tempResult, indent=4))
+
+        pgpub_document_url = api.get_pgpub_document_url(str(application_number))
+        grant_document_url = api.get_grant_document_url(str(application_number))
+        doc_urls = []
+        doc_urls.append({
+            'source': 'uspto',
+            'url': pgpub_document_url
+            })
+        doc_urls.append({
+            'source': 'uspto',
+            'url':grant_document_url
+        })
+        tempResult['document_urls'] = doc_urls
+
+        keywords = []
+        if((grant_document_url is not None) or (pgpub_document_url is not None)):
+            if(grant_document_url is not None):
+                grant_content = readDocumentFromUrl(grant_document_url, headers={"X-API-KEY": os.getenv('USPTO_API_KEY')})
+                grant_embedding = getPatentEmbedding(grant_content)
+                grant_keywords = getKeywordsFromContent(grant_content)
+                keywords.extend(grant_keywords)
+                if tempResult.get('document_embedding') is not None:
+                    tempResult['document_embedding'].append(grant_embedding)
+                else:
+                    tempResult['document_embedding'] = [grant_embedding]
+            if(pgpub_document_url is not None):
+                pgpub_content = readDocumentFromUrl(pgpub_document_url, headers={"X-API-KEY": os.getenv('USPTO_API_KEY')})
+                pgpub_embedding = getPatentEmbedding(pgpub_content)
+                pgpub_keywords = getKeywordsFromContent(pgpub_content)
+                keywords.extend(pgpub_keywords)
+                if tempResult.get('document_embedding') is not None:
+                    tempResult['document_embedding'].append(pgpub_embedding)
+                else:
+                    tempResult['document_embedding'] = [pgpub_embedding]
+            tempResult['keywords'] = keywords
+            print('tempResult: ', tempResult.keys(), '\n')
         finalResults.append(tempResult)
-    
-    return results
+    return finalResults
 
-def readPdf(pdf_path):
-    """
-    Read a PDF file and return the text content.
-    """
-    try:
-        with open(pdf_path, 'rb') as file:
-            reader = PyPDF2.PdfReader(file)
-            text = ''
-            for page in reader.pages:
-                text += page.extract_text()
-            return text
-    except Exception as e:
-        print(f"Error reading PDF {pdf_path}: {e}")
-        return ""
-
-def getEmbeddingOnline(text, api_key=None):
+def getEmbeddingOnline(text, api_key=None, model="text-embedding-3-small"):
     """
     Get the embedding of the text using OpenAI API.
     
@@ -378,14 +572,12 @@ def getEmbeddingOnline(text, api_key=None):
     
     Returns:
         List of floats representing the embedding vector
-    """
-    import os
-    
+    """    
     # Initialize OpenAI client
     client = openai.OpenAI(api_key=api_key or os.getenv('OPENAI_API_KEY'))
     
     response = client.embeddings.create(
-        model="text-embedding-3-small",  # Using newer, cheaper model
+        model=model,  # Using newer, cheaper model
         input=text
     )
     
@@ -479,7 +671,7 @@ def getEmbeddingsFromDocuments(documents):
     """
     embeddings = []
     for document in documents:
-        documentText = readPdf(document)
+        documentText = readDocumentFromUrl(document)
         if documentText:
             documentEmbedding = getPatentEmbedding(documentText)
             embeddings.extend(documentEmbedding)
@@ -496,7 +688,13 @@ def getPatentEmbedding(text, api_key=None):
     """
     embedding = None
     try:
-        embedding = getEmbeddingOnline(text, api_key)
+        if api_key is not None:
+            embedding = getEmbeddingOnline(text, api_key)
+        else:
+            embedding = getEmbeddingOffline(text)
     except Exception:
-        embedding = getEmbeddingOffline(text)
+        if api_key is not None:
+            embedding = getEmbeddingOnline(text, api_key)
+        else:
+            embedding = getEmbeddingOffline(text)
     return embedding

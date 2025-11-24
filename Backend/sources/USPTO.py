@@ -14,7 +14,7 @@ IMPORTANT: An API key is REQUIRED to use this API. To obtain an API key:
 API Base URL: https://api.uspto.gov/api/v1
 Authentication: X-API-KEY header
 """
-
+import json
 import requests
 from typing import Dict, Optional, Any
 
@@ -294,18 +294,97 @@ class USPTOPatentAPI:
         """
         Get associated (pgpub, grant) documents meta-data for an application.
         
+        This endpoint returns metadata for published application documents (pgpub) and 
+        granted patent documents, including download URLs for bulk XML files.
+        
+        Args:
+            application_number: The patent application number (e.g., "14104993")
+            
+        Returns:
+            Dictionary containing:
+            - count: Number of results
+            - patentFileWrapperDataBag: List of patent data with:
+              - applicationNumberText: Application number
+              - pgpubDocumentMetaData: Published application metadata (if available)
+                - zipFileName: Name of the ZIP file
+                - productIdentifier: Product identifier (e.g., "APPXML")
+                - fileLocationURI: URL to download the bulk XML ZIP file
+                - fileCreateDateTime: File creation date/time
+                - xmlFileName: Name of the XML file inside the ZIP
+              - grantDocumentMetaData: Granted patent metadata (if available)
+                - zipFileName: Name of the ZIP file
+                - productIdentifier: Product identifier (e.g., "PTGRXML")
+                - fileLocationURI: URL to download the bulk XML ZIP file
+                - fileCreateDateTime: File creation date/time
+                - xmlFileName: Name of the XML file inside the ZIP
+              - requestIdentifier: Unique request identifier
+            
+        Example:
+            >>> api = USPTOPatentAPI(api_key="your-key")
+            >>> associated_docs = api.get_associated_documents("14104993")
+            >>> # Access published document URL
+            >>> if 'pgpubDocumentMetaData' in associated_docs['patentFileWrapperDataBag'][0]:
+            ...     pgpub_url = associated_docs['patentFileWrapperDataBag'][0]['pgpubDocumentMetaData']['fileLocationURI']
+            
+        Note:
+            The fileLocationURI points to bulk ZIP files containing XML data. These are large
+            files that contain multiple patent applications. You'll need to extract and parse
+            the XML to find the specific application's data.
+        """
+        endpoint = f"patent/applications/{application_number}/associated-documents"
+        return self._make_request(endpoint, method="GET")
+    
+    def get_pgpub_document_url(self, application_number: str) -> Optional[str]:
+        """
+        Get the published application (pgpub) document download URL for an application.
+        
+        This is a convenience method that extracts the fileLocationURI from pgpubDocumentMetaData.
+        
         Args:
             application_number: The patent application number
             
         Returns:
-            Dictionary containing associated documents metadata
+            URL string to download the published application bulk XML ZIP file, or None if not available
             
         Example:
             >>> api = USPTOPatentAPI(api_key="your-key")
-            >>> associated_docs = api.get_associated_documents("14412875")
+            >>> pgpub_url = api.get_pgpub_document_url("14104993")
+            >>> # pgpub_url: "https://bulkdata.uspto.gov/data/patent/application/redbook/fulltext/2024/ipa240104.zip"
         """
-        endpoint = f"patent/applications/{application_number}/associated-documents"
-        return self._make_request(endpoint, method="GET")
+        try:
+            result = self.get_associated_documents(application_number)
+            patent_data = result.get('patentFileWrapperDataBag', [])
+            if patent_data and 'pgpubDocumentMetaData' in patent_data[0]:
+                return patent_data[0]['pgpubDocumentMetaData'].get('fileLocationURI')
+        except Exception:
+            pass
+        return None
+    
+    def get_grant_document_url(self, application_number: str) -> Optional[str]:
+        """
+        Get the granted patent document download URL for an application.
+        
+        This is a convenience method that extracts the fileLocationURI from grantDocumentMetaData.
+        
+        Args:
+            application_number: The patent application number
+            
+        Returns:
+            URL string to download the granted patent bulk XML ZIP file, or None if not available
+            
+        Example:
+            >>> api = USPTOPatentAPI(api_key="your-key")
+            >>> grant_url = api.get_grant_document_url("14104993")
+            >>> # grant_url: "https://bulkdata.uspto.gov/data/patent/grant/redbook/fulltext/2016/ipg160405.zip"
+        """
+        try:
+            result = self.get_associated_documents(application_number)
+            patent_data = result.get('patentFileWrapperDataBag', [])
+            if patent_data and 'grantDocumentMetaData' in patent_data[0]:
+                return patent_data[0]['grantDocumentMetaData'].get('fileLocationURI')
+        except Exception:
+            pass
+        return None
     
     def get_transactions(
         self, 
