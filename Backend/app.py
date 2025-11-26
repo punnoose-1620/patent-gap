@@ -946,6 +946,32 @@ def get_user_alerts(user_id):
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error getting all alerts: {str(e)}'}), 500
 
+@app.route('/api/trigger-similarity-analysis', methods=['POST'])
+def trigger_similarity_analysis():
+  data = request.get_json()
+  case_id = data.get('case_id')
+  keywords = data.get('keywords')
+  similarUsptoDocuments = getKeywordDocumentsUSPTO(keywords)    # Similar documents normalized, processed and with references & embeddings
+  references = getReferenceFromNormalizedList(similarUsptoDocuments, case_id)
+  case_data = get_case_by_id(case_id)
+  case_data['references'] = references
+  update_case(case_id, case_data)
+  return jsonify({'success': True, 'message': 'Similarity analysis completed'}), 200
+
+@app.route('/api/case-keywords', methods=['GET'])
+def get_case_keywords(document_url, source='uspto'):
+  headers = None
+  if source == 'uspto':
+    headers = {"X-API-KEY": os.getenv('USPTO_API_KEY')}
+  content = readDocumentFromUrl(document_url, headers=headers)
+  if content is None:
+    return jsonify({'success': False, 'message': 'Failed to read document'}), 400
+  else:
+    keywords = getKeywordsFromContent(content)
+    if keywords is None or len(keywords) == 0:
+      return jsonify({'success': False, 'message': 'No keywords found. The document may be empty or might contain only stop words.'}), 400
+    return jsonify({'success': True, 'keywords': keywords})
+
 if __name__ == '__main__':
     port = app.config['PORT']
     debug = app.config['DEBUG']

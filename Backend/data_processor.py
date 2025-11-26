@@ -10,6 +10,7 @@ import datetime
 import numpy as np
 from tqdm import tqdm
 from dotenv import load_dotenv
+from models.cases import get_case_embedding
 from file_controller import readDocumentFromUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sources.USPTO import USPTOPatentAPI, MissingAPIKeyError
@@ -212,6 +213,8 @@ def getKeywordsFromContent(content, api_key=None, model="gpt-3.5-turbo"):
     Returns:
         list: List of top keyword strings.
     """
+    if content is None:
+        return []
     if api_key is not None:
         try:
             return getKeywordsFromContentOnline(content, api_key, model)
@@ -220,6 +223,24 @@ def getKeywordsFromContent(content, api_key=None, model="gpt-3.5-turbo"):
             return getKeywordsFromContentOffline(content)
     else:
         return getKeywordsFromContentOffline(content)
+
+def getReferenceFromNormalizedList(listOfCases, case_id):
+    listOfReferences = []
+    case_embedding = get_case_embedding(case_id)
+    for case in listOfCases:
+        url = case.get('documents')[0].get('url')
+        title = case.get('title')
+        granted_date = case.get('filing_date')
+        similarity_rate = None
+        referenceEmbeddings = case.get('document_embedding')
+        similarity_rate = getSimilarityScore(case_embedding, referenceEmbeddings)
+        listOfReferences.append({
+            'url': url,
+            'title': title,
+            'granted_date': granted_date,
+            'similarity_rate': similarity_rate
+        })
+    return listOfReferences
 
 def getReferenceFromUSPTOResults(result, document_url, similarity_rate):
     title = None
@@ -244,14 +265,12 @@ def getSimilarityScoresFromUSPTOResults(results):
         if result.get('document_embedding') is not None:
             listWithEmbeddings.append(result)
     
-    # print('listWithEmbeddings: ', len(listWithEmbeddings), '\n')
+    print('listWithEmbeddings: ', len(listWithEmbeddings), '\n')
     for result in tqdm(listWithEmbeddings, desc='Processing similarity scores'):
         listOfEmbeddings = []
         listOfIds = []
         listWithoutResult = listWithEmbeddings.copy()
         listWithoutResult.remove(result)
-        # Isolate Embeddings and IDs from the other results
-        # print('listWithoutResult: ', len(listWithoutResult), '\n')
 
         for otherResult in listWithoutResult:
             listOfEmbeddings.append(otherResult.get('document_embedding'))
@@ -267,12 +286,6 @@ def getSimilarityScoresFromUSPTOResults(results):
         for updatedResult in listWithEmbeddings:
             if updatedResult.get('id') == result.get('id'):
                 result = updatedResult
-    tempEntry = results[-1].copy()
-    tempEntry.pop('document_embedding', None)
-    print('results type: ', type(tempEntry), '\n')
-    print('results keys: ', tempEntry.keys(), '\n')
-    print('results without formatting: ', tempEntry, '\n')
-    print('results type: ', json.dumps(tempEntry, indent=4), '\n')
     return results
 
 def isolateDataFromUSPTOResults(result):
@@ -619,13 +632,9 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
                 else:
                     tempResult['document_embedding'] = [pgpub_embedding]
             tempResult['keywords'] = keywords
-        tempResult['document_urls'] = doc_urls
+        tempResult['documents'] = doc_urls
         finalResults.append(tempResult)
-    # finalResults = getSimilarityScoresFromUSPTOResults(finalResults)
-    newResults = getSimilarityScoresFromUSPTOResults(finalResults)
-    print('finalResults type: ', type(newResults[-1]), '\n')
-    print('finalResults keys: ', newResults[-1].keys(), '\n')
-    print('finalResults refs: ', newResults[-1]['references'], '\n')
+    finalResults = getSimilarityScoresFromUSPTOResults(finalResults)
     return finalResults
 
 def getEmbeddingOnline(text, api_key=None, model="text-embedding-3-small"):
@@ -753,6 +762,8 @@ def getPatentEmbedding(text, api_key=None):
         List of floats representing the embedding vector
     """
     embedding = None
+    if (text is None) or (text == ''):
+        return None
     try:
         if api_key is not None:
             embedding = getEmbeddingOnline(text, api_key)

@@ -1648,6 +1648,15 @@ def get_documents_from_case(case_id):
             break
     return patentDocuments
 
+def get_case_embedding(case_id):
+    """
+    Retrieve the embedding of a specific case, given its case_id.
+    """
+    for case in mock_cases:
+        if case.get('id') == case_id:
+            return case.get('document_embedding')
+    return None
+
 def get_all_cases_except_one(case_id):
     """
     Retrieve all cases except the one with the given case_id.
