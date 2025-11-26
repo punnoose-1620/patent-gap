@@ -6,11 +6,13 @@ import uuid
 import PyPDF2
 import openai
 import requests
+import datetime
 import numpy as np
+from tqdm import tqdm
 from dotenv import load_dotenv
+from file_controller import readDocumentFromUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sources.USPTO import USPTOPatentAPI, MissingAPIKeyError
-from file_controller import readDocumentFromUrl
 
 # Module-level variable to store USPTO API instance
 _uspto_api_instance = None
@@ -219,6 +221,60 @@ def getKeywordsFromContent(content, api_key=None, model="gpt-3.5-turbo"):
     else:
         return getKeywordsFromContentOffline(content)
 
+def getReferenceFromUSPTOResults(result, document_url, similarity_rate):
+    title = None
+    granted_date = None
+
+    applicationMetaData = result.get('applicationMetaData')
+
+    if applicationMetaData is not None:
+        title = applicationMetaData.get('inventionTitle')
+        granted_date = applicationMetaData.get('applicationStatusDate')
+
+    return {
+        'url': document_url,
+        'title': title,
+        'granted_date': granted_date,
+        'similarity_rate': similarity_rate
+    }
+
+def getSimilarityScoresFromUSPTOResults(results):
+    listWithEmbeddings = []
+    for result in results:
+        if result.get('document_embedding') is not None:
+            listWithEmbeddings.append(result)
+    
+    # print('listWithEmbeddings: ', len(listWithEmbeddings), '\n')
+    for result in tqdm(listWithEmbeddings, desc='Processing similarity scores'):
+        listOfEmbeddings = []
+        listOfIds = []
+        listWithoutResult = listWithEmbeddings.copy()
+        listWithoutResult.remove(result)
+        # Isolate Embeddings and IDs from the other results
+        # print('listWithoutResult: ', len(listWithoutResult), '\n')
+
+        for otherResult in listWithoutResult:
+            listOfEmbeddings.append(otherResult.get('document_embedding'))
+            listOfIds.append(otherResult.get('id'))
+        # Calculate similarity scores between the result and the other results
+        similarity_scores = getBulkSimilarityScore(result.get('document_embedding'), listOfEmbeddings)
+        # Add the references to the result
+        for i in range(len(similarity_scores)):
+            # Get the reference from the other result
+            listWithEmbeddings[i]['references'].append(getReferenceFromUSPTOResults(result, result.get('document_urls')[0].get('url'), similarity_scores[i]))
+    
+    for result in results:
+        for updatedResult in listWithEmbeddings:
+            if updatedResult.get('id') == result.get('id'):
+                result = updatedResult
+    tempEntry = results[-1].copy()
+    tempEntry.pop('document_embedding', None)
+    print('results type: ', type(tempEntry), '\n')
+    print('results keys: ', tempEntry.keys(), '\n')
+    print('results without formatting: ', tempEntry, '\n')
+    print('results type: ', json.dumps(tempEntry, indent=4), '\n')
+    return results
+
 def isolateDataFromUSPTOResults(result):
     """
     This function extracts key structured information from a raw USPTO API result dictionary.
@@ -322,15 +378,18 @@ def isolateDataFromUSPTOResults(result):
         if 'addressLineTwoText' in address.keys():
             if address['addressLineTwoText'] is not None:
                 address['addressLineText'] = address['addressLineText'] + ',' + address.pop('addressLineTwoText')
+        return address
 
     applicationNumber = None
     titleData = None
+    descriptionData = None
     currentStatusData = None
     currentStatusCode = None
     currentStatusDate = None
     attorneys = []
     inventors = []
     mailingAddresses = []
+    filingUser = None
     filingDate = None
 
     correspondenceAddressBag = result.get('correspondenceAddressBag')
@@ -382,15 +441,19 @@ def isolateDataFromUSPTOResults(result):
                     })
 
     finalResult = {
-        'applicationNumber': applicationNumber,
+        'id': applicationNumber,
         'title': titleData,
-        'currentStatus': currentStatusData,
+        'status': currentStatusData,
+        'description': descriptionData,
         'currentStatusCode': currentStatusCode,
         'currentStatusDate': currentStatusDate,
         'attorneys': attorneys,    # Name, Registration Number, Contact
         'inventors': inventors,    # List of names
         'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
-        'filingDate': filingDate
+        'created_by': filingUser,
+        'created_date': datetime.datetime.utcnow().isoformat(),
+        'filing_date': filingDate,
+        'references': []  # list of dictionaries with url, title, granted_date, similarity_rate
     }
     return finalResult
 
@@ -519,27 +582,21 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
     results = api.search_patents(query=query, limit=100)  # Increased limit to get more results
 
     finalResults = []
-    for result in results['patentFileWrapperDataBag']:
+    for result in tqdm(results['patentFileWrapperDataBag'], desc='Processing USPTO results'):
         application_number = result.get('applicationNumberText')
-        print('application_number: ', application_number)
         tempResult = isolateDataFromUSPTOResults(result)
 
         pgpub_document_url = api.get_pgpub_document_url(str(application_number))
         grant_document_url = api.get_grant_document_url(str(application_number))
         doc_urls = []
-        doc_urls.append({
-            'source': 'uspto',
-            'url': pgpub_document_url
-            })
-        doc_urls.append({
-            'source': 'uspto',
-            'url':grant_document_url
-        })
-        tempResult['document_urls'] = doc_urls
 
         keywords = []
         if((grant_document_url is not None) or (pgpub_document_url is not None)):
             if(grant_document_url is not None):
+                doc_urls.append({
+                    'source': 'uspto',
+                    'url':grant_document_url
+                })
                 grant_content = readDocumentFromUrl(grant_document_url, headers={"X-API-KEY": os.getenv('USPTO_API_KEY')})
                 grant_embedding = getPatentEmbedding(grant_content)
                 grant_keywords = getKeywordsFromContent(grant_content)
@@ -549,6 +606,10 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
                 else:
                     tempResult['document_embedding'] = [grant_embedding]
             if(pgpub_document_url is not None):
+                doc_urls.append({
+                    'source': 'uspto',
+                    'url': pgpub_document_url
+                })
                 pgpub_content = readDocumentFromUrl(pgpub_document_url, headers={"X-API-KEY": os.getenv('USPTO_API_KEY')})
                 pgpub_embedding = getPatentEmbedding(pgpub_content)
                 pgpub_keywords = getKeywordsFromContent(pgpub_content)
@@ -558,8 +619,13 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
                 else:
                     tempResult['document_embedding'] = [pgpub_embedding]
             tempResult['keywords'] = keywords
-            print('tempResult: ', tempResult.keys(), '\n')
+        tempResult['document_urls'] = doc_urls
         finalResults.append(tempResult)
+    # finalResults = getSimilarityScoresFromUSPTOResults(finalResults)
+    newResults = getSimilarityScoresFromUSPTOResults(finalResults)
+    print('finalResults type: ', type(newResults[-1]), '\n')
+    print('finalResults keys: ', newResults[-1].keys(), '\n')
+    print('finalResults refs: ', newResults[-1]['references'], '\n')
     return finalResults
 
 def getEmbeddingOnline(text, api_key=None, model="text-embedding-3-small"):

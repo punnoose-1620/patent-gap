@@ -15,6 +15,7 @@ This README uses emoji badges to help you quickly identify different types of co
 
 **Additional Documentation**:
 - [Technical Requirements](./TechnicalRequirements.md) - GCP infrastructure requirements and specifications for hosting the platform
+- [Technical Description for Non-Technical Staff](./TechnicalDescriptionForNonTechnicalStaff.md) - Business-friendly overview of platform capabilities and technology
 
 ---
 
