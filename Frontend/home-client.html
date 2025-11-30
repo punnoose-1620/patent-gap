@@ -406,6 +406,7 @@
             <div id="active-patents-container">
                 <h2 style="margin-bottom: 0.25rem; font-family: 'Merriweather', serif; color: #0A1F14;">Active Patents</h2>
                 <hr style="border: none; border-bottom: 2px solid #D8D6C4; margin-bottom: 1.5rem;">
+                <div class="patent-grid" id="active-patents-grid"></div>
                 <div class="empty-state" id="active-patents-empty-state">
                     <div class="empty-state-icon">📋</div>
                     <h2 class="empty-state-title">No active patents at the moment</h2>
@@ -419,6 +420,7 @@
             <div id="closed-patents-container" style="margin-top: 3rem;">
                 <h2 style="margin-bottom: 0.25rem; font-family: 'Merriweather', serif; color: #0A1F14;">Closed Patents</h2>
                 <hr style="border: none; border-bottom: 2px solid #D8D6C4; margin-bottom: 1.5rem;">
+                <div class="patent-grid" id="closed-patents-grid"></div>
                 <div class="empty-state" id="closed-patents-empty-state">
                     <div class="empty-state-icon">✅</div>
                     <h2 class="empty-state-title">No closed patents at the moment</h2>
@@ -443,6 +445,17 @@
     </div>
 
     <script>
+        const active_container = document.getElementById('active-patents-grid');
+        const closed_container = document.getElementById('closed-patents-grid');
+        const loadingState = document.createElement('div');
+        loadingState.id = 'my-cases-loading-state';
+        loadingState.innerHTML = `
+            <div class="loading-state-icon">🔄</div>
+            <h2 class="loading-state-title">Loading...</h2>
+            <p class="loading-state-description">
+                Please wait while we load your cases. This may take a few seconds.
+            </p>`;
+
         function setEmptyState(pageId) {
             const page = document.getElementById(pageId);
             if (page=='profile') {
@@ -486,23 +499,29 @@
 
         // Load dashboard statistics
         async function loadDashboardData() {
-            try {
-                const response = await fetch('/api/profile');
-                const data = await response.json();
+            await fetch('/api/profile')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {}
+            })
+            .catch(error => {
+                console.error('Error loading profile:', error);
+            });
 
-                const my_cases_response = await fetch('/api/my-cases');
-                const my_cases_data = await my_cases_response.json();
-
-                if (data.success && my_cases_data.success) {
-                    // Filter cases into active and closed
-                    const activePatents = my_cases_data.cases.filter(caseItem => 
+            active_container.innerHTML = loadingState.outerHTML;
+            closed_container.innerHTML = loadingState.outerHTML;
+            await fetch('/api/my-cases')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const activePatents = data.cases.filter(caseItem => 
                         caseItem.status.toLowerCase() !== 'completed' && 
                         caseItem.status.toLowerCase() !== 'closed' &&
                         caseItem.status.toLowerCase() !== 'cancelled' &&
                         caseItem.status.toLowerCase() !== 'rejected'
                     );
                     
-                    const closedPatents = my_cases_data.cases.filter(caseItem => 
+                    const closedPatents = data.cases.filter(caseItem => 
                         caseItem.status.toLowerCase() === 'completed' || 
                         caseItem.status.toLowerCase() === 'closed' ||
                         caseItem.status.toLowerCase() === 'cancelled' ||
@@ -515,19 +534,20 @@
                     // Render Closed Patents
                     renderPatentSection('closed-patents-container', closedPatents, 'closed-patents-empty-state', renderClosedPatent);
                 }
-            } catch (error) {
-                console.error('Error loading dashboard data:', error);
-            }
+            })
+            .catch(error => {
+                console.error('Error loading profile:', error);
+            });
         }
 
         async function loadAlerts() {
-            const profile_response = await fetch('/api/profile');
+            const profile_response = await fetch('/api/profile', { credentials: 'include' });
             const profile_data = await profile_response.json();
             try {
                 // Get the current user's id from localStorage/session or page context
                 const user_id = profile_data['profile']['id'];
                 console.log('User ID:', user_id);
-                const response = await fetch(`/api/alerts/${user_id}`);
+                const response = await fetch(`/api/alerts`, { credentials: 'include' });
                 const data = await response.json();
                 console.log('Alerts loaded:', data);
                 for(let alert of data['alerts']) {
@@ -693,6 +713,7 @@
                 emptyState.style.display = 'block';
                 // Hide any existing grid
                 const existingGrid = container.querySelector('.patent-grid');
+                existingGrid.innerHTML = '';
                 if (existingGrid) {
                     existingGrid.style.display = 'none';
                 }
@@ -701,6 +722,7 @@
                 
                 // Create or update grid
                 let grid = container.querySelector('.patent-grid');
+                grid.innerHTML = '';
                 if (!grid) {
                     grid = document.createElement('div');
                     grid.className = 'patent-grid';

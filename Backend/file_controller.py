@@ -23,13 +23,11 @@ def xml_to_text(xml_content):
         
     except ET.ParseError as e:
         print(f"XML ParseError: {e}")
-        return ""
     except UnicodeDecodeError as e:
         print(f"Unicode decode error: {e}")
-        return ""
     except Exception as e:
         print(f"Error converting XML to text: {e}")
-        return ""
+    return ""
 
 def readFromXmlUrl(xml_url, headers=None, params=None):
     """

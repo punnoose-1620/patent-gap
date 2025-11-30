@@ -1,6 +1,7 @@
 import time
 from models.cases import *
 from data_processor import *
+from database import *
 
 alerts = [
     {
@@ -62,11 +63,14 @@ def add_to_alerts(triggered_by, triggered_at, alert_users):
         "opened_receipts": [],
         "sent_receipts": []
     }
-    alerts.append(newAlert)
-    trigger_alert(alert_users)
+    addDataById(connect_to_database(), 'alerts', newAlert)
+    # alerts.append(newAlert)
+    # trigger_alert(alert_users)
+    # return newAlert['_id']
     return newAlert['_id']
 
 def get_alerts():
+    return getAllData(connect_to_database(), 'alerts')
     return alerts
 
 def get_alerts_for_user(user_id):
@@ -74,7 +78,7 @@ def get_alerts_for_user(user_id):
     my_cases = get_case_related_to_user(user_id)
     # Isolate Alerts that are related to the user
     try:
-        for alert in alerts:
+        for alert in getAllData(connect_to_database(), 'alerts'):
             if user_id in alert['alert_users']:
                 # Get Embeddings for reference case from alert's 'triggered_by' case
                 triggered_by_case = get_case_by_id(alert['triggered_by'])

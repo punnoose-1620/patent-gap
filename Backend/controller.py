@@ -46,11 +46,14 @@ def create_patent(patent_data):
     Returns:
         dict: Result containing success status and patent_id if successful
     """
-    patent_id = f"patent_{str(uuid.uuid4())[:8]}"
+    patent_id = f"local_{str(uuid.uuid4())[:8]}"
+    print(f'Patent ID: {patent_id}')
     patent_data['id'] = patent_id
+    print(f'Patent data with ID: {patent_data}')
     # Change the key 'files' to 'references' if it exists in patent_data
     if 'files' in patent_data:
         patent_data['references'] = patent_data.pop('files')
+    print(f'Patent data: {patent_data}')
 
     return {
         'success': True,

@@ -1,33 +1,247 @@
 import os
 from dotenv import load_dotenv
 from google.cloud import storage
-from firebase_admin import credentials, initialize_app, db
+from pymongo import MongoClient
+from typing import Optional, Dict, Any, List
+
+# Module-level variable to store MongoDB database instance
+_mongodb_client = None
+_mongodb_db = None
 
 def connect_to_database():
     """
-    Reads connection strings from .env file and connects to Firebase database.
-    Returns the Firebase app instance.
+    Connects to Firestore using MongoDB connection string from environment variables.
+    Returns the MongoDB database client.
+    
+    The connection string should be in the format:
+    mongodb://<username>:<password>@<host>:<port>/<database>?<options>
+    
+    Returns:
+        Database: MongoDB database instance for the 'patent-gap' database
+        
+    Raises:
+        ValueError: If MONGODB_CONNECTION_STRING is not set in .env file
     """
-    # Load environment variables from .env file
+    global _mongodb_client, _mongodb_db
+    
+    # Load environment variables
     load_dotenv()
+    
+    # Get MongoDB connection string from environment
+    connection_string = os.getenv('MONGODB_CONNECTION_STRING')
+    # print('\nConnection String: ', connection_string)
+    
+    if not connection_string:
+        raise ValueError("MONGODB_CONNECTION_STRING must be set in .env file.")
+    
+    # Connect if not already connected
+    if _mongodb_client is None:
+        try:
+            _mongodb_client = MongoClient(connection_string)
+            # Test the connection
+            _mongodb_client.admin.command('ping')
+            # Get the database (database name is typically in the connection string)
+            # Extract database name from connection string or use default
+            db_name = 'patent-gap'  # Default, or extract from connection string
+            _mongodb_db = _mongodb_client[db_name]
+            # print('\nDatabase: ', _mongodb_db)
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to MongoDB/Firestore: {e}")
+    
+    return _mongodb_db
 
-    # Get Firebase credentials and database URL from environment variables
-    firebase_creds_path = os.getenv('FIREBASE_CREDENTIALS')
-    firebase_db_url = os.getenv('FIREBASE_DATABASE_URL')
+def getCollectionsFromDatabase(db):
+    """
+    Fetches all collections from a MongoDB database.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        
+    Returns:
+        list: List of all collections in the database.
+    """
+    try:
+        # print('\nDb : ', db)
+        collections = db.list_collection_names()
+        return collections
+    except Exception as e:
+        print(f"Error fetching collections from database: {e}")
+        return []
 
-    if not firebase_creds_path or not firebase_db_url:
-        raise ValueError("FIREBASE_CREDENTIALS and FIREBASE_DATABASE_URL must be set in .env file.")
+def checkCollectionExists(db, collectionName):
+    """
+    Checks if a collection exists in a MongoDB database.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection to check.
+    """
+    return collectionName in getCollectionsFromDatabase(db)
 
-    # Initialize Firebase app if not already initialized
-    if not len(initialize_app._apps):
-        cred = credentials.Certificate(firebase_creds_path)
-        app = initialize_app(cred, {
-            'databaseURL': firebase_db_url
-        })
-    else:
-        app = initialize_app.get_app()
+def createCollection(db, collectionName):
+    """
+    Creates a new collection in a MongoDB database.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection to create.
+    """
+    return db.create_collection(collectionName)
 
-    return app
+def getAllData(db, collectionName):
+    """
+    Fetches all data from a specified Firestore collection.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection to fetch.
+        
+    Returns:
+        list: List of all documents in the collection, or empty list if collection doesn't exist.
+    """
+    try:
+        collection = db[collectionName]
+        # Convert ObjectId to string for JSON serialization
+        documents = list(collection.find({}))
+        # Convert _id from ObjectId to string if present
+        for doc in documents:
+            if '_id' in doc and hasattr(doc['_id'], '__str__'):
+                doc['_id'] = str(doc['_id'])
+        return documents
+    except Exception as e:
+        print(f"Error fetching all data from {collectionName}: {e}")
+        return []
+
+def getDataById(db, collectionName, entryId):
+    """
+    Fetches a specific entry by ID from a Firestore collection.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection to fetch from.
+        entryId (str): The ID of the entry to retrieve.
+        
+    Returns:
+        dict: The data for the specified entry, or None if not found.
+    """
+    try:
+        collection = db[collectionName]
+        document = collection.find_one({'_id': entryId})
+        
+        # Convert ObjectId to string if present
+        if document and '_id' in document and hasattr(document['_id'], '__str__'):
+            document['_id'] = str(document['_id'])
+        
+        return document
+    except Exception as e:
+        print(f"Error fetching data by ID from {collectionName}: {e}")
+        return None
+
+def updateDataById(db, collectionName, entryData):
+    """
+    Updates a specific entry in a Firestore collection by its ID.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection to update.
+        entryData (dict): The data to update, must include the entry's '_id' key.
+        
+    Returns:
+        bool: True if update was successful, False otherwise.
+    """
+    try:
+        entry_id = entryData.get('_id')
+        if not entry_id:
+            raise ValueError("entryData must include an '_id' key for the entry to update.")
+        
+        # Remove '_id' from the data to avoid overwriting the key itself
+        update_fields = {k: v for k, v in entryData.items() if k != '_id'}
+        if not update_fields:
+            # Nothing to update
+            return False
+        
+        collection = db[collectionName]
+        result = collection.update_one(
+            {'_id': entry_id},
+            {'$set': update_fields}
+        )
+        return result.modified_count > 0
+    except Exception as e:
+        print(f"Error updating data by ID in {collectionName}: {e}")
+        return False
+
+def deleteDataById(db, collectionName, entryId):
+    """
+    Deletes a specific entry by ID from a Firestore collection.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection to delete from.
+        entryId (str): The ID of the entry to delete.
+        
+    Returns:
+        bool: True if deletion was successful, False otherwise.
+    """
+    try:
+        collection = db[collectionName]
+        result = collection.delete_one({'_id': entryId})
+        return result.deleted_count > 0
+    except Exception as e:
+        print(f"Error deleting data by ID from {collectionName}: {e}")
+        return False
+
+def addDataById(db, collectionName, entryData):
+    """
+    Adds a new entry to a Firestore collection.
+    If '_id' is provided in entryData, uses that; otherwise MongoDB generates one.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection to add to.
+        entryData (dict): The data to insert. May include '_id' to specify the document ID.
+        
+    Returns:
+        str: The inserted document ID (as string)
+    """
+    try:
+        if not checkCollectionExists(db, collectionName):
+            createCollection(db, collectionName)
+        collection = db[collectionName]
+        result = collection.insert_one(entryData)
+        return str(result.inserted_id)
+    except Exception as e:
+        print(f"Error adding data to {collectionName}: {e}")
+        return None
+
+def insertOrUpdateDataById(db, collectionName, entryData):
+    """
+    Inserts a new document or updates if it already exists (upsert operation).
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection.
+        entryData (dict): The data to insert/update, must include '_id' key.
+        
+    Returns:
+        str: The document ID
+    """
+    try:
+        if not checkCollectionExists(db, collectionName):
+            createCollection(db, collectionName)
+        entry_id = entryData.get('_id')
+        if not entry_id:
+            raise ValueError("entryData must include an '_id' key.")
+        
+        collection = db[collectionName]
+        collection.replace_one(
+            {'_id': entry_id},
+            entryData,
+            upsert=True  # Insert if doesn't exist, update if it does
+        )
+        return str(entry_id)
+    except Exception as e:
+        print(f"Error inserting/updating data in {collectionName}: {e}")
+        return None
 
 def connect_to_bucket(bucketName):
     """
@@ -43,81 +257,6 @@ def connect_to_bucket(bucketName):
     client = storage.Client()
     bucket = client.bucket(bucketName)
     return bucket
-
-def getAllData(app, collectionName):
-    """
-    Fetches all data from a specified Firebase Realtime Database collection.
-
-    Args:
-        app: The initialized Firebase app instance.
-        collectionName (str): The name of the collection (database path) to fetch.
-
-    Returns:
-        dict: All data from the specified collection, or None if not found.
-    """
-    ref = db.reference(collectionName, app=app)
-    data = ref.get()
-    return data
-
-def getDataById(app, collectionName, entryId):
-    """
-    Fetches a specific entry by ID from a given Firebase Realtime Database collection.
-
-    Args:
-        app: The initialized Firebase app instance.
-        collectionName (str): The name of the collection (database path) to fetch from.
-        entryId (str): The ID of the entry to retrieve.
-
-    Returns:
-        dict: The data for the specified entry, or None if not found.
-    """
-    ref = db.reference(f"{collectionName}/{entryId}", app=app)
-    data = ref.get()
-    return data
-
-def updateDataById(app, collectionName, entryData):
-    """
-    Updates a specific entry in a Firebase Realtime Database collection by its ID.
-
-    Args:
-        app: The initialized Firebase app instance.
-        collectionName (str): The name of the collection (database path) to update.
-        entryData (dict): The data to update, must include the entry's 'id' key.
-
-    Returns:
-        bool: True if update was successful, False otherwise.
-    """
-    entry_id = entryData.get('_id')
-    if not entry_id:
-        raise ValueError("entryData must include an 'id' key for the entry to update.")
-
-    # Remove 'id' from the data to avoid overwriting the key itself
-    update_fields = {k: v for k, v in entryData.items() if k != 'id'}
-    if not update_fields:
-        # Nothing to update
-        return False
-
-    ref = db.reference(f"{collectionName}/{entry_id}", app=app)
-    ref.update(update_fields)
-    return True
-
-def deleteDataById(app, collectionName, entryId):
-    """
-    Deletes a specific entry by ID from a given Firebase Realtime Database collection.
-
-    Args:
-        app: The initialized Firebase app instance.
-        collectionName (str): The name of the collection (database path) to delete from.
-        entryId (str): The ID of the entry to delete.
-
-    Returns:
-        bool: True if deletion was successful, False otherwise.
-    """
-    ref = db.reference(f"{collectionName}/{entryId}", app=app)
-    if ref.get() is None:
-        return False  # Entry does not exist
-    ref.delete()
-    return True
 
 def uploadToGcpBucket(bucketName, sourceFile, destinationBlob):
     """

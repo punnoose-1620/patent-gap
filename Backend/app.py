@@ -9,6 +9,7 @@ from models.users import *
 from models.alerts import *
 from database import *
 from controller import *
+from datetime import datetime
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -29,8 +30,19 @@ swagger = initialize_swagger(app)
 @app.route('/')
 def index():
     """Serve the home page"""
-    testKeywords = ['AI', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence']
-    testDocuments = getKeywordDocumentsUSPTO(testKeywords)
+    print('Collections: ', getCollectionsFromDatabase(connect_to_database()))
+    if not checkCollectionExists(connect_to_database(), 'cases'):
+        print('\nCreating cases collection: ', createCollection(connect_to_database(), 'cases'))
+    if not checkCollectionExists(connect_to_database(), 'patents'):
+        print('\nCreating patents collection: ', createCollection(connect_to_database(), 'patents'))
+    if not checkCollectionExists(connect_to_database(), 'users'):
+        print('\nCreating users collection: ', createCollection(connect_to_database(), 'users'))
+    if not checkCollectionExists(connect_to_database(), 'alerts'):
+        print('\nCreating alerts collection: ', createCollection(connect_to_database(), 'alerts'))
+    if not checkCollectionExists(connect_to_database(), 'demo_requests'):
+        print('\nCreating demo_requests collection: ', createCollection(connect_to_database(), 'demo_requests'))
+    # testKeywords = ['AI', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence']
+    # testDocuments = getKeywordDocumentsUSPTO(testKeywords)
     # print('Test Documents:', testDocuments)
     return render_template('index.html')
 
@@ -296,12 +308,14 @@ def my_cases():
     
     try:
         user_id = session['user_id']
+        print('User ID: ', user_id)
         cases = get_case_related_to_user(user_id)
         return jsonify({
             'success': True,
             'cases': cases
         })
     except Exception as e:
+        print('Error fetching cases: ', str(e))
         return jsonify({
             'success': False,
             'message': f'Error fetching cases: {str(e)}'
@@ -842,6 +856,78 @@ def add_patent():
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error adding patent: {str(e)}'}), 500
 
+@app.route('/api/upload-file-to-local-storage/<case_id>', methods=['POST'])
+def upload_file_to_local_storage(case_id):
+    """
+    Upload a file to local storage and return its URL
+    ---
+    tags:
+      - Files
+    summary: Upload file to local storage
+    description: Saves the uploaded file to 'documentFiles' folder and returns its URL
+    consumes:
+      - multipart/form-data
+    produces:
+      - application/json
+    parameters:
+      - in: formData
+        name: file
+        type: file
+        required: true
+        description: The file to upload
+    responses:
+      200:
+        description: File uploaded successfully
+    """
+
+    import os
+    from werkzeug.utils import secure_filename
+
+    # Check authentication
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+    # Check file in request
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file part in the request'}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No selected file'}), 400
+
+    try:
+        # Safe filename
+        filename = secure_filename(file.filename)
+        # Ensure documentFiles directory exists
+        upload_folder = os.path.join(os.getcwd(), 'documentFiles')
+        os.makedirs(upload_folder, exist_ok=True)
+        file_path = os.path.join(upload_folder, filename)
+        file.save(file_path)
+
+        # Construct file URL (relative)
+        file_url = f'/documentFiles/{filename}'
+
+        case_data = get_case_by_id(case_id)
+        if case_data is not None:
+          documents = case_data.get('documents', [])
+          if not isinstance(documents, list):
+            documents = []
+          documents.append({
+            'url': file_url,
+            'source': 'local'
+          })
+          case_data['documents'] = documents
+          from database import connect_to_database
+          db = connect_to_database()
+          updateDataById(db, collectionName='cases', entryData={'_id': case_id, 'documents': documents})
+
+        # Optionally: Here you might want to update the corresponding case to add this file URL
+
+        return jsonify({'success': True, 'message': 'File uploaded successfully', 'file_url': file_url}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Failed to upload file: {str(e)}'}), 500
+
 @app.route('/api/upload-file/<case_id>', methods=['POST'])
 def upload_file(case_id):
     """
@@ -876,6 +962,8 @@ def upload_file(case_id):
     source_file = data.get('sourceFile')
     destination_blob = data.get('destinationBlob')
 
+    result = {}
+
     if not all([bucket_name, source_file, destination_blob]):
         result = {'success': False, 'message': 'Missing required file upload parameters'}
     else:
@@ -888,10 +976,15 @@ def upload_file(case_id):
                 references = case_data.get('references', [])
                 if not isinstance(references, list):
                     references = []
-                references.append(upload_url)
-                case_data['references'] = references
+                references.append({
+                  'url': upload_url,
+                  'source': 'local'
+                  })
+                case_data['documents'] = references
                 # Update the case entry in the database
-                updateDataById(app=None, collectionName='cases', entryData={'_id': case_id, 'references': references})
+                from database import connect_to_database
+                db = connect_to_database()
+                updateDataById(db, collectionName='cases', entryData={'_id': case_id, 'documents': references})
             result = {
                 'success': True,
                 'message': 'File uploaded successfully',
@@ -927,8 +1020,8 @@ def get_all_alerts():
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error getting all alerts: {str(e)}'}), 500
 
-@app.route('/api/alerts/<user_id>', methods=['GET'])
-def get_user_alerts(user_id):
+@app.route('/api/alerts/', methods=['GET'])
+def get_user_alerts():
     """
     Get all alerts related to a specific user
     ---
@@ -937,6 +1030,9 @@ def get_user_alerts(user_id):
     summary: Get all alerts related to a specific user
     description: Returns all alerts related to the specified user
     """
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    user_id = session['user_id']
     try:
         user_alerts = get_alerts_for_user(user_id)
         return jsonify({
@@ -948,22 +1044,56 @@ def get_user_alerts(user_id):
 
 @app.route('/api/trigger-similarity-analysis', methods=['POST'])
 def trigger_similarity_analysis():
-  data = request.get_json()
-  case_id = data.get('case_id')
-  keywords = data.get('keywords')
-  similarUsptoDocuments = getKeywordDocumentsUSPTO(keywords)    # Similar documents normalized, processed and with references & embeddings
-  references = getReferenceFromNormalizedList(similarUsptoDocuments, case_id)
-  case_data = get_case_by_id(case_id)
-  case_data['references'] = references
-  update_case(case_id, case_data)
-  return jsonify({'success': True, 'message': 'Similarity analysis completed'}), 200
+  try:
+    data = request.get_json()
+    case_id = data.get('case_id')
+    keywords = data.get('keywords')
+    if 'user_id' not in session:
+      return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+    user_id = session['user_id']
+    similarUsptoDocuments = getKeywordDocumentsUSPTO(keywords)    # Similar documents normalized, processed and with references & embeddings
+    references = getReferenceFromNormalizedList(similarUsptoDocuments, case_id)
+    case_data = get_case_by_id(case_id)
+    case_data['references'] = references
+    update_case(case_id, case_data)
+    alert_users = []
+    case_keys = case_data.keys()
+    if 'created_by' in case_keys:
+      if case_data['created_by'] == user_id:
+        alert_users.append(case_data['created_by'])
+    if 'assigned_to' in case_keys:
+      if case_data['assigned_to'] == user_id:
+        alert_users.append(case_data['assigned_to'])
+    if 'accepted_by' in case_keys:
+      if case_data['accepted_by'] == user_id:
+        alert_users.append(case_data['accepted_by'])
+    add_to_alerts(triggered_by=user_id, triggered_at=datetime.now().strftime('%Y-%m-%d'), alert_users=alert_users)
+    return jsonify({'success': True, 'message': 'Similarity analysis completed'}), 200
+  except Exception as e:
+    return jsonify({'success': False, 'message': f'Error triggering similarity analysis: {str(e)}'}), 500
 
 @app.route('/api/case-keywords', methods=['GET'])
-def get_case_keywords(document_url, source='uspto'):
+def get_case_keywords():
   headers = None
+  data = request.get_json()
+  document_url = data.get('document_url')
+  title = data.get('title')
+  description = data.get('description')
+  source = data.get('source')
   if source == 'uspto':
     headers = {"X-API-KEY": os.getenv('USPTO_API_KEY')}
-  content = readDocumentFromUrl(document_url, headers=headers)
+  content = None
+  if document_url is not None:
+    content = readDocumentFromUrl(document_url, headers=headers)
+    if title is not None:
+      content = title + '. ' + content + '.'
+    if description is not None:
+      content = content + '. ' + description + '.'
+  elif title is not None and description is not None:
+    content = title + '. ' + description + '.'
+  else:
+    return jsonify({'success': False, 'message': 'No document URL or title/description provided'}), 400
+  
   if content is None:
     return jsonify({'success': False, 'message': 'Failed to read document'}), 400
   else:
@@ -971,6 +1101,25 @@ def get_case_keywords(document_url, source='uspto'):
     if keywords is None or len(keywords) == 0:
       return jsonify({'success': False, 'message': 'No keywords found. The document may be empty or might contain only stop words.'}), 400
     return jsonify({'success': True, 'keywords': keywords})
+
+@app.route('/api/create-patent', methods=['POST'])
+def api_create_patent():
+  try:
+    data = request.get_json()
+    if 'user_id' not in session:
+      return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+    print('User ID: ', session['user_id'])
+    if session['user_id'] is None:
+      return jsonify({'success': False, 'message': 'User ID is required'}), 400
+    user_id = session['user_id']
+    patent_data = data.get('patent_data')
+    patent_data['created_by'] = user_id
+    data['created_date'] = datetime.now().strftime('%Y-%m-%d')
+    print('Created Patent: ', create_patent(data))
+    return jsonify({'success': True, 'message': 'Patent created successfully'}), 200
+  except Exception as e:
+    print(f'Error creating patent: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error creating patent: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = app.config['PORT']

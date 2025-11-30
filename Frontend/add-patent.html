@@ -417,6 +417,7 @@
         const fileUploadArea = document.getElementById('fileUploadArea');
         const fileInput = document.getElementById('fileInput');
         const uploadedFiles = document.getElementById('uploadedFiles');
+        case_id_final = '';
         let selectedFiles = [];
         let keywordSuggestions = [];
 
@@ -430,7 +431,7 @@
                 if (val.length > 0) {
                     const lastChar = val.slice(-1);
                     if (/\s|[.,;:!?]/.test(lastChar)) {
-                        fetchKeywordSuggestions();
+                        fetchKeywordSuggestions(patentTitleInput.value, patentDescriptionInput.value);
                     }
                 }
             });
@@ -442,17 +443,40 @@
                 if (val.length > 0) {
                     const lastChar = val.slice(-1);
                     if (/\s|[.,;:!?]/.test(lastChar)) {
-                        fetchKeywordSuggestions();
+                        fetchKeywordSuggestions(patentTitleInput.value, patentDescriptionInput.value);
                     }
                 }
             });
         }
 
         // Fetch keyword suggestions
-        function fetchKeywordSuggestions() {
+        function fetchKeywordSuggestions(title, description) {
+            body = JSON.stringify({
+                    document_url: document_url, 
+                    title: title,
+                    description: description
+                });
             console.log('Fetching keyword suggestions');
-            keywordSuggestions = ['AI', 'Machine Learning', 'Blockchain', 'Quantum Computing', 'Robotics', 'Internet of Things', 'Big Data', 'Cloud Computing', 'Data Science', 'Cybersecurity', 'Healthcare', 'FinTech', 'Education', 'Transportation', 'Energy', 'Manufacturing', 'Entertainment', 'Media', 'Social Media', 'E-commerce', 'Social Networking', 'Mobile Computing', 'Wearable Technology', 'Virtual Reality', 'Augmented Reality', 'Biotechnology', 'Agriculture', 'Food Technology', 'Fashion', 'Artificial Intelligence', 'Blockchain', 'Quantum Computing', 'Robotics', 'Internet of Things', 'Big Data', 'Cloud Computing', 'Data Science', 'Cybersecurity', 'Healthcare', 'FinTech', 'Education', 'Transportation', 'Energy', 'Manufacturing', 'Entertainment', 'Media', 'Social Media', 'E-commerce', 'Social Networking', 'Mobile Computing', 'Wearable Technology', 'Virtual Reality', 'Augmented Reality', 'Biotechnology', 'Agriculture', 'Food Technology', 'Fashion'];
-            renderKeywordSuggestions();
+            fetch('/api/get-case-keywords', {
+                method: 'GET',
+                body: body
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data['success']===True) {
+                    newKeywords = data['keywords'];
+                    for(let keyword of newKeywords){
+                        if(!keywordSuggestions.includes(keyword)){
+                            keywordSuggestions.push(keyword);
+                        }
+                    }
+                    renderKeywordSuggestions();
+                }
+                else{
+                    alert('Unable to fetch keyword suggestions. Please try again later.');
+                }
+            })
+            .catch(error => console.error('Error:', error));
         }
 
         // Add keyword to entry and remove from suggestions
@@ -521,6 +545,30 @@
         // File input change
         fileInput.addEventListener('change', (e) => {
             const files = Array.from(e.target.files);
+            // Upload file to database
+            // Assume there is a global or accessible variable "currentCaseId" which stores the case_id for which files are being uploaded
+            if (typeof currentCaseId !== 'undefined' && currentCaseId) {
+                files.forEach(file => {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    fetch(`/api/upload-file-to-local-storage/${currentCaseId}`, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) {
+                            console.error(`Failed to upload file ${file.name}: ${data.message}`);
+                            alert(`Failed to upload file: ${file.name}`);
+                        }
+                    })
+                    .catch(err => {
+                        console.error(`Error uploading file ${file.name}:`, err);
+                        alert(`Error uploading file: ${file.name}`);
+                    });
+                });
+            }
             handleFiles(files);
         });
 
@@ -567,14 +615,64 @@
             displayUploadedFiles();
         }
 
+        async function createPatent(formData) {
+            fetch('/api/create-patent', {
+                method: 'POST',
+                body: JSON.stringify(formData),
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Patent Created:', data['success']);
+                if (data['success'] === true) {
+                    case_id = data['case_id'];
+                    case_id_final = case_id;
+                    window.location.href = '/home';
+                }
+                else{
+                    alert('Unable to create patent. Please try again later.');
+                }
+                console.log('Patent Created:', data);
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        async function triggerSimilarityAnalysis(case_id, keywords) {
+            fetch('/api/trigger-similarity-analysis', {
+                method: 'POST',
+                body: JSON.stringify({
+                    case_id: case_id,
+                    keywords: keywords
+                }),
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Similarity Analysis Triggered:', data);
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
         // Form submission
         document.getElementById('patentForm').addEventListener('submit', function(e) {
             e.preventDefault();
+
+            keywordsFinal = document.getElementById('keywords').value.split(',').map(k => k.trim()).filter(k => k);
+            if (keywordsFinal.length === 0) {
+                fetchKeywordSuggestions();
+                keywordsFinal = keywordSuggestions;
+            }
             
             const formData = {
                 title: document.getElementById('patentTitle').value,
                 description: document.getElementById('patentDescription').value,
-                keywords: document.getElementById('keywords').value.split(',').map(k => k.trim()).filter(k => k),
+                keywords: keywordsFinal,
                 files: selectedFiles.map(file => ({
                     name: file.name,
                     size: file.size,
@@ -585,13 +683,13 @@
             console.log('Patent Data Submitted:', formData);
             console.log('Selected Files:', selectedFiles);
             // TODO: Call the create patent api
-            // TODO: Call the trigger similarity analysis api
-            
-            // Show success message
-            alert('Patent submitted successfully! Check the console for details.');
-            
-            // Reset form
-            resetForm();
+            createPatent(formData).then(() => {
+                if (case_id_final !== ''){
+                    triggerSimilarityAnalysis(case_id_final, formData.keywords);
+                }
+                // Reset form
+                resetForm();
+            });
         });
 
         // Reset form

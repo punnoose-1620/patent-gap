@@ -10,7 +10,7 @@ import datetime
 import numpy as np
 from tqdm import tqdm
 from dotenv import load_dotenv
-from models.cases import get_case_embedding
+from models.cases import get_case_embedding, create_case
 from file_controller import readDocumentFromUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sources.USPTO import USPTOPatentAPI, MissingAPIKeyError
@@ -246,12 +246,14 @@ def getReferenceFromUSPTOResults(result, document_url, similarity_rate):
     title = None
     granted_date = None
 
-    applicationMetaData = result.get('applicationMetaData')
+    try:
+        applicationMetaData = result.get('applicationMetaData')
 
-    if applicationMetaData is not None:
-        title = applicationMetaData.get('inventionTitle')
-        granted_date = applicationMetaData.get('applicationStatusDate')
-
+        if applicationMetaData is not None:
+            title = applicationMetaData.get('inventionTitle')
+            granted_date = applicationMetaData.get('applicationStatusDate')
+    except Exception as e:
+        print(f'Error in getReferenceFromUSPTOResults: {e}')
     return {
         'url': document_url,
         'title': title,
@@ -266,26 +268,40 @@ def getSimilarityScoresFromUSPTOResults(results):
             listWithEmbeddings.append(result)
     
     print('listWithEmbeddings: ', len(listWithEmbeddings), '\n')
-    for result in tqdm(listWithEmbeddings, desc='Processing similarity scores'):
-        listOfEmbeddings = []
-        listOfIds = []
-        listWithoutResult = listWithEmbeddings.copy()
-        listWithoutResult.remove(result)
+    # for result in tqdm(listWithEmbeddings, desc='Processing similarity scores'):
+    try: 
+        for result in listWithEmbeddings:
+            listOfEmbeddings = []
+            listOfIds = []
+            listWithoutResult = listWithEmbeddings.copy()
+            listWithoutResult.remove(result)
 
-        for otherResult in listWithoutResult:
-            listOfEmbeddings.append(otherResult.get('document_embedding'))
-            listOfIds.append(otherResult.get('id'))
-        # Calculate similarity scores between the result and the other results
-        similarity_scores = getBulkSimilarityScore(result.get('document_embedding'), listOfEmbeddings)
-        # Add the references to the result
-        for i in range(len(similarity_scores)):
-            # Get the reference from the other result
-            listWithEmbeddings[i]['references'].append(getReferenceFromUSPTOResults(result, result.get('document_urls')[0].get('url'), similarity_scores[i]))
-    
-    for result in results:
-        for updatedResult in listWithEmbeddings:
-            if updatedResult.get('id') == result.get('id'):
-                result = updatedResult
+            for otherResult in listWithoutResult:
+                listOfEmbeddings.append(otherResult.get('document_embedding'))
+                listOfIds.append(otherResult.get('id'))
+            # Calculate similarity scores between the result and the other results
+            similarity_scores = getBulkSimilarityScore(result.get('document_embedding'), listOfEmbeddings)
+            # Add the references to the result
+            print('similarity_scores: ', len(similarity_scores), '\n')
+            for i in range(len(similarity_scores)):
+                # Get the reference from the other result
+                if 'document_urls' in result.keys():
+                    reference = getReferenceFromUSPTOResults(result, result.get('document_urls')[0].get('url'), similarity_scores[i])
+                    print('reference: ', reference, '\n')
+                    if listWithEmbeddings[i].get('references') is not None:
+                        if listWithEmbeddings[i]['references'] is None:
+                            listWithEmbeddings[i]['references'] = []
+                    listWithEmbeddings[i]['references'].append(reference)
+        
+        for result in results:
+            for updatedResult in listWithEmbeddings:
+                if updatedResult.get('id') == result.get('id'):
+                    result = updatedResult
+                if results.index(result) == 0:
+                    print('result: ', json.dumps(result, indent=4), '\n')
+            create_case(result)
+    except Exception as e:
+        print(f'Error in getSimilarityScoresFromUSPTOResults: {e}')
     return results
 
 def isolateDataFromUSPTOResults(result):
@@ -614,10 +630,10 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
                 grant_embedding = getPatentEmbedding(grant_content)
                 grant_keywords = getKeywordsFromContent(grant_content)
                 keywords.extend(grant_keywords)
-                if tempResult.get('document_embedding') is not None:
-                    tempResult['document_embedding'].append(grant_embedding)
-                else:
-                    tempResult['document_embedding'] = [grant_embedding]
+                # if tempResult.get('document_embedding') is not None:
+                #     tempResult['document_embedding'].append(grant_embedding)
+                # else:
+                #     tempResult['document_embedding'] = [grant_embedding]
             if(pgpub_document_url is not None):
                 doc_urls.append({
                     'source': 'uspto',
@@ -627,10 +643,10 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
                 pgpub_embedding = getPatentEmbedding(pgpub_content)
                 pgpub_keywords = getKeywordsFromContent(pgpub_content)
                 keywords.extend(pgpub_keywords)
-                if tempResult.get('document_embedding') is not None:
-                    tempResult['document_embedding'].append(pgpub_embedding)
-                else:
-                    tempResult['document_embedding'] = [pgpub_embedding]
+                # if tempResult.get('document_embedding') is not None:
+                #     tempResult['document_embedding'].append(pgpub_embedding)
+                # else:
+                #     tempResult['document_embedding'] = [pgpub_embedding]
             tempResult['keywords'] = keywords
         tempResult['documents'] = doc_urls
         finalResults.append(tempResult)
@@ -720,20 +736,23 @@ def getBulkSimilarityScore(reference_embedding, embeddings_list):
     scores = []
     # Check for invalid reference embedding: empty or contains NaN
     invalid_reference = False
-    if reference_embedding is None:
-        invalid_reference = True
-    elif isinstance(reference_embedding, (list, tuple, np.ndarray)):
-        ref_arr = np.asarray(reference_embedding)
-        if ref_arr.size == 0 or np.isnan(ref_arr).any():
+    try:
+        if reference_embedding is None:
             invalid_reference = True
-    else:
-        invalid_reference = True
+        elif isinstance(reference_embedding, (list, tuple, np.ndarray)):
+            ref_arr = np.asarray(reference_embedding)
+            if ref_arr.size == 0 or np.isnan(ref_arr).any():
+                invalid_reference = True
+        else:
+            invalid_reference = True
 
-    if invalid_reference:
-        return [-1 for _ in embeddings_list]
-    for emb in embeddings_list:
-        score = getSimilarityScore(reference_embedding, emb)
-        scores.append(score)
+        if invalid_reference:
+            return [-1 for _ in embeddings_list]
+        for emb in embeddings_list:
+            score = getSimilarityScore(reference_embedding, emb)
+            scores.append(score)
+    except Exception as e:
+        print(f'Error in getBulkSimilarityScore: {str(e)}')
     return scores
 
 def getEmbeddingsFromDocuments(documents):

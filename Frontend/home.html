@@ -154,6 +154,39 @@
             opacity: 0.8;
         }
 
+        .loading-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: #F8F7F3;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border: 1px solid #D8D6C4;
+        }
+
+        .loading-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+            animation: spin 2s linear infinite;
+        }
+
+        .loading-state-title {
+            font-family: 'Merriweather', serif;
+            font-size: 1.5rem;
+            color: #0A1F14;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .loading-state-description {
+            color: #0A1F14;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            max-width: 500px;
+            margin: 0 auto;
+            opacity: 0.8;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -683,32 +716,55 @@
 
         // Load my cases (placeholder)
         async function loadMyCases() {
+            const casesContainer = document.getElementById('my-cases');
+            const loadingState = document.getElementById('my-cases-loading-state');
+            loadingState.innerHTML = `
+                <div class="loading-state-icon">🔄</div>
+                <h2 class="loading-state-title">Loading...</h2>
+                <p class="loading-state-description">
+                    Please wait while we load your cases. This may take a few seconds.
+                </p>`;
+            casesContainer.innerHTML = loadingState.outerHTML;
+            const emptyState = document.getElementById('my-cases-empty-state');
+            emptyState.innerHTML = `
+                <div class="empty-state-icon">📁</div>
+                <h2 class="empty-state-title">My Cases</h2>
+                <p class="empty-state-description">
+                    Your assigned cases will appear here. This feature is coming soon and will allow you to 
+                    view, manage, and track all your patent cases in one place.
+                </p>`;
             try {
-                const response = await fetch('/api/my-cases');
-                const data = await response.json();
-                
-                if (data.success) {
-                    console.log('My cases loaded:', data.cases);
-                    if (data.cases && data.cases.length > 0) {
-                        const casesContainer = document.getElementById('my-cases');
-                        if (casesContainer) {
-                            casesContainer.innerHTML = `
-                                <h2 style="margin-bottom: 0.25rem; font-family: 'Merriweather', serif; color: #0A1F14;">My Cases</h2>
-                                <hr style="border: none; border-bottom: 2px solid #D8D6C4; margin-bottom: 1.5rem;">
-                            `;
-                            const newDiv = document.createElement('div');
-                            newDiv.style.display = 'grid';
-                            newDiv.style.gridTemplateColumns = 'repeat(auto-fit, minmax(300px, 1fr))';
-                            newDiv.style.gap = '1.5rem';
-                            data.cases.forEach(caseData => {
-                                const caseCard = renderCase(caseData);
-                                newDiv.appendChild(caseCard);
-                            }); 
-                            casesContainer.appendChild(newDiv);
+                fetch('/api/my-cases')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('My cases loaded:', data.cases);
+                        
+                        if (data.cases && data.cases.length > 0) {
+                            if (casesContainer) {
+                                casesContainer.innerHTML = `
+                                    <h2 style="margin-bottom: 0.25rem; font-family: 'Merriweather', serif; color: #0A1F14;">My Cases</h2>
+                                    <hr style="border: none; border-bottom: 2px solid #D8D6C4; margin-bottom: 1.5rem;">
+                                `;
+                                const newDiv = document.createElement('div');
+                                newDiv.style.display = 'grid';
+                                newDiv.style.gridTemplateColumns = 'repeat(auto-fit, minmax(300px, 1fr))';
+                                newDiv.style.gap = '1.5rem';
+                                data.cases.forEach(caseData => {
+                                    const caseCard = renderCase(caseData);
+                                    newDiv.appendChild(caseCard);
+                                }); 
+                                casesContainer.appendChild(newDiv);
+                            }
+                        }
+                        else {
+                            casesContainer.innerHTML = emptyState.outerHTML;
                         }
                     }
-                    // TODO: Display cases in the UI
-                }
+                })
+                .catch(error => {})
+                const response = await fetch('/api/my-cases');
+                const data = await response.json();
             } catch (error) {
                 console.error('Error loading my cases:', error);
             }
@@ -835,6 +891,8 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadDashboardData();
         });
+
+        
     </script>
 </body>
 </html>
