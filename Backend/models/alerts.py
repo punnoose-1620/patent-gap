@@ -2,6 +2,7 @@ import time
 from models.cases import *
 from data_processor import *
 from database import *
+from env_controller import getAlertDatabaseName
 
 alerts = [
     {
@@ -54,23 +55,25 @@ alerts = [
     }
 ]
 
-def add_to_alerts(triggered_by, triggered_at, alert_users):
+def add_to_alerts(triggered_by, triggered_at, alert_users, title, description):
     newAlert = {
         "_id": str(int(time.time())),
+        'title': title,
+        'description': description,
         "triggered_by": triggered_by,
         "triggered_at": triggered_at,
         "alert_users": alert_users,
         "opened_receipts": [],
         "sent_receipts": []
     }
-    addDataById(connect_to_database(), 'alerts', newAlert)
+    addDataById(connect_to_database(), getAlertDatabaseName(), newAlert)
     # alerts.append(newAlert)
     # trigger_alert(alert_users)
     # return newAlert['_id']
     return newAlert['_id']
 
 def get_alerts():
-    return getAllData(connect_to_database(), 'alerts')
+    return getAllData(connect_to_database(), getAlertDatabaseName())
     return alerts
 
 def get_alerts_for_user(user_id):
@@ -78,14 +81,14 @@ def get_alerts_for_user(user_id):
     my_cases = get_case_related_to_user(user_id)
     # Isolate Alerts that are related to the user
     try:
-        for alert in getAllData(connect_to_database(), 'alerts'):
+        for alert in getAllData(connect_to_database(), getAlertDatabaseName()):
             if user_id in alert['alert_users']:
                 # Get Embeddings for reference case from alert's 'triggered_by' case
                 triggered_by_case = get_case_by_id(alert['triggered_by'])
                 triggered_by_embeddings = triggered_by_case.get('embeddings', [])
                 if len(triggered_by_embeddings) == 0:
                     # If embeddings are not available, get them from the documents
-                    documents = get_documents_from_case(triggered_by_case['id'])
+                    documents = get_documents_from_case(triggered_by_case['_id'])
                     triggered_by_embeddings = getEmbeddingsFromDocuments(documents)
                 max_similarity = 0
                 max_similarity_case = None
@@ -95,13 +98,13 @@ def get_alerts_for_user(user_id):
                     print('Embeddings:', embeddings)
                     if len(embeddings) == 0:
                         # If embeddings are not available, get them from the documents
-                        documents = get_documents_from_case(case['id'])
+                        documents = get_documents_from_case(case['_id'])
                         embeddings = getEmbeddingsFromDocuments(documents)
                     # Get similarity score for the case with the alert case
                     similarity_score = getSimilarityScore(embeddings, triggered_by_embeddings)
                     if similarity_score > max_similarity:
                         max_similarity = similarity_score
-                        max_similarity_case = case['id']
+                        max_similarity_case = case['_id']
                     alert['similar_case'] = max_similarity_case
                     alert['similarity_score'] = max_similarity
             user_alerts.append(alert)
@@ -112,3 +115,31 @@ def get_alerts_for_user(user_id):
 def trigger_alert(alert_users):
     # TODO: Implement actual alert triggering logic to send alerts to the users
     return True
+
+def create_alert(user_id, case_id, references):
+    case_data = get_case_by_id(case_id)
+    alert_users = [user_id]
+    print('Case data: ', case_data)
+    if (case_data is not None) and (case_data is not {}):
+      case_data['references'] = references
+      update_case(case_id, case_data)
+      print('References updated')
+      case_keys = case_data.keys()
+      if 'created_by' in case_keys:
+        if case_data['created_by'] == user_id:
+          alert_users.append(case_data['created_by'])
+      if 'assigned_to' in case_keys:
+        if case_data['assigned_to'] == user_id:
+          alert_users.append(case_data['assigned_to'])
+      if 'accepted_by' in case_keys:
+        if case_data['accepted_by'] == user_id:
+          alert_users.append(case_data['accepted_by'])
+    print('Alert Users:', alert_users)
+    newAlertId = add_to_alerts(
+        triggered_by=user_id, 
+        triggered_at=datetime.now().strftime('%Y-%m-%d'), 
+        alert_users=alert_users,
+        title=f'{case_data.get("title")}',
+        description=f'{len(references)} potential infringements found...'
+        )
+    return newAlertId

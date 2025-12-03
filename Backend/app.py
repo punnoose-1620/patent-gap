@@ -1,6 +1,6 @@
 import os
 from flask_cors import CORS
-from swagger import initialize_swagger, get_response_models
+from swagger import initialize_swagger
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 
 from models.demo import *
@@ -9,6 +9,7 @@ from models.users import *
 from models.alerts import *
 from database import *
 from controller import *
+from env_controller import *
 from datetime import datetime
 
 app = Flask(__name__, 
@@ -31,19 +32,16 @@ swagger = initialize_swagger(app)
 def index():
     """Serve the home page"""
     print('Collections: ', getCollectionsFromDatabase(connect_to_database()))
-    if not checkCollectionExists(connect_to_database(), 'cases'):
-        print('\nCreating cases collection: ', createCollection(connect_to_database(), 'cases'))
+    if not checkCollectionExists(connect_to_database(), getCaseDatabaseName()):
+        print('\nCreating cases collection: ', createCollection(connect_to_database(), getCaseDatabaseName()))
     if not checkCollectionExists(connect_to_database(), 'patents'):
         print('\nCreating patents collection: ', createCollection(connect_to_database(), 'patents'))
-    if not checkCollectionExists(connect_to_database(), 'users'):
-        print('\nCreating users collection: ', createCollection(connect_to_database(), 'users'))
-    if not checkCollectionExists(connect_to_database(), 'alerts'):
-        print('\nCreating alerts collection: ', createCollection(connect_to_database(), 'alerts'))
-    if not checkCollectionExists(connect_to_database(), 'demo_requests'):
-        print('\nCreating demo_requests collection: ', createCollection(connect_to_database(), 'demo_requests'))
-    # testKeywords = ['AI', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence']
-    # testDocuments = getKeywordDocumentsUSPTO(testKeywords)
-    # print('Test Documents:', testDocuments)
+    if not checkCollectionExists(connect_to_database(), getUserDatabaseName()):
+        print('\nCreating users collection: ', createCollection(connect_to_database(), getUserDatabaseName()))
+    if not checkCollectionExists(connect_to_database(), getAlertDatabaseName()):
+        print('\nCreating alerts collection: ', createCollection(connect_to_database(), getAlertDatabaseName()))
+    if not checkCollectionExists(connect_to_database(), getDemoDatabaseName()):
+        print('\nCreating demo_requests collection: ', createCollection(connect_to_database(), getDemoDatabaseName()))
     return render_template('index.html')
 
 @app.route('/favicon.ico')
@@ -880,7 +878,6 @@ def upload_file_to_local_storage(case_id):
         description: File uploaded successfully
     """
 
-    import os
     from werkzeug.utils import secure_filename
 
     # Check authentication
@@ -920,7 +917,7 @@ def upload_file_to_local_storage(case_id):
           case_data['documents'] = documents
           from database import connect_to_database
           db = connect_to_database()
-          updateDataById(db, collectionName='cases', entryData={'_id': case_id, 'documents': documents})
+          updateDataById(db, collectionName=getCaseDatabaseName(), entryData={'_id': case_id, 'documents': documents})
 
         # Optionally: Here you might want to update the corresponding case to add this file URL
 
@@ -984,7 +981,7 @@ def upload_file(case_id):
                 # Update the case entry in the database
                 from database import connect_to_database
                 db = connect_to_database()
-                updateDataById(db, collectionName='cases', entryData={'_id': case_id, 'documents': references})
+                updateDataById(db, collectionName=getCaseDatabaseName(), entryData={'_id': case_id, 'documents': references})
             result = {
                 'success': True,
                 'message': 'File uploaded successfully',
@@ -1046,30 +1043,24 @@ def get_user_alerts():
 def trigger_similarity_analysis():
   try:
     data = request.get_json()
-    case_id = data.get('case_id')
-    keywords = data.get('keywords')
     if 'user_id' not in session:
       return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
     user_id = session['user_id']
-    similarUsptoDocuments = getKeywordDocumentsUSPTO(keywords)    # Similar documents normalized, processed and with references & embeddings
+    if data is None:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    case_id = data.get('case_id')
+    keywords = data.get('keywords')
+
+    similarUsptoDocuments = getKeywordDocumentsUSPTO(keywords, load_to_database=False)    # Similar documents normalized, processed and with references & embeddings
+    print('similarUsptoDocuments sample: ', json.dumps(similarUsptoDocuments[0], indent=4))
     references = getReferenceFromNormalizedList(similarUsptoDocuments, case_id)
-    case_data = get_case_by_id(case_id)
-    case_data['references'] = references
-    update_case(case_id, case_data)
-    alert_users = []
-    case_keys = case_data.keys()
-    if 'created_by' in case_keys:
-      if case_data['created_by'] == user_id:
-        alert_users.append(case_data['created_by'])
-    if 'assigned_to' in case_keys:
-      if case_data['assigned_to'] == user_id:
-        alert_users.append(case_data['assigned_to'])
-    if 'accepted_by' in case_keys:
-      if case_data['accepted_by'] == user_id:
-        alert_users.append(case_data['accepted_by'])
-    add_to_alerts(triggered_by=user_id, triggered_at=datetime.now().strftime('%Y-%m-%d'), alert_users=alert_users)
-    return jsonify({'success': True, 'message': 'Similarity analysis completed'}), 200
+    print('References calculated')
+    
+    newAlertId = create_alert(user_id, case_id, references)
+    print('New Alert ID:', newAlertId)
+    return jsonify({'success': True, 'message': 'Similarity analysis completed', 'alert_id': newAlertId}), 200
   except Exception as e:
+    print(f'Error triggering similarity analysis: {str(e)}')
     return jsonify({'success': False, 'message': f'Error triggering similarity analysis: {str(e)}'}), 500
 
 @app.route('/api/case-keywords', methods=['GET'])
@@ -1081,7 +1072,7 @@ def get_case_keywords():
   description = data.get('description')
   source = data.get('source')
   if source == 'uspto':
-    headers = {"X-API-KEY": os.getenv('USPTO_API_KEY')}
+    headers = {"X-API-KEY": getEnvKey('uspto')}
   content = None
   if document_url is not None:
     content = readDocumentFromUrl(document_url, headers=headers)
@@ -1108,18 +1099,138 @@ def api_create_patent():
     data = request.get_json()
     if 'user_id' not in session:
       return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-    print('User ID: ', session['user_id'])
     if session['user_id'] is None:
       return jsonify({'success': False, 'message': 'User ID is required'}), 400
     user_id = session['user_id']
-    patent_data = data.get('patent_data')
-    patent_data['created_by'] = user_id
+    # patent_data = data.get('patent_data')
+    data['created_by'] = user_id
     data['created_date'] = datetime.now().strftime('%Y-%m-%d')
-    print('Created Patent: ', create_patent(data))
-    return jsonify({'success': True, 'message': 'Patent created successfully'}), 200
+    created_patent = create_patent(data)
+    print('\nCreated Patent: ', created_patent, '\n')
+    returnVal = {
+      'success': True, 
+      'message': 'Patent created successfully', 
+      'case_id': created_patent['patent_id']
+      }
+    return jsonify(returnVal), 200
   except Exception as e:
     print(f'Error creating patent: {str(e)}')
     return jsonify({'success': False, 'message': f'Error creating patent: {str(e)}'}), 500
+
+@app.route('/api/fetch-patent-from-uspto', methods=['POST'])
+def fetch_patent_from_uspto():
+  """
+  Fetch a patent from the US Patent Office and create a case
+  ---
+  tags:
+    - Patents
+  summary: Fetch patent from USPTO
+  description: |
+    Fetches patent data from the US Patent and Trademark Office (USPTO) using the provided patent ID.
+    The patent data is then normalized and automatically created as a case in the system.
+    The case will be monitored for similarity analysis.
+  consumes:
+    - application/json
+  produces:
+    - application/json
+  security:
+    - session: []
+  parameters:
+    - in: body
+      name: patent_request
+      description: Patent ID to fetch from USPTO
+      required: true
+      schema:
+        type: object
+        required:
+          - patentId
+        properties:
+          patentId:
+            type: string
+            description: The USPTO patent number/ID to fetch
+            example: "US12345678"
+  responses:
+    200:
+      description: Patent fetched successfully and case created
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: true
+          message:
+            type: string
+            example: "Patent has been fetched successfully. This case is now being monitored for similarity."
+          case_id:
+            type: string
+            description: The ID of the created case
+            example: "case_12345"
+    400:
+      description: Bad request - missing or invalid patent ID, or failed to fetch/normalize patent data
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: false
+          message:
+            type: string
+            example: "Patent ID is required"
+    500:
+      description: Internal server error during patent data processing
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: false
+          message:
+            type: string
+            example: "Error normalizing patent data: [error details]"
+  """
+  if 'user_id' not in session:
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'patentId' not in data:
+    return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
+  
+  patentId = data.get('patentId')
+  print('Patent ID: ', patentId)
+  if patentId is None or patentId.trim() == '':
+    return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
+
+  try: 
+    uspto_api = USPTOPatentAPI(api_key=getEnvKey('uspto'))
+    patentData = uspto_api.get_application_data(patentId)
+    if patentData is None:
+      return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
+
+    normalizedPatentData = isolateDataFromUSPTOResults(patentData);
+    if normalizedPatentData is None:
+      return jsonify({'success': False, 'message': 'Failed to normalize patent data. Please check the patent ID and try again.'}), 400
+
+    normalizedPatentData['_id'] = f'uspto_{patentId}'
+
+    # TODO: Get references and documents from USPTO, then update normalizedPatentData with references and documents
+    relatedDocuments = uspto_api.get_associated_documents(patentId)
+    relatedDocumentsNormalized = []
+    for document in relatedDocuments:
+      documentNormalized = isolateDocumentFromUsptoById(document)
+      if documentNormalized is not None:
+        relatedDocumentsNormalized.extend(documentNormalized)
+    normalizedPatentData['documents'] = relatedDocumentsNormalized
+
+    creationResult = create_case(normalizedPatentData)
+    if 'case_id' not in creationResult:
+      return jsonify({'success': False, 'message': 'Failed to create case. Please check the patent data and try again.'}), 400
+      
+    return jsonify({'success': True, 'message': 'Patent has been fetched successfully. This case is now being monitored for similarity.', 'case_id': creationResult['case_id']}), 200
+
+  except Exception as e:
+    print(f'Error normalizing patent data: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error normalizing patent data: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = app.config['PORT']

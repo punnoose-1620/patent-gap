@@ -289,6 +289,44 @@
             color: #e74c3c;
         }
 
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.2rem;
+            padding: 0.75rem;
+            background-color: #fff;
+            border: 2px solid #D8D6C4;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .checkbox-group:hover {
+            border-color: #191970;
+            background-color: #f8f9fa;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 0.75rem;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #191970;
+        }
+
+        .checkbox-group label {
+            font-weight: 500;
+            cursor: pointer;
+            color: #0A1F14;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+        }
+
+        .checkbox-group input[type="checkbox"]:checked + label {
+            color: #191970;
+            font-weight: 600;
+        }
+
         @media (max-width: 768px) {
             .main-content {
                 padding: 1rem;
@@ -326,7 +364,18 @@
             <p class="page-subtitle">Submit your patent application with supporting documents</p>
         </div>
 
-        <div class="form-container">
+        <div class="checkbox-group">
+            <input 
+                type="checkbox" 
+                id="usptoFetchCheckbox" 
+                name="usptoFetchCheckbox"
+            >
+            <label for="usptoFetchCheckbox">
+                Get my patent from US Patent Office
+            </label>
+        </div>
+
+        <div class="form-container" id="patentEntryContainer">
             <form id="patentForm">
                 <!-- Patent Title -->
                 <div class="form-group">
@@ -414,12 +463,154 @@
 
     <script>
         // File upload functionality
+        const patentEntryContainer = document.getElementById('patentEntryContainer');
         const fileUploadArea = document.getElementById('fileUploadArea');
-        const fileInput = document.getElementById('fileInput');
         const uploadedFiles = document.getElementById('uploadedFiles');
-        case_id_final = '';
-        let selectedFiles = [];
+        const fileInput = document.getElementById('fileInput');
         let keywordSuggestions = [];
+        let selectedFiles = [];
+        let source = 'manual';
+
+        // USPTO Fetch Checkbox handler
+        const usptoFetchCheckbox = document.getElementById('usptoFetchCheckbox');
+        if (usptoFetchCheckbox) {
+            usptoFetchCheckbox.addEventListener('change', function(e) {
+                const isChecked = e.target.checked;
+                
+                if (isChecked) {
+                    // When checked, you can add functionality here
+                    // For example: show a patent number input field, fetch from USPTO, etc.
+                    handleUSPTOFetchEnabled();
+                }
+                else {
+                    // When unchecked, reset any USPTO-related fields
+                    handleUSPTOFetchDisabled();
+                }
+                console.log('Source: ', source);
+            });
+        }
+
+        function handleUSPTOFetchEnabled() {
+            // Add functionality when USPTO fetch is enabled
+            // This could show additional fields, fetch data, etc.
+            patentEntryContainer.innerHTML = `
+                <form id="usptoPatentForm">
+                    <div class="form-group">
+                        <label for="usptoPatentId" class="form-label">
+                            USPTO Patent ID <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="usptoPatentId" 
+                            name="usptoPatentId" 
+                            class="form-input" 
+                            placeholder="Enter the USPTO patent number"
+                            required
+                        >
+                    </div>
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">
+                            Fetch Patent
+                        </button>
+                    </div>
+                </form>
+            `;
+            console.log('USPTO fetch enabled');
+            source = 'uspto';
+            // Example: You might want to show a patent number input field
+            // or automatically fetch patent data
+        }
+
+        function handleUSPTOFetchDisabled() {
+            // Add functionality when USPTO fetch is disabled
+            // This could hide fields, clear data, etc.
+            patentEntryContainer.innerHTML = `
+            <form id="patentForm">
+                <!-- Patent Title -->
+                <div class="form-group">
+                    <label for="patentTitle" class="form-label">
+                        Patent Title <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="patentTitle" 
+                        name="patentTitle" 
+                        class="form-input" 
+                        placeholder="Enter the patent title"
+                        required
+                    >
+                </div>
+
+                <!-- Patent Description -->
+                <div class="form-group">
+                    <label for="patentDescription" class="form-label">
+                        Patent Description <span class="required">*</span>
+                    </label>
+                    <textarea 
+                        id="patentDescription" 
+                        name="patentDescription" 
+                        class="form-textarea" 
+                        placeholder="Provide a detailed description of your patent"
+                        required
+                    ></textarea>
+                </div>
+
+                <!-- Keywords -->
+                <div class="form-group">
+                    <label for="keywords" class="form-label">
+                        Keywords <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="keywords" 
+                        name="keywords" 
+                        class="form-input" 
+                        placeholder="Enter keywords separated by commas (e.g., AI, machine learning, automation)"
+                        required
+                    >
+                    <div class="keyword-suggestions" id="keyword-suggestions"></div>
+                    <div class="keywords-hint">
+                        Separate multiple keywords with commas
+                    </div>
+                </div>
+
+                <!-- Document Upload -->
+                <div class="form-group">
+                    <label class="form-label">
+                        Upload Documents
+                    </label>
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <div class="file-upload-icon">📄</div>
+                        <div class="file-upload-text">Click to upload or drag and drop PDF files</div>
+                        <div class="file-upload-hint">PDF files only (max 10MB each)</div>
+                        <input 
+                            type="file" 
+                            id="fileInput" 
+                            class="file-input" 
+                            multiple 
+                            accept=".pdf"
+                        >
+                    </div>
+                    <div class="uploaded-files" id="uploadedFiles"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">
+                        Submit Patent
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="goBackToDashboard()">
+                        Back to Dashboard
+                    </button>
+                    <button type="button" class="btn btn-danger" onclick="discardChanges()">
+                        Discard
+                    </button>
+                </div>
+            </form>`;
+            console.log('USPTO fetch disabled');
+            source = 'manual';
+            // Example: Clear any auto-filled fields
+        }
 
         // Listen for word completion in patent title input
         const patentTitleInput = document.getElementById('patentTitle');
@@ -520,58 +711,6 @@
             });
         }
 
-        // Click to upload
-        fileUploadArea.addEventListener('click', () => {
-            fileInput.click();
-        });
-
-        // Drag and drop functionality
-        fileUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.add('dragover');
-        });
-
-        fileUploadArea.addEventListener('dragleave', () => {
-            fileUploadArea.classList.remove('dragover');
-        });
-
-        fileUploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.remove('dragover');
-            const files = Array.from(e.dataTransfer.files);
-            handleFiles(files);
-        });
-
-        // File input change
-        fileInput.addEventListener('change', (e) => {
-            const files = Array.from(e.target.files);
-            // Upload file to database
-            // Assume there is a global or accessible variable "currentCaseId" which stores the case_id for which files are being uploaded
-            if (typeof currentCaseId !== 'undefined' && currentCaseId) {
-                files.forEach(file => {
-                    const formData = new FormData();
-                    formData.append('file', file);
-
-                    fetch(`/api/upload-file-to-local-storage/${currentCaseId}`, {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (!data.success) {
-                            console.error(`Failed to upload file ${file.name}: ${data.message}`);
-                            alert(`Failed to upload file: ${file.name}`);
-                        }
-                    })
-                    .catch(err => {
-                        console.error(`Error uploading file ${file.name}:`, err);
-                        alert(`Error uploading file: ${file.name}`);
-                    });
-                });
-            }
-            handleFiles(files);
-        });
-
         // Handle selected files
         function handleFiles(files) {
             const pdfFiles = files.filter(file => file.type === 'application/pdf');
@@ -626,71 +765,73 @@
             })
             .then(response => response.json())
             .then(data => {
-                console.log('Patent Created:', data['success']);
+                console.log('Created Patent:', data);
                 if (data['success'] === true) {
-                    case_id = data['case_id'];
-                    case_id_final = case_id;
-                    window.location.href = '/home';
+                    console.log('Case ID Final Updated:', data['case_id']);
+                    if (data['case_id'] !== '') {
+                        triggerSimilarityAnalysis(data['case_id'], formData.keywords)
+                        .catch(error => {
+                            console.error('Similarity Analysis Error:', error);
+                        });
+                        setTimeout(() => {
+                            // Reset form
+                            resetForm();
+                            window.location.href = '/home';
+                        }, 1000);
+                    }
                 }
                 else{
                     alert('Unable to create patent. Please try again later.');
                 }
                 console.log('Patent Created:', data);
             })
-            .catch(error => console.error('Error:', error));
-        }
-
-        async function triggerSimilarityAnalysis(case_id, keywords) {
-            fetch('/api/trigger-similarity-analysis', {
-                method: 'POST',
-                body: JSON.stringify({
-                    case_id: case_id,
-                    keywords: keywords
-                }),
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'include'
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Similarity Analysis Triggered:', data);
-            })
-            .catch(error => console.error('Error:', error));
-        }
-
-        // Form submission
-        document.getElementById('patentForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-
-            keywordsFinal = document.getElementById('keywords').value.split(',').map(k => k.trim()).filter(k => k);
-            if (keywordsFinal.length === 0) {
-                fetchKeywordSuggestions();
-                keywordsFinal = keywordSuggestions;
-            }
-            
-            const formData = {
-                title: document.getElementById('patentTitle').value,
-                description: document.getElementById('patentDescription').value,
-                keywords: keywordsFinal,
-                files: selectedFiles.map(file => ({
-                    name: file.name,
-                    size: file.size,
-                    type: file.type
-                }))
-            };
-
-            console.log('Patent Data Submitted:', formData);
-            console.log('Selected Files:', selectedFiles);
-            // TODO: Call the create patent api
-            createPatent(formData).then(() => {
-                if (case_id_final !== ''){
-                    triggerSimilarityAnalysis(case_id_final, formData.keywords);
-                }
-                // Reset form
-                resetForm();
+            .catch(error => {
+                console.error('Error:', error)
             });
-        });
+        }
+
+        async function fetchPatentFromUspto(formData) {
+            try {
+                fetch(
+                    '/api/fetch-patent-from-uspto', {
+                        method: 'POST',
+                        body: JSON.stringify(formData),
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'include'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data['success'] === true) {}
+                    });
+            } catch(error) {
+                console.error('Error fetchin patent from USPTO:', error)
+            }
+        }
+        
+        async function triggerSimilarityAnalysis(case_id, keywords) {
+            let body = {
+                case_id: case_id,
+                keywords: keywords
+            };
+            let headers = {
+                'Content-Type': 'application/json'
+            };
+            try {
+                const response = await fetch('/api/trigger-similarity-analysis', {
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                    headers: headers,
+                    credentials: 'include',
+                    keepalive: true
+                });
+                console.log('Similarity Analysis Triggered:', response);
+            }
+            catch(error) {
+                console.error('Similarity Analysis Error:', error)
+            }
+        }
 
         // Reset form
         function resetForm() {
@@ -730,6 +871,105 @@
             
             return title.trim() !== '' || description.trim() !== '' || keywords.trim() !== '' || selectedFiles.length > 0;
         }
+
+        // Manual Entry Form submission
+        document.getElementById('patentForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            keywordsFinal = document.getElementById('keywords').value.split(',').map(k => k.trim()).filter(k => k);
+            if (keywordsFinal.length === 0) {
+                fetchKeywordSuggestions();
+                keywordsFinal = keywordSuggestions;
+            }
+            
+            const formData = {
+                title: document.getElementById('patentTitle').value,
+                description: document.getElementById('patentDescription').value,
+                keywords: keywordsFinal,
+                files: selectedFiles.map(file => ({
+                    name: file.name,
+                    size: file.size,
+                    type: file.type
+                }))
+            };
+
+            console.log('Patent Data Submitted:', formData);
+            console.log('Selected Files:', selectedFiles);
+            // TODO: Call the create patent api
+            createPatent(formData);
+        });
+
+        // USPTO Fetch Form Submission
+        document.getElementById('usptoPatentForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const patentIdInput = document.getElementById('usptoPatentId');
+            if (!patentIdInput) {
+                alert('Some error occured. Please refresh the page and try again.');
+                return;
+            }
+            let usptoPatentId = patentIdInput.value.trim();
+            if (usptoPatentId === '' || usptoPatentId.length === 0) {
+                alert('Please enter a valid USPTO patent ID.');
+                return;
+            }
+            console.log('USPTO Patent ID:', usptoPatentId);
+            const formData = {
+                patentId: usptoPatentId
+            };
+            fetchPatentFromUspto(formData);
+        })
+        
+        // Click to upload
+        fileUploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Drag and drop functionality
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            handleFiles(files);
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            // Upload file to database
+            // Assume there is a global or accessible variable "currentCaseId" which stores the case_id for which files are being uploaded
+            if (typeof currentCaseId !== 'undefined' && currentCaseId) {
+                files.forEach(file => {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    fetch(`/api/upload-file-to-local-storage/${currentCaseId}`, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) {
+                            console.error(`Failed to upload file ${file.name}: ${data.message}`);
+                            alert(`Failed to upload file: ${file.name}`);
+                        }
+                    })
+                    .catch(err => {
+                        console.error(`Error uploading file ${file.name}:`, err);
+                        alert(`Error uploading file: ${file.name}`);
+                    });
+                });
+            }
+            handleFiles(files);
+        });
 
         // Add visual feedback for form validation
         document.querySelectorAll('.form-input, .form-textarea').forEach(input => {

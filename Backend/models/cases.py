@@ -1,8 +1,9 @@
 from database import *
+from env_controller import getCaseDatabaseName
 mock_cases = []
 
 def get_all_cases():
-    return getAllData(connect_to_database(), 'cases')
+    return getAllData(connect_to_database(), getCaseDatabaseName())
     # return mock_cases
 
 def get_open_cases():
@@ -13,7 +14,7 @@ def get_open_cases():
         list: List of open cases
     """
     open_cases = []
-    for case in getAllData(connect_to_database(), 'cases'):
+    for case in getAllData(connect_to_database(), getCaseDatabaseName()):
         if case['status'] != 'Completed':
             open_cases.append(case)
     return open_cases
@@ -29,25 +30,18 @@ def create_case(case_data):
         dict: Result containing success status and case_id if successful
     """
     global mock_cases
-    if 'id' not in case_data:
+    if '_id' not in case_data:
         return {
             'success': False,
             'message': 'Case ID is required'
         }
-    # for case in mock_cases:
-    #     if case['id'] == case_data['id']:
-    #         return {
-    #             'success': False,
-    #             'message': 'Case ID already exists'
-    #         }
-    # mock_cases.append(case_data)
-    addDataById(connect_to_database(), 'cases', case_data)
-    new_case_id = getDataById(connect_to_database(), 'cases', case_data['id'])
-    # print('mock_cases: ', len(mock_cases), '\n')
+    addedId = addDataById(connect_to_database(), getCaseDatabaseName(), case_data)
+    if addedId is not None:
+        case_data['_id'] = addedId
     return {
         'success': True,
         'message': 'Case created successfully',
-        'case_id': case_data['id']
+        'case_id': case_data['_id']
     }
 
 def update_case(case_id, update_data):
@@ -84,7 +78,7 @@ def delete_case(case_id):
         dict: Result containing success status
     """
     for case in mock_cases:
-        if case['id'] == case_id:
+        if case['_id'] == case_id:
             mock_cases.remove(case)
             return {
                 'success': True,
@@ -105,14 +99,7 @@ def get_case_by_id(case_id, show_password=False):
     Returns:
         dict: Case details or None if not found
     """
-    return getDataById(connect_to_database(), 'cases', case_id)
-    # for case in mock_cases:
-    #     if case['id'] == case_id:
-    #         # remove password from case before returning
-    #         if 'password' in case and not show_password:
-    #             del case['password']
-    #         return case
-    # return None
+    return getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
 
 def get_case_related_to_user(user_id):
     """
@@ -126,7 +113,7 @@ def get_case_related_to_user(user_id):
     """
     # TODO: Implement actual database query
     user_cases = []
-    for case in getAllData(connect_to_database(), 'cases'):
+    for case in getAllData(connect_to_database(), getCaseDatabaseName()):
         keys = case.keys()
         if ('assigned_to' in keys):
             if (case['assigned_to'] == user_id):
@@ -152,10 +139,10 @@ def get_documents_from_case(case_id):
     Returns:
         list: The 'documents' list from the matched case, or an empty list if the case is not found or has no documents.
     """
-    case = getDataById(connect_to_database(), 'cases', case_id)
+    case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     patentDocuments = case.get('documents', [])
     # for case in mock_cases:
-    #     if case.get('id') == case_id:
+    #     if case.get('_id') == case_id:
     #         patentDocuments = case.get('documents', [])
     #         break
     return patentDocuments
@@ -164,12 +151,10 @@ def get_case_embedding(case_id):
     """
     Retrieve the embedding of a specific case, given its case_id.
     """
-    case = getDataById(connect_to_database(), 'cases', case_id)
-    return case.get('document_embedding')
-    # for case in mock_cases:
-    #     if case.get('id') == case_id:
-    #         return case.get('document_embedding')
-    # return None
+    case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    if case is not None:
+        return case.get('document_embedding')
+    return {}
 
 def get_all_cases_except_one(case_id):
     """
@@ -182,8 +167,8 @@ def get_all_cases_except_one(case_id):
         list: A list of all case dictionaries except the one matching the given case_id.
     """
     all_cases = []
-    for case in getAllData(connect_to_database(), 'cases'):
-        if case.get('id') != case_id:
+    for case in getAllData(connect_to_database(), getCaseDatabaseName()):
+        if case.get('_id') != case_id:
             all_cases.append(case)
     return all_cases
 
@@ -197,9 +182,9 @@ def get_case_creator(case_id):
     Returns:
         str: The 'created_by' value from the matched case, or None if the case is not found.
     """
-    case = getDataById(connect_to_database(), 'cases', case_id)
+    case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     return case.get('created_by')
     # for case in mock_cases:
-    #     if case.get('id') == case_id:
+    #     if case.get('_id') == case_id:
     #         return case.get('created_by')
     # return 'Unknown'

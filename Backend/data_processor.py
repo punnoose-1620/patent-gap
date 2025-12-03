@@ -9,7 +9,7 @@ import requests
 import datetime
 import numpy as np
 from tqdm import tqdm
-from dotenv import load_dotenv
+from env_controller import getEnvKey
 from models.cases import get_case_embedding, create_case
 from file_controller import readDocumentFromUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -35,11 +35,8 @@ def initialize_uspto_api():
     """
     global _uspto_api_instance
     
-    # Load environment variables
-    load_dotenv()
-    
     # Get API key from environment
-    api_key = os.getenv('USPTO_API_KEY')
+    api_key = getEnvKey('uspto')
     
     if not api_key:
         raise MissingAPIKeyError(
@@ -152,6 +149,8 @@ def getKeywordsFromContentOnline(content, api_key=None, model="gpt-3.5-turbo"):
     Returns:
         list: List of extracted keyword strings.
     """
+    if content is None:
+        return []
     api_key = api_key or os.getenv('OPENAI_API_KEY')
     client = openai.OpenAI(api_key=api_key)
 
@@ -192,6 +191,8 @@ def getKeywordsFromContentOffline(content):
         list: List of top keyword strings.
     """
     # Treat the content as a single document; TF-IDF needs at least one doc
+    if content is None:
+        return []
     docs = [content]
     vectorizer = TfidfVectorizer(stop_words="english", max_features=20)
     tfidf_matrix = vectorizer.fit_transform(docs)
@@ -228,18 +229,21 @@ def getReferenceFromNormalizedList(listOfCases, case_id):
     listOfReferences = []
     case_embedding = get_case_embedding(case_id)
     for case in listOfCases:
-        url = case.get('documents')[0].get('url')
-        title = case.get('title')
-        granted_date = case.get('filing_date')
-        similarity_rate = None
-        referenceEmbeddings = case.get('document_embedding')
-        similarity_rate = getSimilarityScore(case_embedding, referenceEmbeddings)
-        listOfReferences.append({
-            'url': url,
-            'title': title,
-            'granted_date': granted_date,
-            'similarity_rate': similarity_rate
-        })
+        if case is not None:
+            if ('documents' in case.keys()) and (case.get('documents') is not None) and (len(case.get('documents')) > 0):
+                url = case.get('documents')[0].get('url')
+                title = case.get('title')
+                granted_date = case.get('filing_date')
+                similarity_rate = None
+                referenceEmbeddings = case.get('document_embedding')
+                if (referenceEmbeddings is not None) and (len(referenceEmbeddings) > 0):
+                    similarity_rate = getSimilarityScore(case_embedding, referenceEmbeddings)
+                    listOfReferences.append({
+                        'url': url,
+                        'title': title,
+                        'granted_date': granted_date,
+                        'similarity_rate': similarity_rate
+                    })
     return listOfReferences
 
 def getReferenceFromUSPTOResults(result, document_url, similarity_rate):
@@ -264,13 +268,13 @@ def getReferenceFromUSPTOResults(result, document_url, similarity_rate):
 def getSimilarityScoresFromUSPTOResults(results):
     listWithEmbeddings = []
     for result in results:
-        if result.get('document_embedding') is not None:
+        if (result.get('document_embedding') is not None) and (len(result.get('document_embedding')) > 0):
             listWithEmbeddings.append(result)
     
     print('listWithEmbeddings: ', len(listWithEmbeddings), '\n')
-    # for result in tqdm(listWithEmbeddings, desc='Processing similarity scores'):
     try: 
-        for result in listWithEmbeddings:
+        # for result in listWithEmbeddings:
+        for result in tqdm(listWithEmbeddings, desc='Processing similarity scores'):
             listOfEmbeddings = []
             listOfIds = []
             listWithoutResult = listWithEmbeddings.copy()
@@ -278,7 +282,7 @@ def getSimilarityScoresFromUSPTOResults(results):
 
             for otherResult in listWithoutResult:
                 listOfEmbeddings.append(otherResult.get('document_embedding'))
-                listOfIds.append(otherResult.get('id'))
+                listOfIds.append(otherResult.get('_id'))
             # Calculate similarity scores between the result and the other results
             similarity_scores = getBulkSimilarityScore(result.get('document_embedding'), listOfEmbeddings)
             # Add the references to the result
@@ -295,11 +299,10 @@ def getSimilarityScoresFromUSPTOResults(results):
         
         for result in results:
             for updatedResult in listWithEmbeddings:
-                if updatedResult.get('id') == result.get('id'):
+                if updatedResult.get('_id') == result.get('_id'):
                     result = updatedResult
                 if results.index(result) == 0:
                     print('result: ', json.dumps(result, indent=4), '\n')
-            create_case(result)
     except Exception as e:
         print(f'Error in getSimilarityScoresFromUSPTOResults: {e}')
     return results
@@ -420,73 +423,77 @@ def isolateDataFromUSPTOResults(result):
     mailingAddresses = []
     filingUser = None
     filingDate = None
+    try:
 
-    correspondenceAddressBag = result.get('correspondenceAddressBag')
-    recordAttorney = result.get('recordAttorney')
-    applicationMetaData = result.get('applicationMetaData')
+        correspondenceAddressBag = result.get('correspondenceAddressBag')
+        recordAttorney = result.get('recordAttorney')
+        applicationMetaData = result.get('applicationMetaData')
 
-    if result.get('applicationNumberText') is not None:
-        applicationNumber = f"uspto_{result.get('applicationNumberText')}"
-    else:
-        applicationNumber = f"uspto_{uuid.uuid4().hex}"
+        if result.get('applicationNumberText') is not None:
+            applicationNumber = f"uspto_{result.get('applicationNumberText')}"
+        else:
+            applicationNumber = f"uspto_{uuid.uuid4().hex}"
 
-    if applicationMetaData is not None:
-        titleData = applicationMetaData.get('inventionTitle')
-        filingDate = applicationMetaData.get('filingDate')
-        tempInventors = applicationMetaData.get('inventorBag')
-        currentStatusCode = applicationMetaData.get('applicationStatusCode')
-        currentStatusDate = applicationMetaData.get('applicationStatusDate')
-        currentStatusData = applicationMetaData.get('applicationStatusDescriptionText')
-        if type(tempInventors) is list:
-            for inventor in tempInventors:
-                inventors.append(inventor.get('inventorNameText'))
-            tempInventorAddresses = inventor.get('correspondenceAddressBag')
-            if type(tempInventorAddresses) is list:
-                for address in tempInventorAddresses:
-                    mailingAddresses.append(processAddressLineText(address))
-    if type(correspondenceAddressBag) is list:
-        for address in correspondenceAddressBag:
-            mailingAddresses.append(processAddressLineText(address))
-    # From recordAttorney, get the power of attorney name, registration number & contact numbers
-    # Append attorney address to mailing address (if active attorney)
-    if recordAttorney is not None:
-        powerOfAttorney = recordAttorney.get('powerOfAttorneyBag')
-        if type(powerOfAttorney) is list:
-            for tempAttorney in powerOfAttorney:
-                # Only consider active attorneys
-                if tempAttorney.get('activeIndicator') in ['ACTIVE', 'active']:
-                    addressBag = tempAttorney.get('attorneyAddressBag')
-                    if type(addressBag) is list:
-                        for address in addressBag:
-                            mailingAddresses.append(processAddressLineText(address))
-                    communicationBag = tempAttorney.get('telecommunicationAddressBag')
-                    contactNumbers = []
-                    for communication in communicationBag:
-                        contactNumbers.append(communication.get('telecommunicationNumber'))
-                    attorneys.append({
-                        'name': tempAttorney.get('firstName') + ' ' + tempAttorney.get('lastName'),
-                        'registrationNumber': tempAttorney.get('registrationNumber'),
-                        'contact': contactNumbers
-                    })
+        if applicationMetaData is not None:
+            titleData = applicationMetaData.get('inventionTitle')
+            filingDate = applicationMetaData.get('filingDate')
+            tempInventors = applicationMetaData.get('inventorBag')
+            currentStatusCode = applicationMetaData.get('applicationStatusCode')
+            currentStatusDate = applicationMetaData.get('applicationStatusDate')
+            currentStatusData = applicationMetaData.get('applicationStatusDescriptionText')
+            if type(tempInventors) is list:
+                for inventor in tempInventors:
+                    inventors.append(inventor.get('inventorNameText'))
+                tempInventorAddresses = inventor.get('correspondenceAddressBag')
+                if type(tempInventorAddresses) is list:
+                    for address in tempInventorAddresses:
+                        mailingAddresses.append(processAddressLineText(address))
+        if type(correspondenceAddressBag) is list:
+            for address in correspondenceAddressBag:
+                mailingAddresses.append(processAddressLineText(address))
+        # From recordAttorney, get the power of attorney name, registration number & contact numbers
+        # Append attorney address to mailing address (if active attorney)
+        if recordAttorney is not None:
+            powerOfAttorney = recordAttorney.get('powerOfAttorneyBag')
+            if type(powerOfAttorney) is list:
+                for tempAttorney in powerOfAttorney:
+                    # Only consider active attorneys
+                    if tempAttorney.get('activeIndicator') in ['ACTIVE', 'active']:
+                        addressBag = tempAttorney.get('attorneyAddressBag')
+                        if type(addressBag) is list:
+                            for address in addressBag:
+                                mailingAddresses.append(processAddressLineText(address))
+                        communicationBag = tempAttorney.get('telecommunicationAddressBag')
+                        contactNumbers = []
+                        for communication in communicationBag:
+                            contactNumbers.append(communication.get('telecommunicationNumber'))
+                        attorneys.append({
+                            'name': tempAttorney.get('firstName') + ' ' + tempAttorney.get('lastName'),
+                            'registrationNumber': tempAttorney.get('registrationNumber'),
+                            'contact': contactNumbers
+                        })
 
-    finalResult = {
-        'id': applicationNumber,
-        'title': titleData,
-        'status': currentStatusData,
-        'description': descriptionData,
-        'currentStatusCode': currentStatusCode,
-        'currentStatusDate': currentStatusDate,
-        'attorneys': attorneys,    # Name, Registration Number, Contact
-        'inventors': inventors,    # List of names
-        'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
-        'created_by': filingUser,
-        'created_date': datetime.datetime.utcnow().isoformat(),
-        'filing_date': filingDate,
-        'references': []  # list of dictionaries with url, title, granted_date, similarity_rate
-    }
-    return finalResult
+        finalResult = {
+            '_id': applicationNumber,
+            'title': titleData,
+            'status': currentStatusData,
+            'description': descriptionData,
+            'currentStatusCode': currentStatusCode,
+            'currentStatusDate': currentStatusDate,
+            'attorneys': attorneys,    # Name, Registration Number, Contact
+            'inventors': inventors,    # List of names
+            'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
+            'created_by': filingUser,
+            'created_date': datetime.datetime.utcnow().isoformat(),
+            'filing_date': filingDate,
+            'references': []  # list of dictionaries with url, title, granted_date, similarity_rate
+        }
+        return finalResult
+    except Exception as e:
+        print(f'Error in isolateDataFromUSPTOResults: {e}')
+        return None
 
-def getKeywordDocumentsUSPTO(keywords:list[str]):
+def getKeywordDocumentsUSPTO(keywords:list[str], load_to_database:bool = False):
     """
     Retrieve all relevant documents and patent applications from the USPTO API that are associated with the specified keywords. 
     The function initializes or uses an existing USPTO API client, constructs a keyword-based OR search query, and requests up to 100 matching patent records from the API. 
@@ -626,7 +633,7 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
                     'source': 'uspto',
                     'url':grant_document_url
                 })
-                grant_content = readDocumentFromUrl(grant_document_url, headers={"X-API-KEY": os.getenv('USPTO_API_KEY')})
+                grant_content = readDocumentFromUrl(grant_document_url, headers={"X-API-KEY": getEnvKey('uspto')})
                 grant_embedding = getPatentEmbedding(grant_content)
                 grant_keywords = getKeywordsFromContent(grant_content)
                 keywords.extend(grant_keywords)
@@ -639,7 +646,7 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
                     'source': 'uspto',
                     'url': pgpub_document_url
                 })
-                pgpub_content = readDocumentFromUrl(pgpub_document_url, headers={"X-API-KEY": os.getenv('USPTO_API_KEY')})
+                pgpub_content = readDocumentFromUrl(pgpub_document_url, headers={"X-API-KEY": getEnvKey('uspto')})
                 pgpub_embedding = getPatentEmbedding(pgpub_content)
                 pgpub_keywords = getKeywordsFromContent(pgpub_content)
                 keywords.extend(pgpub_keywords)
@@ -650,8 +657,27 @@ def getKeywordDocumentsUSPTO(keywords:list[str]):
             tempResult['keywords'] = keywords
         tempResult['documents'] = doc_urls
         finalResults.append(tempResult)
-    finalResults = getSimilarityScoresFromUSPTOResults(finalResults)
+    finalResults = getSimilarityScoresFromUSPTOResults(finalResults, load_to_database)
+    if load_to_database:
+        for result in finalResults:
+            create_case(result)
     return finalResults
+
+def isolateDocumentFromUsptoById(document):
+    if document is None:
+        return None
+    if 'downloadOptionBag' in document.keys():
+        docOptionBag = document.get('downloadOptionBag')
+        if type(docOptionBag) is list:
+            docs_list = []
+            for doc in docOptionBag:
+                if 'downloadUrl' in doc.keys():
+                    docs_list.append({
+                        'source': 'uspto',
+                        'url': doc.get('downloadUrl')
+                    })
+            return docs_list
+    return None
 
 def getEmbeddingOnline(text, api_key=None, model="text-embedding-3-small"):
     """

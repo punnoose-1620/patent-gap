@@ -1,8 +1,9 @@
 import os
-from dotenv import load_dotenv
+from datetime import datetime
 from google.cloud import storage
 from pymongo import MongoClient
 from typing import Optional, Dict, Any, List
+from env_controller import getDatabaseConnectionString
 
 # Module-level variable to store MongoDB database instance
 _mongodb_client = None
@@ -23,12 +24,10 @@ def connect_to_database():
         ValueError: If MONGODB_CONNECTION_STRING is not set in .env file
     """
     global _mongodb_client, _mongodb_db
-    
-    # Load environment variables
-    load_dotenv()
+
     
     # Get MongoDB connection string from environment
-    connection_string = os.getenv('MONGODB_CONNECTION_STRING')
+    connection_string = getDatabaseConnectionString()
     # print('\nConnection String: ', connection_string)
     
     if not connection_string:
@@ -112,6 +111,20 @@ def getAllData(db, collectionName):
         print(f"Error fetching all data from {collectionName}: {e}")
         return []
 
+def deleteAllData(db, collectionName):
+    """
+    Deletes all data from a specified Firestore collection.
+    
+    Args:
+        db: MongoDB database instance (from connect_to_database())
+        collectionName (str): The name of the collection to delete.
+    """
+    try:
+        return db[collectionName].delete_many({})
+    except Exception as e:
+        print(f"Error deleting all data from {collectionName}: {e}")
+        return False
+
 def getDataById(db, collectionName, entryId):
     """
     Fetches a specific entry by ID from a Firestore collection.
@@ -127,6 +140,12 @@ def getDataById(db, collectionName, entryId):
     try:
         collection = db[collectionName]
         document = collection.find_one({'_id': entryId})
+        if document is None:
+            allDocs = collection.find({})
+            for doc in allDocs:
+                if doc['_id'] == entryId or doc['id'] == entryId:
+                    document = doc
+                    break
         
         # Convert ObjectId to string if present
         if document and '_id' in document and hasattr(document['_id'], '__str__'):
@@ -194,6 +213,9 @@ def addDataById(db, collectionName, entryData):
     """
     Adds a new entry to a Firestore collection.
     If '_id' is provided in entryData, uses that; otherwise MongoDB generates one.
+    If entry data already exists under different '_id', one of the following happens:
+    - if all the keys and values are the same, do nothing
+    - if any key which didn't exist (or was None/empty) has a new value, update the existing entry with the new value
     
     Args:
         db: MongoDB database instance (from connect_to_database())
@@ -207,6 +229,27 @@ def addDataById(db, collectionName, entryData):
         if not checkCollectionExists(db, collectionName):
             createCollection(db, collectionName)
         collection = db[collectionName]
+        allData = getAllData(db, collectionName)
+        if '_id' not in entryData.keys():
+            entryData['_id'] = str(int(datetime.now().timestamp()))
+        
+        # tempEntry = entryData.copy()
+        # tempEntry.pop('_id')
+        # for data in allData:
+            data.pop('_id')
+            if data == tempEntry:
+                keys = tempEntry.keys()
+                update = False
+                for key in keys:
+                    if (data[key] is None or data[key] == '') and (entryData[key] is not None and entryData[key] != ''):
+                        update = True
+                        data[key] = entryData[key]
+                if update:
+                    if updateDataById(db, collectionName, entryData):
+                        return str(data['_id'])
+                else:
+                    return None
+        
         result = collection.insert_one(entryData)
         return str(result.inserted_id)
     except Exception as e:

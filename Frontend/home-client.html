@@ -407,13 +407,6 @@
                 <h2 style="margin-bottom: 0.25rem; font-family: 'Merriweather', serif; color: #0A1F14;">Active Patents</h2>
                 <hr style="border: none; border-bottom: 2px solid #D8D6C4; margin-bottom: 1.5rem;">
                 <div class="patent-grid" id="active-patents-grid"></div>
-                <div class="empty-state" id="active-patents-empty-state">
-                    <div class="empty-state-icon">📋</div>
-                    <h2 class="empty-state-title">No active patents at the moment</h2>
-                    <p class="empty-state-description">
-                        There are currently no active patents to display.
-                    </p>
-                </div>
             </div>
 
             <!-- Closed Patents Section -->
@@ -421,13 +414,6 @@
                 <h2 style="margin-bottom: 0.25rem; font-family: 'Merriweather', serif; color: #0A1F14;">Closed Patents</h2>
                 <hr style="border: none; border-bottom: 2px solid #D8D6C4; margin-bottom: 1.5rem;">
                 <div class="patent-grid" id="closed-patents-grid"></div>
-                <div class="empty-state" id="closed-patents-empty-state">
-                    <div class="empty-state-icon">✅</div>
-                    <h2 class="empty-state-title">No closed patents at the moment</h2>
-                    <p class="empty-state-description">
-                        There are currently no closed patents to display.
-                    </p>
-                </div>
             </div>
         </div>
 
@@ -604,10 +590,25 @@
             });
 
             // You can add alert content to the card here, for example:
+            // Check if title exists in the case
+            let title = 'Alert';
+            let description = 'Sample Description';
+            let triggered_at = '';
+            if (alert.case) {
+                if(alert.case.title) {
+                    title = alert.case.title;
+                }
+                if(alert.case.description) {
+                    description = alert.case.description;
+                }
+            }
+            if(alert.triggered_at) {
+                triggered_at = alert.triggered_at;
+            }
             card.innerHTML = `
-                <div style="font-weight:500;font-size:1.1rem; margin-bottom:0.25rem;">${alert.case.title || 'Alert'}</div>
-                <div style="font-size:0.97rem;opacity:0.85; margin-bottom:0.1rem;">${alert.case.description || ''}</div>
-                <div style="font-size:0.85rem; color:#a6a6a6;">${alert.triggered_at || ''}</div>
+                <div style="font-weight:500;font-size:1.1rem; margin-bottom:0.25rem;">${title}</div>
+                <div style="font-size:0.97rem;opacity:0.85; margin-bottom:0.1rem;">${description}</div>
+                <div style="font-size:0.85rem; color:#a6a6a6;">${triggered_at}</div>
             `;
 
             return card;
@@ -706,23 +707,32 @@
 
         // Helper function to render patent sections
         function renderPatentSection(containerId, patents, emptyStateId, renderFunction) {
-            const container = document.getElementById(containerId);
-            const emptyState = document.getElementById(emptyStateId);
+            let container = document.getElementById(containerId);
+            let emptyState = document.createElement('div');
+            emptyState.id = emptyStateId;
+            emptyState.innerHTML = `
+                <div class="empty-state-icon">✅</div>
+                <h2 class="empty-state-title">No ${containerId === 'active-patents-container' ? 'active' : 'closed'} patents at the moment</h2>
+                <p class="empty-state-description">
+                    There are currently no closed patents to display.
+                </p>
+            `;
             
+            console.log('Patents length:', patents.length);
             if (patents.length === 0) {
-                emptyState.style.display = 'block';
+                emptyState.style.display = 'flex';
+                emptyState.style.flexDirection = 'column';
+                emptyState.style.justifyContent = 'center';
+                emptyState.style.alignItems = 'center';
                 // Hide any existing grid
-                const existingGrid = container.querySelector('.patent-grid');
-                existingGrid.innerHTML = '';
-                if (existingGrid) {
-                    existingGrid.style.display = 'none';
-                }
-            } else {
+                let existingGrid = container.querySelector('.patent-grid');
+                existingGrid.innerHTML = emptyState.outerHTML;
+            } 
+            else {
                 emptyState.style.display = 'none';
                 
                 // Create or update grid
                 let grid = container.querySelector('.patent-grid');
-                grid.innerHTML = '';
                 if (!grid) {
                     grid = document.createElement('div');
                     grid.className = 'patent-grid';

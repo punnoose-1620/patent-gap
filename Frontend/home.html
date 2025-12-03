@@ -725,7 +725,8 @@
                     Please wait while we load your cases. This may take a few seconds.
                 </p>`;
             casesContainer.innerHTML = loadingState.outerHTML;
-            const emptyState = document.getElementById('my-cases-empty-state');
+            let emptyState = document.createElement('div');
+            emptyState.id = 'my-cases-empty-state';
             emptyState.innerHTML = `
                 <div class="empty-state-icon">📁</div>
                 <h2 class="empty-state-title">My Cases</h2>

@@ -1,14 +1,15 @@
+import os
 import uuid
-
-from models.demo import *
-from models.cases import *
-from models.users import *
+from data_processor import *
 from models.alerts import *
 from data_processor import *
+from models.cases import *
 
 """
 Controller functions for handling business logic
 """
+
+# Other Functions
 def get_case_related_patents(case_id):
     """
     Get patents related to a specific case
@@ -25,7 +26,7 @@ def get_case_related_patents(case_id):
     allData = get_all_cases()
     related_patents = []
     for patent in allData:
-        if(patent['id'] != case_id):
+        if(patent['_id'] != case_id):
             matches = 0
             totals = len(caseData['keywords'])
             for keyword in caseData['keywords']:
@@ -48,12 +49,12 @@ def create_patent(patent_data):
     """
     patent_id = f"local_{str(uuid.uuid4())[:8]}"
     print(f'Patent ID: {patent_id}')
-    patent_data['id'] = patent_id
+    patent_data['_id'] = patent_id
     print(f'Patent data with ID: {patent_data}')
     # Change the key 'files' to 'references' if it exists in patent_data
     if 'files' in patent_data:
         patent_data['references'] = patent_data.pop('files')
-    print(f'Patent data: {patent_data}')
+    print(f'Patent data: ', json.dumps(patent_data, indent=4))
 
     return {
         'success': True,
@@ -96,7 +97,7 @@ def process_new_patent(patent_id):
     # Get the similarity scores
     # Get the 'embeddings' for every entry in cases *excluding* the current case
     for case in get_all_cases_except_one(patent_id):
-        patentIds.append(case.get('id'))
+        patentIds.append(case.get('_id'))
         embeddings = case.get('embeddings', [])
         if embeddings:
             other_embeddings.append(embeddings)
@@ -110,7 +111,7 @@ def process_new_patent(patent_id):
     for c_id in alert_cases:
         alert_users.append(get_case_creator(c_id))
     # Add this new alert to the alerts logs
-    newId = alerts.add_to_alerts(triggered_by='case_001', triggered_at='2025-01-01', alert_users=alert_users)
+    newId = add_to_alerts(triggered_by='case_001', triggered_at='2025-01-01', alert_users=alert_users)
     return {
         'success': True,
         'message': 'Alert created successfully',

@@ -9,6 +9,8 @@ def xml_to_text(xml_content):
         str: The text content from the XML, or empty string if parsing fails
     """
     import xml.etree.ElementTree as ET
+    if xml_content is None:
+        return ""
     
     try:
         # Handle bytes input
@@ -47,7 +49,7 @@ def readFromXmlUrl(xml_url, headers=None, params=None):
         return response.text
     except Exception as e:
         print(f"Error fetching XML from {xml_url}: {e}")
-        return None
+        return ""
 
 def readFromPdfUrl(pdf_url, headers=None, params=None):
     """

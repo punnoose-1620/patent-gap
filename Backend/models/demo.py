@@ -67,7 +67,7 @@ def create_demo_request(name, email, organization, role, date, time, timezone):
     
     # Mock storage (in real implementation, save to database)
     demo_request = {
-        'id': request_id,
+        '_id': request_id,
         'name': name,
         'email': email,
         'organization': organization,

@@ -146,7 +146,7 @@ def login_user(email, password):
             return {
                 'success': True,
                 'message': 'Login successful',
-                'user_id': user['id'],
+                'user_id': user['_id'],
                 'email': email
             }
     return {
@@ -165,11 +165,18 @@ def get_user_profile(user_id):
         dict: User profile data
     """
     for user in mock_users:
-        if user['id'] == user_id:
-            user_copy = user.copy()
-            if 'password' in user_copy:
-                del user_copy['password']
-            return user_copy
+        if '_id' in user.keys():
+            if (user['_id'] == user_id):
+                user_copy = user.copy()
+                if 'password' in user_copy:
+                    del user_copy['password']
+                return user_copy
+        if 'id' in user.keys():
+            if (user['id'] == user_id):
+                user_copy = user.copy()
+                if 'password' in user_copy:
+                    del user_copy['password']
+                return user_copy
     return None
 
 def verify_password(user_id, entered_password):
@@ -184,7 +191,7 @@ def verify_password(user_id, entered_password):
         bool: True if password matches, False otherwise
     """
     for user in mock_users:
-        if user['id'] == user_id:
+        if user['_id'] == user_id:
             return user.get('password') == entered_password
     return False
 
@@ -200,7 +207,7 @@ def change_password(user_id, new_password):
         dict: Result containing success status and message
     """
     for user in mock_users:
-        if user['id'] == user_id:
+        if user['_id'] == user_id:
             user['password'] = new_password
             return {
                 'success': True,

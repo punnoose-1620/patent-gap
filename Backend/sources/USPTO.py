@@ -14,7 +14,6 @@ IMPORTANT: An API key is REQUIRED to use this API. To obtain an API key:
 API Base URL: https://api.uspto.gov/api/v1
 Authentication: X-API-KEY header
 """
-import json
 import requests
 from typing import Dict, Optional, Any
 
@@ -218,6 +217,199 @@ class USPTOPatentAPI:
             
         Returns:
             Dictionary containing application data
+            |->count: number
+            |->patentFileWrapperDataBag: list of dictionary
+            |  |->grantDocumentMetaData: dictionary
+            |  |  |->productIdentifier: string
+            |  |  |->zipFileName: string
+            |  |  |->fileCreateDateTime: datetime (YYYY-MM-DDTHH:MM:SS.ss)
+            |  |  |->xmlFileName: string
+            |  |  |->fileLocationURI: url as string
+            |  |->eventDataBag: list of dictionary
+            |  |  |->eventCode: string
+            |  |  |->eventDescriptionText: string
+            |  |  |->eventDate: date (YYYY-MM-DD)
+            |  |->patentTermAdjustmentData: dictionary
+            |  |  |->applicantDayDelayQuantity: number
+            |  |  |->overlappingDayQuantity: number
+            |  |  |->ipOfficeAdjustmentDelayQuantity: number
+            |  |  |->cDelayQuantity: number
+            |  |  |->adjustmentTotalQuantity: number
+            |  |  |->bDelayQuantity: number
+            |  |  |->nonOverlappingDayDelayQuantity: number
+            |  |  |->aDelayQuantity: number
+            |  |  |->patentTermAdjustmentHistoryDataBag: list of dictionary
+            |  |  |  |->applicantDayDelayQuantity: number
+            |  |  |  |->eventDescriptionText: string
+            |  |  |  |->eventSequenceNumber: number with decimals
+            |  |  |  |->originatingEventSequenceNumber: number with decimals
+            |  |  |  |->ptaPTECode: string
+            |  |  |  |->ipOfficeDayDelayQuantity: number
+            |  |  |  |->eventDate: date (YYYY-MM-DD)
+            |  |->assignmentBag: list of dictionary
+            |  |  |->assignmentDocumentLocationURI: url as string
+            |  |  |->assignmentReceivedDate: date (YYYY-MM-DD)
+            |  |  |->reelAndFrameNumber: string (number/number)
+            |  |  |->frameNumber: number
+            |  |  |->assignmentRecordedDate: date (YYYY-MM-DD)
+            |  |  |->conveyanceText: string
+            |  |  |->imageAvailableStatusCode: boolean
+            |  |  |->assigneeBag: list of dictionary
+            |  |  |  |->assigneeAddress: dictionary
+            |  |  |  |  |->cityName: string
+            |  |  |  |  |->countryOrStateCode: string
+            |  |  |  |  |->postalCode: string
+            |  |  |  |  |->countryName: string
+            |  |  |  |  |->addressLineOneText: string
+            |  |  |  |->assigneeNameText: string
+            |  |  |->assignmentMailedDate: date (YYYY-MM-DD)
+            |  |  |->reelNumber: number
+            |  |  |->correspondenceAddress: dictionary
+            |  |  |  |->addressLineOneText: string
+            |  |  |  |->correspondentNameText: string
+            |  |  |  |->addressLineTwoText: string
+            |  |  |->assignorBag: list of dictionary
+            |  |  |  |->executionDate: date (YYYY-MM-DD)
+            |  |  |  |->assignorName: string
+            |  |  |->pageTotalQuantity: number
+            |  |->pgpubDocumentMetaData: dictionary
+            |  |  |->productIdentifier: string
+            |  |  |->zipFileName: string
+            |  |  |->fileCreateDateTime: datetime (YYYY-MM-DDThh:mm:ss.ss)
+            |  |  |->xmlFileName: string
+            |  |  |->fileLocationURI: url as string
+            |  |->lastIngestionDateTime: datetime (YYYY-MM-DDThh:mm:ss.ss)
+            |  |->recordAttorney: dictionary
+            |  |  |->customerNumberCorrespondenceData: dictionary
+            |  |  |  |->powerOfAttorneyAddressBag: list of dictionary
+            |  |  |  |  |->cityName: string
+            |  |  |  |  |->geographicRegionName: string
+            |  |  |  |  |->geographicRegionCode: string
+            |  |  |  |  |->countryCode: string
+            |  |  |  |  |->postalCode: number as string
+            |  |  |  |  |->nameLineOneText: string
+            |  |  |  |  |->countryName: string
+            |  |  |  |  |->addressLineOneText: string
+            |  |  |  |  |->addressLineTwoText: string
+            |  |  |  |->patronIdentifier: number
+            |  |  |->powerOfAttorneyBag: list of dictionary
+            |  |  |  |->activeIndicator: string
+            |  |  |  |->firstName: string
+            |  |  |  |->lastName: string
+            |  |  |  |->registrationNumber: nunmber as string
+            |  |  |  |->attorneyAddressBag: [
+            |  |  |  |  |->cityName: string
+            |  |  |  |  |->geographicRegionName: string
+            |  |  |  |  |->geographicRegionCode: string
+            |  |  |  |  |->countryCode: string
+            |  |  |  |  |->postalCode: number as string
+            |  |  |  |  |->countryName: string
+            |  |  |  |  |->addressLineOneText: string
+            |  |  |  |  |->addressLineTwoText: string
+            |  |  |  |->telecommunicationAddressBag: list of dictionary[
+            |  |  |  |  |->telecommunicationNumber: string
+            |  |  |  |  |->telecomTypeCode: string
+            |  |  |  |->registeredPractitionerCategory: string
+            |  |  |->attorneyBag: list of dictionary
+            |  |  |  |->activeIndicator: string
+            |  |  |  |->firstName: string
+            |  |  |  |->lastName: string
+            |  |  |  |->registrationNumber: number as string
+            |  |  |  |->attorneyAddressBag: list of dictionary
+            |  |  |  |  |->cityName: string
+            |  |  |  |  |->geographicRegionName: string
+            |  |  |  |  |->geographicRegionCode: string
+            |  |  |  |  |->countryCode: string
+            |  |  |  |  |->postalCode: number as string
+            |  |  |  |  |->nameLineOneText: string
+            |  |  |  |  |->countryName: string
+            |  |  |  |  |->addressLineOneText: string
+            |  |  |  |  |->addressLineTwoText: string
+            |  |->applicationNumberText: number as string
+            |  |->correspondenceAddressBag: list of dictionary
+            |  |  |->cityName: string
+            |  |  |->geographicRegionName: string
+            |  |  |->geographicRegionCode: string
+            |  |  |->countryCode: string
+            |  |  |->postalCode: number as string
+            |  |  |->nameLineOneText: string
+            |  |  |->countryName: string
+            |  |  |->addressLineOneText: string
+            |  |  |->addressLineTwoText: string
+            |  |->foreignPriorityBag: list of dictionary
+            |  |  |->filingDate: date (YYYY-MM-DD)
+            |  |  |->applicationNumberText: string
+            |  |  |->ipOfficeName: string
+            |  |->applicationMetaData: dictionary{
+            |  |  |->firstInventorToFileIndicator: string
+            |  |  |->applicationStatusCode: number
+            |  |  |->applicationTypeCode: string
+            |  |  |->entityStatusData: dictionary
+            |  |  |  |->smallEntityStatusIndicator: boolean
+            |  |  |  |->businessEntityStatusCategory: string
+            |  |  |->filingDate: date (YYYY-MM-DD)
+            |  |  |->uspcSymbolText: string (number/number)
+            |  |  |->nationalStageIndicator: boolean
+            |  |  |->firstInventorName: string
+            |  |  |->cpcClassificationBag: list of strings
+            |  |  |->effectiveFilingDate: date (YYYY-MM-DD)
+            |  |  |->publicationDateBag: list of dates (YYYY-MM-DD) 
+            |  |  |->publicationSequenceNumberBag: list of numbers as strings
+            |  |  |->earliestPublicationDate: date (YYYY-MM-DD)
+            |  |  |->applicationTypeLabelName: string
+            |  |  |->applicationStatusDate: date (YYYY-MM-DD)
+            |  |  |->class: number as string
+            |  |  |->applicationTypeCategory: string
+            |  |  |->inventorBag: list of dictionary
+            |  |  |  |->firstName: string
+            |  |  |  |->lastName: string
+            |  |  |  |->inventorNameText: string
+            |  |  |  |->correspondenceAddressBag: list of dictionary
+            |  |  |  |  |->cityName: string
+            |  |  |  |  |->countryCode: string
+            |  |  |  |  |->nameLineOneText: string
+            |  |  |  |  |->countryName: string
+            |  |  |  |  |->postalAddressCategory: string
+            |  |  |->applicationStatusDescriptionText: string
+            |  |  |->patentNumber: number as string
+            |  |  |->grantDate: date (YYYY-MM-DD)
+            |  |  |->applicantBag: list of dictionary
+            |  |  |  |->applicantNameText: string
+            |  |  |  |->correspondenceAddressBag: list of dictionary
+            |  |  |  |  |->cityName: string
+            |  |  |  |  |->countryCode: string
+            |  |  |  |  |->nameLineOneText: string
+            |  |  |  |  |->countryName: string
+            |  |  |  |  |->postalAddressCategory: string
+            |  |  |->firstApplicantName: string
+            |  |  |->customerNumber: number
+            |  |  |->groupArtUnitNumber: number as string
+            |  |  |->earliestPublicationNumber: string
+            |  |  |->inventionTitle: string
+            |  |  |->applicationConfirmationNumber: number
+            |  |  |->examinerNameText: string
+            |  |  |->subclass: number as string
+            |  |  |->publicationCategoryBag: list of strings
+            |  |  |->docketNumber: number as string, with decimals
+            |  |->parentContinuityBag: list of dictionary
+            |  |  |->parentApplicationStatusCode: number
+            |  |  |->claimParentageTypeCode: string
+            |  |  |->claimParentageTypeCodeDescriptionText: string
+            |  |  |->parentApplicationStatusDescriptionText: string
+            |  |  |->parentApplicationNumberText: string
+            |  |  |->parentApplicationFilingDate: date (YYYY-MM-DD)
+            |  |  |->childApplicationNumberText: number as string
+            |  |->childContinuityBag: list of dictionary
+            |  |  |->firstInventorToFileIndicator: boolean
+            |  |  |->childApplicationStatusDescriptionText: string
+            |  |  |->claimParentageTypeCode: string
+            |  |  |->childApplicationStatusCode: number
+            |  |  |->claimParentageTypeCodeDescriptionText: string
+            |  |  |->childPatentNumber: number as string
+            |  |  |->parentApplicationNumberText: number as string
+            |  |  |->childApplicationFilingDate: date (YYYY-MM-DD)
+            |  |  |->childApplicationNumberText: number as string
+            |->requestIdentifier: string
             
         Example:
             >>> api = USPTOPatentAPI(api_key="your-key")
