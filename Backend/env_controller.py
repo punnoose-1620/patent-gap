@@ -14,6 +14,8 @@ def getEnvKey(key):
         return os.get('USPTO_API_KEY')
     elif key == 'openai':
         return os.get('OPENAI_API_KEY')
+    elif key == 'gemini':
+        return os.get('GEMINI_API_KEY')
     else:
         return None
 
