@@ -16,6 +16,8 @@ This README uses emoji badges to help you quickly identify different types of co
 **Additional Documentation**:
 - [Technical Requirements](./TechnicalRequirements.md) - GCP infrastructure requirements and specifications for hosting the platform
 - [Technical Description for Non-Technical Staff](./TechnicalDescriptionForNonTechnicalStaff.md) - Business-friendly overview of platform capabilities and technology
+- [File Structure](https://www.canva.com/design/DAG7NqrHH4I/mImb7-j9Tfcqoo2XLsXlOg/edit?utm_content=DAG7NqrHH4I&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton) - Whiteboard to Update File Structure
+- [Flow Chart](https://www.canva.com/design/DAG6v9AHArY/QAgxnI7wmwHy38iH8UGifw/edit?utm_content=DAG6v9AHArY&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton) - Whiteboard to Update Flow Chart
 
 ---
 

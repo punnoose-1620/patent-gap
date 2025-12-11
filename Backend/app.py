@@ -1257,7 +1257,7 @@ def fetch_patent_from_uspto():
   try: 
     uspto_api = USPTOPatentAPI(api_key=getEnvKey('uspto'))
     patentData = uspto_api.get_complete_patent_info(patentId)     # Document data already included. Only references are missing.
-    if (patentData is None) or ('_id' not in patentData.keys()) or (patentData['_id'] is None) or (patentData['_id'] == ''):
+    if (patentData is None) or ('_id' not in str(patentData)) or (patentData['_id'] is None) or (patentData['_id'] == ''):
       print('Patent Data is None or _id is not in keys or _id is None or _id is empty')
       return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
 
