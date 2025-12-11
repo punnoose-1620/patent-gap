@@ -1,6 +1,7 @@
 import time
 from models.cases import *
-from data_processor import *
+# from data_processor import *
+from data_processor import getEmbeddingsFromDocuments, getSimilarityScore
 from database import *
 from env_controller import getAlertDatabaseName
 
