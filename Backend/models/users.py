@@ -146,7 +146,7 @@ def login_user(email, password):
             return {
                 'success': True,
                 'message': 'Login successful',
-                'user_id': user['_id'],
+                'user_id': user.get('id', None),
                 'email': email
             }
     return {

@@ -29,12 +29,22 @@ patent-gap/
 │   ├── data_processor.py  # PDF processing and text embedding functions
 │   ├── database.py         # Database and cloud storage connectivity (Firebase, GCP)
 │   ├── swagger.py          # Swagger/OpenAPI configuration
+│   ├── env_controller.py   # Environment variable management
+│   ├── file_controller.py  # File handling and operations
+│   ├── llm_processor.py    # LLM processing functions
+│   ├── favicon.ico         # Backend favicon
+│   ├── env_example.txt     # Environment variables example
+│   ├── run.spec            # PyInstaller specification file
 │   ├── models/             # Data models organized by domain
 │   │   ├── alerts.py       # Alert management models
 │   │   ├── cases.py        # Case management models
 │   │   ├── demo.py         # Demo request models
 │   │   └── users.py        # User management models
-│   └── env_example.txt     # Environment variables example
+│   ├── sources/            # External data source integrations
+│   │   └── USPTO.py        # USPTO patent data source
+│   ├── documentFiles/      # Document storage directory
+│   ├── build/              # Build artifacts (PyInstaller)
+│   └── dist/               # Distribution files (executables)
 ├── Frontend/               # HTML frontend files
 │   ├── index.html          # Home page
 │   ├── login.html          # Login page
@@ -46,9 +56,35 @@ patent-gap/
 │   ├── change_password.html # Change password page
 │   └── styles.css          # Shared CSS styles
 ├── Assets/                 # Images, media, documents
+│   ├── favicon-black.ico
+│   ├── favicon-white.ico
+│   ├── logo.png
+│   ├── logo-black-nobg.png
+│   ├── logo-white-nobg.png
+│   ├── full_logo.png
+│   ├── full_logo_transparent_green.png
+│   ├── flowchart.png
+│   ├── Function_Flowchart.png
+│   ├── Platform-Flow.png
+│   └── *.drawio            # Draw.io diagram files
 ├── Screenshots/            # Application screenshots
+├── logs/                   # Application logs
+│   └── serverLog.txt       # Server log file
+├── build/                  # Build artifacts (PyInstaller)
+├── dist/                   # Distribution files (executables)
+├── venv/                   # Python virtual environment
+├── dummyDataUspto.json     # Dummy USPTO data for testing
 ├── requirements.txt        # Python dependencies
-└── README.md              # This file
+├── install.sh              # Installation script (Linux/macOS)
+├── LICENSE                 # License file
+├── README.md               # This file
+├── USER_GUIDE.md           # User-facing documentation
+├── TechnicalRequirements.md # Technical requirements documentation
+├── TechnicalDescriptionForNonTechnicalStaff.md # Non-technical overview
+├── TODO.md                 # Development tasks and future enhancements
+├── COST_ESTIMATE.md        # Cost estimation documentation
+├── INVESTOR_REPORT.md      # Investor report
+└── PRESENTATION_SCRIPT.md  # Presentation script
 ```
 
 ## 👥 Flowcharts

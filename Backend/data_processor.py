@@ -10,7 +10,9 @@ import datetime
 import numpy as np
 from tqdm import tqdm
 from env_controller import getEnvKey
-from models.cases import get_case_embedding, create_case
+from models.cases import get_case_embedding, create_case, get_case_by_id, update_case
+from database import updateDataById
+from llm_processor import getCompleteReport, getReportSummary, getDummyReportWithSummary
 from file_controller import readDocumentFromUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sources.USPTO import USPTOPatentAPI, MissingAPIKeyError
@@ -226,10 +228,17 @@ def getKeywordsFromContent(content, api_key=None, model="gpt-3.5-turbo"):
         return getKeywordsFromContentOffline(content)
 
 def getReferenceFromNormalizedList(listOfCases, case_id):
+    """
+    Given a list of normalized case dictionaries (`listOfCases`) and a `case_id`,
+    this function compiles a list of reference dictionaries. Each reference includes
+    its URL, title, granted (filing) date, and a similarity score computed by comparing
+    the embedding for `case_id` to the document embeddings within each case.
+    """
     listOfReferences = []
     case_embedding = get_case_embedding(case_id)
     for case in listOfCases:
         if case is not None:
+            # If documents exist as a key and is a non-empty array
             if ('documents' in case.keys()) and (case.get('documents') is not None) and (len(case.get('documents')) > 0):
                 url = case.get('documents')[0].get('url')
                 title = case.get('title')
@@ -424,10 +433,13 @@ def isolateDataFromUSPTOResults(result):
     filingUser = None
     filingDate = None
     try:
-
+        print('Keys in result: ', result.keys())
         correspondenceAddressBag = result.get('correspondenceAddressBag')
         recordAttorney = result.get('recordAttorney')
         applicationMetaData = result.get('applicationMetaData')
+        print('Application Meta Data: ', applicationMetaData)
+        print('Record Attorney: ', recordAttorney)
+        print('Correspondence Address Bag: ', correspondenceAddressBag)
 
         if result.get('applicationNumberText') is not None:
             applicationNumber = f"uspto_{result.get('applicationNumberText')}"
@@ -441,6 +453,11 @@ def isolateDataFromUSPTOResults(result):
             currentStatusCode = applicationMetaData.get('applicationStatusCode')
             currentStatusDate = applicationMetaData.get('applicationStatusDate')
             currentStatusData = applicationMetaData.get('applicationStatusDescriptionText')
+            print('Title Data: ', titleData)
+            print('Filing Date: ', filingDate)
+            print('Current Status Code: ', currentStatusCode)
+            print('Current Status Date: ', currentStatusDate)
+            print('Current Status Data: ', currentStatusData)
             if type(tempInventors) is list:
                 for inventor in tempInventors:
                     inventors.append(inventor.get('inventorNameText'))
@@ -820,3 +837,87 @@ def getPatentEmbedding(text, api_key=None):
         else:
             embedding = getEmbeddingOffline(text)
     return embedding
+
+def generateReports(case_id):
+    """
+    Generate reports for a specific case
+    Args:
+        case_id: The ID of the case to generate reports for
+    Returns:
+        fullReport: The full report for the case
+        summaryReport: The summary report for the case
+    """
+    case_data = get_case_by_id(case_id)
+    references = case_data.get('references', [])
+    documentTexts = []
+    referenceText = ""
+
+    # Get the text from related cases and all case related documents before generating reports
+    if (references is not None) and (len(references) > 0):
+        for ref in references:
+            # Get the text from related cases
+            document_text = readDocumentFromUrl(ref['url'])
+            if document_text is not None:
+                documentTexts.append(document_text, headers={"X-API-KEY": getEnvKey('uspto')})
+            # Get the text from all case related documents
+            case_document = case_data.get('documents', [])
+            if (case_document is not None) and (len(case_document) > 0):
+                for doc in case_document:
+                    document_text = readDocumentFromUrl(doc['url'], headers={"X-API-KEY": getEnvKey('uspto')})
+                    referenceText = f"{referenceText}\n\n{document_text}"
+
+        fullReport = getCompleteReport(referenceText, documentTexts)
+        summaryReport = getReportSummary(fullReport)
+        case_data['report'] = fullReport
+        case_data['summary'] = summaryReport
+        update_case(case_id, case_data)
+        return fullReport, summaryReport
+    return None, None
+
+def populateDummyData(case_id, user_id):
+    title = 'HETEROJUNCTION BIPOLAR TRANSISTOR'
+    dummy_report, dummy_summary = getDummyReportWithSummary(title)
+    dummy_case = {
+        '_id': f"dummy_{case_id}",
+        'title': title,
+        'status': 'Patented Case',
+        'description': 'Patent Expired Due to NonPayment of Maintenance Fees Under 37 CFR 1.362',
+        'currentStatusCode': 150,
+        'currentStatusDate': '2016-05-18',
+        'attorneys': [{
+            'name': 'DANIEL D O\'BRIEN',
+            'registrationNumber': '65545',
+            'contact': '206-622-4900'
+        }],    # Name, Registration Number, Contact
+        'inventors': ['Pascal Chevalier'],    # List of names
+        'mailingAddresses': [{
+            "nameLineOneText": "Seed IP Law Group LLP/ST (EP ORIGINATING)",
+            "nameLineTwoText": "Attn- IP Docket",
+            'addressLineText': '701 FIFTH AVENUE, SUITE 5400, Suite 501',
+            "geographicRegionName": "WASHINGTON",
+            "geographicRegionCode": "WA",
+            "postalCode": "98104-7092",
+            "cityName": "SEATTLE",
+            "countryCode": "US",
+            "countryName": "USA",
+            "postalAddressCategory": "commercial"
+        }],  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
+        'created_by': user_id,
+        'created_date': datetime.datetime.utcnow().isoformat(),
+        'filing_date': '2012-12-19',
+        'documents': [{
+            'source': 'uspto',
+            'url': 'https://bulkdata.uspto.gov/data/patent/application/redbook/fulltext/2024/ipa240104.zip'
+        }],
+        'references': [{
+            'url': 'https://bulkdata.uspto.gov/data/patent/application/redbook/fulltext/2024/ipa240104.zip',
+            'title': 'ipa240801.zip',
+            'granted_date': '2024-08-09:11:30:00',
+            'similarity_rate': 95
+        }],  # list of dictionaries with url, title, granted_date, similarity_rate,
+        'report': dummy_report,
+        'summary': dummy_summary,
+    }
+    print('Dummy Case: ', dummy_case)
+    create_case(dummy_case)
+    return dummy_case

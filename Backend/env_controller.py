@@ -11,11 +11,11 @@ def getEnvKey(key):
     load_dotenv()
 
     if key == 'uspto':
-        return os.get('USPTO_API_KEY')
+        return os.environ.get('USPTO_API_KEY')
     elif key == 'openai':
-        return os.get('OPENAI_API_KEY')
+        return os.environ.get('OPENAI_API_KEY')
     elif key == 'gemini':
-        return os.get('GEMINI_API_KEY')
+        return os.environ.get('GEMINI_API_KEY')
     else:
         return None
 

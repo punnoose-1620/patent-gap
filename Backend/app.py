@@ -10,7 +10,10 @@ from models.alerts import *
 from database import *
 from controller import *
 from env_controller import *
+from data_processor import *
+from llm_processor import *
 from datetime import datetime
+from sources.USPTO import *
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -1055,8 +1058,19 @@ def trigger_similarity_analysis():
     print('similarUsptoDocuments sample: ', json.dumps(similarUsptoDocuments[0], indent=4))
     references = getReferenceFromNormalizedList(similarUsptoDocuments, case_id)
     print('References calculated')
+    fullReport, summaryReport = generateReports(case_id)
+    case_data = get_case_by_id(case_id)
+    case_data['report'] = fullReport
+    case_data['summary'] = summaryReport
+    update_case(case_id, case_data)
     
     newAlertId = create_alert(user_id, case_id, references)
+    add_to_alerts(
+        triggered_by=user_id, 
+        triggered_at=datetime.datetime.utcnow().isoformat(), 
+        alert_users=[user_id], 
+        title='HETEROJUNCTION BIPOLAR TRANSISTOR', 
+        description='Patent Expired Due to NonPayment of Maintenance Fees Under 37 CFR 1.362')
     print('New Alert ID:', newAlertId)
     return jsonify({'success': True, 'message': 'Similarity analysis completed', 'alert_id': newAlertId}), 200
   except Exception as e:
@@ -1093,6 +1107,44 @@ def get_case_keywords():
       return jsonify({'success': False, 'message': 'No keywords found. The document may be empty or might contain only stop words.'}), 400
     return jsonify({'success': True, 'keywords': keywords})
 
+@app.route('/api/import-patent-from-uspto', methods=['POST'])
+def api_import_patent_from_uspto():
+  """
+  Import a patent from the US Patent Office and create a case
+  """
+  if 'user_id' not in session:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  user_id = session['user_id']
+  data = request.get_json()
+  if data is None:
+    print('\nNo Data provided')
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'patentId' not in data.keys():
+    print('\nPatent ID is not Provided')
+    return jsonify({'success': False, 'message': 'Patent ID is not provided'}), 400
+  patent_id = data.get('patentId')
+  if patent_id is None or patent_id == '':
+    print('\nPatent ID is not valid')
+    return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
+  
+  try:
+    uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
+    uspto_data = uspto_instance.get_complete_patent_info(patent_id)
+    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
+    if uspto_data is None:
+      return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
+    normalizedPatentData = isolateDataFromUSPTOResults(uspto_data)
+    if normalizedPatentData is None:
+      return jsonify({'success': False, 'message': 'Failed to normalize patent data. Please check the patent ID and try again.'}), 400
+    print(f'\nNormalized Patent Data: {json.dumps(normalizedPatentData, indent=4)}')
+    return jsonify({'success': True, 'message': 'Patent data imported successfully', 'case_id': f"uspto_{patent_id}"}), 200
+  except Exception as e:
+    print(f'\nError getting patent data from USPTO: {str(e)}')
+    if 'Rate limit exceeded' in str(e):
+      populateDummyData(patent_id, user_id)
+    return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
+
 @app.route('/api/create-patent', methods=['POST'])
 def api_create_patent():
   try:
@@ -1102,6 +1154,7 @@ def api_create_patent():
     if session['user_id'] is None:
       return jsonify({'success': False, 'message': 'User ID is required'}), 400
     user_id = session['user_id']
+    print(f'Create Patent Data by {user_id}: {json.dumps(data, indent=4)}')
     # patent_data = data.get('patent_data')
     data['created_by'] = user_id
     data['created_date'] = datetime.now().strftime('%Y-%m-%d')
@@ -1203,26 +1256,12 @@ def fetch_patent_from_uspto():
 
   try: 
     uspto_api = USPTOPatentAPI(api_key=getEnvKey('uspto'))
-    patentData = uspto_api.get_application_data(patentId)
-    if patentData is None:
+    patentData = uspto_api.get_complete_patent_info(patentId)     # Document data already included. Only references are missing.
+    if (patentData is None) or ('_id' not in patentData.keys()) or (patentData['_id'] is None) or (patentData['_id'] == ''):
+      print('Patent Data is None or _id is not in keys or _id is None or _id is empty')
       return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
 
-    normalizedPatentData = isolateDataFromUSPTOResults(patentData);
-    if normalizedPatentData is None:
-      return jsonify({'success': False, 'message': 'Failed to normalize patent data. Please check the patent ID and try again.'}), 400
-
-    normalizedPatentData['_id'] = f'uspto_{patentId}'
-
-    # TODO: Get references and documents from USPTO, then update normalizedPatentData with references and documents
-    relatedDocuments = uspto_api.get_associated_documents(patentId)
-    relatedDocumentsNormalized = []
-    for document in relatedDocuments:
-      documentNormalized = isolateDocumentFromUsptoById(document)
-      if documentNormalized is not None:
-        relatedDocumentsNormalized.extend(documentNormalized)
-    normalizedPatentData['documents'] = relatedDocumentsNormalized
-
-    creationResult = create_case(normalizedPatentData)
+    creationResult = create_case(patentData)
     if 'case_id' not in creationResult:
       return jsonify({'success': False, 'message': 'Failed to create case. Please check the patent data and try again.'}), 400
       

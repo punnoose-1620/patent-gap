@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Patent Gap AI</title>
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
     /* --- Global Styles --- */
     * {
@@ -13,7 +17,7 @@
     }
 
     body {
-        font-family: 'Poppins', sans-serif;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         line-height: 1.6;
         color: #333;
         background-color: #fff;
@@ -43,7 +47,21 @@
         z-index: 100;
     }
 
-    .logo {
+    .logo-container {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        padding: 0 0;
+    }
+
+    .logo-container img {
+        height: 4rem;
+        width: 4rem;
+        margin: 0.5rem 1rem;
+    }
+
+    .logo-container .logo {
         font-size: 1.8rem;
         font-weight: 700;
         color: #EDEADC; /* Ivory */
@@ -51,7 +69,7 @@
 
     .nav-links {
         display: flex;
-        gap: 2rem;
+        gap: 2.5rem;
         align-items: center;
     }
 
@@ -62,23 +80,65 @@
         transition: color 0.3s;
     }
 
+    .nav-links a:hover {
+        /* Add a zoom (scale up) effect on hover */
+        transform: scale(1.2);
+        z-index: 2;
+        transition: transform 0.45s cubic-bezier(0.47, 2.02, 0.31, -0.36); /* slower and smooth */
+    }
+
     .nav-links a:hover::after {
         content: '';
         position: absolute;
         left: 0;
         bottom: -3px;
-        width: 100%;
+        width: 102%;
         height: 2px;
         background-color: #C9A94D; /* Muted Gold */
     }
 
     .login-btn {
-        background-color: #191970; /* Midnight Blue */
+        background-color: #4855c3; /* Lighter/more vibrant blue than #191970 */
         color: #EDEADC;
         padding: 0.5rem 1.5rem;
         border-radius: 8px;
         font-weight: 500;
         transition: background 0.3s;
+
+        position: relative;
+        overflow: hidden;
+        box-shadow:
+            0 2px 10px 0 rgba(72,85,195,0.12),
+            0 0.5px 0.5px 0 rgba(255,255,255,0.14) inset,
+            0 4px 12px 0 rgba(201,169,77,0.13);
+    }
+
+    .login-btn::before {
+        content: '';
+        position: absolute;
+        top: 1.5px;
+        left: 2px;
+        right: 2px;
+        height: 37%;
+        background: linear-gradient(108deg, rgba(255,255,255,0.13) 30%, rgba(255,255,255,0.04) 100%);
+        border-radius: 7px 7px 60% 60% / 70% 70% 30% 30%;
+        pointer-events: none;
+        z-index: 2;
+        mix-blend-mode: lighten;
+    }
+
+    .login-btn::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0.07rem;
+        height: 28%;
+        background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.09) 70%, rgba(255,255,255,0.04) 100%);
+        border-radius: 0 0 8px 8px / 0 0 40% 40%;
+        pointer-events: none;
+        z-index: 2;
+        mix-blend-mode: lighten;
     }
 
     .login-btn:hover {
@@ -108,29 +168,125 @@
     .hero .btn-primary {
         background-color: #C9A94D; /* Muted Gold */
         color: #0A1F14; /* Deep Green text */
-        padding: 0.8rem 2rem;
-        border-radius: 12px;
+        padding: 0.9rem 2.1rem;
+        border-radius: 10px;
         font-weight: 600;
         margin-right: 1rem;
-        transition: all 0.3s ease;
+        /* Gloss only on button edges, not over text */
+        background-image:
+            linear-gradient(180deg, #FFF8E2 0%, #C9A94D 38%, #B2923E 100%);
+        box-shadow:
+            0 4px 18px 2px rgba(25, 25, 112, 0.16),
+            0 2px 12px 2px rgba(201, 169, 77, 0.17),
+            0 0.5px 0.5px 0 rgba(255,255,220,0.19) inset;
+        border: none;
+        outline: none;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        transition: 
+            box-shadow 0.28s cubic-bezier(.4,0,.2,1),
+            background 0.38s cubic-bezier(.4,0,.2,1),
+            color 0.22s cubic-bezier(.4,0,.2,1),
+            filter 0.22s cubic-bezier(.4,0,.2,1);
+
+        /* Only gloss edges (top/bottom border band effect, not over text) */
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        /* Add edge gloss with ::before and ::after in the rules below */
+    }
+    .hero .btn-primary::before {
+        content: '';
+        position: absolute;
+        top: 0.2rem;
+        left: 0.2rem;
+        right: 0.2rem;
+        height: 36%;
+        background: linear-gradient(110deg, rgba(255,255,255,0.35) 30%, rgba(255,255,255,0.09) 100%);
+        border-radius: 6px 6px 50% 50% / 60% 60% 40% 40%;
+        pointer-events: none;
+        z-index: 1;
+        mix-blend-mode: lighten;
     }
 
     .hero .btn-primary:hover {
         border: 2px solid #191970; /* Midnight Blue */
         background-color: #EDEADC;
+        transform: scale(1.07);
+        transition: 
+            box-shadow 0.5s cubic-bezier(.4,0,.2,1),
+            background 0.5s cubic-bezier(.4,0,.2,1),
+            color 0.5s cubic-bezier(.4,0,.2,1),
+            filter 0.5s cubic-bezier(.4,0,.2,1),
+            transform 0.5s cubic-bezier(.18,0,.2,1);
     }
 
     .hero .btn-secondary {
         background-color: #191970;
         color: #EDEADC;
         padding: 0.8rem 2rem;
-        border-radius: 12px;
+        border-radius: 10px;
         font-weight: 600;
-        transition: all 0.3s ease;
+        box-shadow: 0 3px 10px rgba(25,25,112,0.10), 0 1.5px 6px 0 rgba(25,25,112,0.11);
+        transition: 
+            box-shadow 0.22s cubic-bezier(.4,0,.2,1),
+            background 0.18s cubic-bezier(.4,0,.2,1),
+            color 0.2s cubic-bezier(.4,0,.2,1);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        outline: none;
+        border: none;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        /* Glossy edge effect using before/after pseudo-elements */
+        z-index: 1;
+        /* The gloss is handled in the ::before/::after, so add... */
+        /* make sure the stacking context is right for those */
+        /* See below, outside selection: 
+           .hero .btn-secondary::before, .hero .btn-secondary::after {}
+        */
+    }
+
+    .hero .btn-secondary::before {
+        content: '';
+        position: absolute;
+        top: 0.1rem;
+        left: 0.1rem;
+        right: 0.1rem;
+        height: 42%;
+        /* More edge-focused gloss, less opacity overall */
+        background: radial-gradient(ellipse at top left, rgba(255,255,255,0.15) 30%, rgba(255,255,255,0.03) 75%, transparent 100%),
+                    radial-gradient(ellipse at top right, rgba(255,255,255,0.13) 25%, rgba(255,255,255,0.02) 70%, transparent 100%);
+        border-radius: 8px 8px 70% 70% / 80% 80% 30% 30%;
+        pointer-events: none;
+        z-index: 1;
+        mix-blend-mode: lighten;
+    }
+
+    .hero .btn-secondary::after {
+        content: '';
+        position: absolute;
+        top: 0.1rem;
+        left: 0.2rem;
+        right: 0.1rem;
+        height: 42%;
+        /* Repeat gloss only at edges for increased effect at sides */
+        background: linear-gradient(to left, transparent, rgba(255,255,255,0.07) 23%, rgba(255,255,255,0.12) 48%, rgba(255,255,255,0.07) 77%, transparent),
+                    linear-gradient(to top, transparent, rgba(255,255,255,0.08) 60%, transparent 100%);
+        border-radius: 8px 8px 70% 70% / 80% 80% 30% 30%;
+        pointer-events: none;
+        z-index: 1;
+        mix-blend-mode: lighten;
     }
 
     .hero .btn-secondary:hover {
         background-color: #2e2e8c;
+        transform: scale(1.09);
+        transition:
+            background-color 0.3s cubic-bezier(.4,0,.2,1) 0s,
+            transform 0.45s cubic-bezier(0.47, 2.02, 0.31, -0.36) 0.13s;
+        z-index: 2;
     }
 
     /* --- Services Section --- */
@@ -144,18 +300,28 @@
     }
 
     .service-card {
-        background-color: #F8F7F3; /* Light Ivory */
-        border: 1px solid #D8D6C4; /* Soft Beige */
+        background: rgba(255, 255, 255, 0.4); /* Semi-transparent for glassy effect */
+        border: 1.5px solid rgba(220, 218, 180, 0.45); /* Softer, muted border */
         border-radius: 15px;
         padding: 2rem;
         text-align: center;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.05);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        box-shadow:
+            0 8px 24px 0 rgba(25,25,112,0.09),   /* Deeper main shadow */
+            0 1.5px 6px 0 rgba(25,25,112,0.12), /* Secondary shadow for glow effect */
+            0 0.5px 0.5px 0 rgba(255,255,255,0.40) inset; /* Inner highlight */
+        backdrop-filter: blur(8px) saturate(120%);
+        -webkit-backdrop-filter: blur(8px) saturate(120%);
+        transition: 
+            transform 0.3s cubic-bezier(.4,0,.2,1),
+            box-shadow 0.3s cubic-bezier(.4,0,.2,1),
+            background 0.2s cubic-bezier(.4,0,.2,1);
     }
 
     .service-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 12px 25px rgba(0,0,0,0.1);
+        box-shadow: 
+            0 24px 50px rgba(0,0,0,0.20), /* doubled vertical offset, blur, & opacity */
+            0 12px 25px rgba(0,0,0,0.1);  /* original shadow for layering */
     }
 
     .service-card .icon {
@@ -240,7 +406,40 @@
         padding: 0.8rem 2rem;
         border-radius: 12px;
         font-weight: 600;
-        transition: all 0.3s ease;
+        transition: all 0.3s cubic-bezier(0.47, 2.02, 0.31, -0.36);
+        position: relative;
+        box-shadow: 0 5px 24px 0 rgba(201,169,77,0.28), 0 2px 8px 0 rgba(0,0,0,0.08);
+        overflow: hidden;
+        z-index: 1;
+    }
+
+    .request-demo .btn-contact:before {
+        content: "";
+        position: absolute;
+        left: 0.2rem;
+        top: 0.1rem;
+        width: 90%;
+        height: 45%;
+        background: linear-gradient(120deg, rgba(255,255,255,0.67) 30%, rgba(255,255,255,0.09) 100%);
+        border-radius: 50% 60% 30% 20%;
+        opacity: 0.6;
+        pointer-events: none;
+        filter: blur(0.5px);
+        z-index: 2;
+    }
+
+    .request-demo .btn-contact:after {
+        content: "";
+        position: absolute;
+        bottom: 3px;
+        left: 0;
+        right: 0;
+        height: 27%;
+        background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.16) 82%, rgba(255,255,255,0.01) 100%);
+        border-radius: 0 0 8px 8px / 0 0 15% 15%;
+        pointer-events: none;
+        z-index: 2;
+        mix-blend-mode: lighten;
     }
 
     .request-demo .btn-contact:hover {
@@ -284,7 +483,10 @@
 
     <!-- Navbar -->
     <nav>
-        <div class="logo">Patent Gap AI</div>
+        <div class="logo-container">
+            <img src="images/logo-white-nobg.png" alt="Patent Gap Logo">
+            <div class="logo">Patent Gap AI</div>
+        </div>
         <div class="nav-links">
             <a href="#services">Services</a>
             <a href="#about">About</a>
@@ -295,8 +497,8 @@
 
     <!-- Hero Section -->
     <section class="hero">
-        <h1>Smarter Patent Protection, Powered by AI.</h1>
-        <p>On-demand infringement insights, tailored for attorneys and innovators.</p>
+        <h1>Smarter Patent Protection, Powered by AI</h1>
+        <p>On-demand infringement insights, tailored for attorneys and innovators</p>
         <button class="btn-primary" onclick="window.location.href='/signup'">Get Started</button>
         <button class="btn-secondary" onclick="window.location.href='/learn-more'">Learn More</button>
     </section>
@@ -332,7 +534,7 @@
             <p>We combine artificial intelligence and legal expertise to provide attorneys and innovators with actionable insights on patent protection and infringement monitoring. Our platform simplifies IP management and enhances decision-making.</p>
         </div>
         <div class="about-image">
-            <img src="https://via.placeholder.com/500x350.png?text=AI+Patent+Graphic" alt="AI Patent Illustration">
+            <img src="../Assets/flowchart.png" alt="AI Patent Illustration">
         </div>
     </section>
 

@@ -1,0 +1,366 @@
+{
+    "count": 1,
+    "patentFileWrapperDataBag": [
+      {
+        "applicationNumberText": "14104993",
+        "applicationMetaData": {
+          "nationalStageIndicator": true,
+          "entityStatusData": {
+            "smallEntityStatusIndicator": true,
+            "businessEntityStatusCategory": "Undiscounted"
+          },
+          "publicationDateBag": [
+            "2014-06-19"
+          ],
+          "publicationSequenceNumberBag": [
+            "167116"
+          ],
+          "publicationCategoryBag": [
+            [
+              "Granted/Issued",
+              "Pre-Grant Publications - PGPub"
+            ]
+          ],
+          "docketNumber": "12GR10425US01/859063.688",
+          "firstInventorToFileIndicator": "Y",
+          "firstApplicantName": "STMicroelectronics S.A.",
+          "firstInventorName": "Pascal Chevalier",
+          "applicationConfirmationNumber": 1061,
+          "applicationStatusDate": "2016-05-18",
+          "applicationStatusDescriptionText": "Patented Case",
+          "filingDate": "2012-12-19",
+          "effectiveFilingDate": "2013-12-12",
+          "grantDate": "2016-06-07",
+          "groupArtUnitNumber": "TTAB",
+          "applicationTypeCode": "UTL",
+          "applicationTypeLabelName": "Utility",
+          "applicationTypeCategory": "electronics",
+          "inventionTitle": "HETEROJUNCTION BIPOLAR TRANSISTOR",
+          "patentNumber": "9362380",
+          "applicationStatusCode": 150,
+          "earliestPublicationNumber": "US 2014-0167116 A1",
+          "earliestPublicationDate": "2014-06-19",
+          "pctPublicationNumber": "WO 2009/064413",
+          "pctPublicationDate": "2016-12-16",
+          "internationalRegistrationPublicationDate": "2016-12-16",
+          "internationalRegistrationNumber": "DM/091304",
+          "examinerNameText": "HUI TSAI JEY",
+          "class": "257",
+          "subclass": "197000",
+          "uspcSymbolText": "257/197000",
+          "customerNumber": 38106,
+          "cpcClassificationBag": [
+            "H01L29/66325",
+            "H01L27/0623",
+            "H01L29/7378",
+            "H01L21/8249",
+            "H01L29/737",
+            "H01L29/66242"
+          ],
+          "applicantBag": [
+            {
+              "applicantNameText": "John Smith",
+              "firstName": "John",
+              "middleName": "P",
+              "lastName": "Smith",
+              "preferredName": "John Smith",
+              "namePrefix": "Mr.",
+              "nameSuffix": "Jr.",
+              "countryCode": "US",
+              "correspondenceAddressBag": [
+                {
+                  "nameLineOneText": "STMicroelectronics S.A.",
+                  "nameLineTwoText": "Electronics",
+                  "geographicRegionName": "MN",
+                  "geographicRegionCode": "Minnesota",
+                  "cityName": "Montrouge",
+                  "countryCode": "FR",
+                  "countryName": "FRANCE",
+                  "postalAddressCategory": "commercial"
+                }
+              ]
+            }
+          ],
+          "inventorBag": [
+            {
+              "firstName": "John",
+              "middleName": "K",
+              "lastName": "Smith",
+              "namePrefix": "Mr.",
+              "nameSuffix": "Sr.",
+              "preferredName": "John Smith",
+              "countryCode": "US",
+              "inventorNameText": "Pascal Chevalier",
+              "correspondenceAddressBag": [
+                {
+                  "nameLineOneText": "Pascal  Chevalier",
+                  "nameLineTwoText": "Name Two",
+                  "geographicRegionName": "Region Name",
+                  "geographicRegionCode": "FR",
+                  "cityName": "Chapareillan",
+                  "countryCode": "FR",
+                  "countryName": "FRANCE",
+                  "postalAddressCategory": "commercial"
+                }
+              ]
+            }
+          ]
+        },
+        "correspondenceAddressBag": [
+          {
+            "nameLineOneText": "Seed IP Law Group LLP/ST (EP ORIGINATING)",
+            "nameLineTwoText": "Attn- IP Docket",
+            "addressLineOneText": "701 FIFTH AVENUE, SUITE 5400",
+            "addressLineTwoText": "Suite 501",
+            "geographicRegionName": "WASHINGTON",
+            "geographicRegionCode": "WA",
+            "postalCode": "98104-7092",
+            "cityName": "SEATTLE",
+            "countryCode": "US",
+            "countryName": "USA",
+            "postalAddressCategory": "commercial"
+          }
+        ],
+        "assignmentBag": [
+          {
+            "reelNumber": "60620",
+            "frameNumber": "769",
+            "reelAndFrameNumber": "60620/769",
+            "pageTotalQuantity": 16,
+            "imageAvailableStatusCode": false,
+            "assignmentDocumentLocationURI": "https://legacy-assignments.uspto.gov/assignments/assignment-pat-060620-0769.pdf",
+            "assignmentReceivedDate": "2022-07-11",
+            "assignmentRecordedDate": "2022-07-11",
+            "assignmentMailedDate": "2022-07-28",
+            "conveyanceText": "ASSIGNMENT OF ASSIGNORS INTEREST (SEE DOCUMENT FOR DETAILS).",
+            "assignorBag": [
+              {
+                "assignorName": "STMICROELECTRONICS SA",
+                "executionDate": "2022-06-30"
+              }
+            ],
+            "assigneeBag": [
+              {
+                "assigneeNameText": "STMICROELECTRONICS SA",
+                "assigneeAddress": {
+                  "addressLineOneText": "CHEMIN DU CHAMP-DES-FILLES 39",
+                  "addressLineTwoText": "1228 PLAN-LES-OUATES",
+                  "addressLineThreeText": null,
+                  "addressLineFourText": null,
+                  "cityName": "GENEVA",
+                  "geographicRegionName": "CHX",
+                  "geographicRegionCode": "string",
+                  "countryName": "Switzerland",
+                  "postalCode": "20123",
+                  "countryOrStateCode": null,
+                  "ictStateCode": null,
+                  "ictCountryCode": null
+                }
+              }
+            ],
+            "correspondenceAddress": [
+              {
+                "correspondentNameText": "STMICROELECTRONICS, INC.",
+                "addressLineOneText": "750 CANYON DRIVE",
+                "addressLineTwoText": "SUITE 300",
+                "addressLineThreeText": "COPPELL, TX 75019",
+                "addressLineFourText": "Address Line Four"
+              }
+            ],
+            "domesticRepresentative": {
+              "name": null,
+              "addressLineOneText": null,
+              "addressLineTwoText": null,
+              "addressLineThreeText": null,
+              "addressLineFourText": null,
+              "cityName": null,
+              "postalCode": null,
+              "geographicRegionName": null,
+              "countryName": null,
+              "emailAddress": null,
+              "lastIngestionDateTime": {}
+            }
+          }
+        ],
+        "recordAttorney": {
+          "customerNumberCorrespondenceData": {
+            "patronIdentifier": 38106,
+            "organizationStandardName": null,
+            "powerOfAttorneyAddressBag": [
+              {
+                "nameLineOneText": "Seed IP Law Group LLP/STMicroelectronics",
+                "addressLineOneText": "701 FIFTH AVENUE, SUITE 5400",
+                "addressLineTwoText": "Sample Line Two",
+                "geographicRegionName": "WASHINGTON",
+                "geographicRegionCode": "WA",
+                "postalCode": "98104-7092",
+                "cityName": "SEATTLE",
+                "countryCode": "US",
+                "countryName": "UNITED STATES"
+              }
+            ],
+            "telecommunicationAddressBag": [
+              {
+                "telecommunicationNumber": "206-622-4900",
+                "extensionNumber": "409",
+                "telecomTypeCode": "TEL"
+              }
+            ]
+          },
+          "powerOfAttorneyBag": [
+            {
+              "firstName": "DANIEL",
+              "middleName": "D",
+              "lastName": "O'BRIEN",
+              "namePrefix": "Dr",
+              "nameSuffix": "Jr.",
+              "preferredName": "string",
+              "countryCode": "US",
+              "registrationNumber": "65545",
+              "activeIndicator": "ACTIVE",
+              "registeredPractitionerCategory": "ATTNY",
+              "attorneyAddressBag": [
+                {
+                  "nameLineOneText": "SEED IP LAW  GROUP LLP",
+                  "nameLineTwoText": "STOCKTON",
+                  "addressLineOneText": "701 FIFTH AVENUE",
+                  "addressLineTwoText": "SUITE 5400",
+                  "geographicRegionName": "WASHINGTON",
+                  "geographicRegionCode": "WA",
+                  "postalCode": "98104",
+                  "cityName": "SEATTLE",
+                  "countryCode": "US",
+                  "countryName": "UNITED STATES"
+                }
+              ],
+              "telecommunicationAddressBag": [
+                {
+                  "telecommunicationNumber": "206-622-4900",
+                  "extensionNumber": "243",
+                  "telecomTypeCode": "TEL"
+                }
+              ]
+            }
+          ],
+          "attorneyBag": [
+            {
+              "firstName": "DANIEL",
+              "middleName": "D",
+              "lastName": "O'BRIEN",
+              "namePrefix": "Dr",
+              "nameSuffix": "Jr.",
+              "registrationNumber": "65545",
+              "activeIndicator": "ACTIVE",
+              "registeredPractitionerCategory": "string",
+              "attorneyAddressBag": [
+                {
+                  "nameLineOneText": "KIILPATRICK TOWNSEND & STOCKTON, LLP",
+                  "nameLineTwoText": "TOWNSEND",
+                  "addressLineOneText": "1100 PEACHTREE STREET NE",
+                  "addressLineTwoText": "SUITE 2800",
+                  "geographicRegionName": "GEORGIA",
+                  "geographicRegionCode": "GA",
+                  "postalCode": "30309",
+                  "cityName": "ATLANTA",
+                  "countryCode": "US",
+                  "countryName": "UNITED STATES"
+                }
+              ],
+              "telecommunicationAddressBag": [
+                {
+                  "telecommunicationNumber": "206-622-4900",
+                  "extensionNumber": "243",
+                  "telecomTypeCode": "TEL"
+                }
+              ]
+            }
+          ]
+        },
+        "foreignPriorityBag": [
+          {
+            "ipOfficeName": "FRANCE",
+            "filingDate": "2012-12-19",
+            "applicationNumberText": "1262321"
+          }
+        ],
+        "parentContinuityBag": [
+          {
+            "firstInventorToFileIndicator": true,
+            "parentApplicationStatusCode": 159,
+            "parentPatentNumber": "8968299",
+            "parentApplicationStatusDescriptionText": "Patent Expired Due to NonPayment of Maintenance Fees Under 37 CFR 1.362",
+            "parentApplicationFilingDate": "2012-05-23",
+            "parentApplicationNumberText": "123123133",
+            "childApplicationNumberText": "10121016",
+            "claimParentageTypeCode": "CODE",
+            "claimParentageTypeCodeDescriptionText": "Claims priority from a provisional application"
+          }
+        ],
+        "childContinuityBag": [
+          {
+            "childApplicationStatusCode": 150,
+            "parentApplicationNumberText": "14104993",
+            "childApplicationNumberText": "14853719",
+            "childApplicationStatusDescriptionText": "Patented Case",
+            "childApplicationFilingDate": "2015-09-14",
+            "firstInventorToFileIndicator": false,
+            "childPatentNumber": "9704967",
+            "claimParentageTypeCode": "DIV",
+            "claimParentageTypeCodeDescriptionText": "Claims priority from a provisional application"
+          }
+        ],
+        "patentTermAdjustmentData": {
+          "aDelayQuantity": 0,
+          "adjustmentTotalQuantity": 0,
+          "applicantDayDelayQuantity": 28,
+          "bDelayQuantity": 0,
+          "cDelayQuantity": 0,
+          "nonOverlappingDayQuantity": 0,
+          "overlappingDayQuantity": 0,
+          "patentTermAdjustmentHistoryDataBag": [
+            {
+              "eventDate": "2016-06-07",
+              "applicantDayDelayQuantity": 4,
+              "eventDescriptionText": "Patent Issue Date Used in PTA Calculation",
+              "eventSequenceNumber": 0.5,
+              "ipOfficeDayDelayQuantity": 0,
+              "originatingEventSequenceNumber": 0,
+              "ptaPTECode": "PTA"
+            }
+          ]
+        },
+        "eventDataBag": [
+          {
+            "eventCode": "ELC_RVW",
+            "eventDescriptionText": "Electronic Review",
+            "eventDate": "2018-10-18"
+          }
+        ],
+        "pgpubDocumentMetaData": {
+          "zipFileName": "ipa240801.zip",
+          "productIdentifier": "APPXML",
+          "fileLocationURI": "https://bulkdata.uspto.gov/data/patent/application/redbook/fulltext/2024/ipa240104.zip",
+          "fileCreateDateTime": "2024-08-09:11:30:00",
+          "xmlFileName": "ipa240801.xml"
+        },
+        "grantDocumentMetaData": {
+          "zipFileName": "ipg240102.zip",
+          "productIdentifier": "PTGRXML",
+          "fileLocationURI": "https://bulkdata.uspto.gov/data/patent/grant/redbook/fulltext/2016/ipg160405.zip",
+          "fileCreateDateTime": "2024-08-09:11:30:00",
+          "xmlFileName": "ipg160405.xml"
+        },
+        "lastIngestionDateTime": {}
+      }
+    ],
+    "facets": [
+      {
+        "applicationStatusCode": [
+          {
+            "value": "Utility",
+            "count": 44673
+          }
+        ]
+      }
+    ]
+  }

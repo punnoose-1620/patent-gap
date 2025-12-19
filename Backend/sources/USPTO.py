@@ -14,7 +14,9 @@ IMPORTANT: An API key is REQUIRED to use this API. To obtain an API key:
 API Base URL: https://api.uspto.gov/api/v1
 Authentication: X-API-KEY header
 """
+import json
 import requests
+from datetime import datetime
 from typing import Dict, Optional, Any
 
 class USPTOAPIError(Exception):
@@ -31,6 +33,20 @@ class USPTOPatentAPI:
     """Client for USPTO Open Data Portal (ODP) Patent API."""
     
     BASE_URL = "https://api.uspto.gov/api/v1"
+
+    def processAddress(self, address: dict) -> dict:
+        """
+        Process an address dictionary into a formatted string.
+        """
+        address['addressLineText'] = ''
+        if 'nameLineOneText' in address.keys():
+            address['addressLineText'] = address.pop('nameLineOneText')
+        if 'nameLineTwoText' in address.keys():
+            if address['addressLineText'] != '':
+                address['addressLineText'] = address['addressLineText'] + ',' + address.pop('nameLineTwoText')
+            else:
+                address['addressLineText'] = address.pop('nameLineTwoText')
+        return address
     
     def __init__(self, api_key: Optional[str] = None, require_api_key: bool = True):
         """
@@ -711,18 +727,196 @@ class USPTOPatentAPI:
             >>> api = USPTOPatentAPI(api_key="your-key")
             >>> complete_info = api.get_complete_patent_info("14412875")
         """
-        return {
-            "application_data": self.get_application_data(application_number),
-            "application_metadata": self.get_application_metadata(application_number),
-            "continuity": self.get_continuity_data(application_number),
-            "documents": self.get_documents(application_number),
-            "associated_documents": self.get_associated_documents(application_number),
-            "transactions": self.get_transactions(application_number),
-            "patent_term_adjustment": self.get_patent_term_adjustment(application_number),
-            "attorney_agent": self.get_attorney_agent_info(application_number),
-            "assignments": self.get_assignments(application_number),
-            "foreign_priority": self.get_foreign_priority(application_number)
+        applicationNumber = None
+        titleData = None
+        descriptionData = None
+        currentStatusData = None
+        currentStatusCode = None
+        currentStatusDate = None
+        attorneys = []
+        inventors = []
+        mailingAddresses = []
+        documents = []
+        filingUser = None           # To be populated with User_Id from endpoint
+        filingDate = None
+
+        # applicationData = self.get_application_data(application_number)
+        applicationMetaData = self.get_application_metadata(application_number)
+        # continuity = self.get_continuity_data(application_number)
+        documentsList = self.get_documents(application_number)
+        associatedDocuments = self.get_associated_documents(application_number)
+        # transactions = self.get_transactions(application_number)
+        # patentTermAdjustment = self.get_patent_term_adjustment(application_number)
+        attorneyAgent = self.get_attorney_agent_info(application_number)
+        # assignments = self.get_assignments(application_number)
+        # foreignPriority = self.get_foreign_priority(application_number)
+
+        print('\nApplication Meta Data type: ', type(applicationMetaData))
+        print('Application Meta Data: ', json.dumps(applicationMetaData, indent=4))
+        print('\nDocuments Data type: ', type(documentsList))
+        print('Documents Data: ', json.dumps(documentsList, indent=4))
+        print('\nAssociated Documents Data type: ', type(associatedDocuments))
+        print('Associated Documents Data: ', json.dumps(associatedDocuments, indent=4))
+        print('\nAttorney Agent Data type: ', type(attorneyAgent))
+        print('Attorney Agent Data: ', json.dumps(attorneyAgent, indent=4))
+
+        # Process Metadata and get all other relevant information 
+        # [ applicationNumber, titleData, filingDate, descriptionData, currentStatusCode, 
+        print('TEST: USPTO  applicationMetaDatapatentFileWrapperDataBag')
+        #   currentStatusDate, currentStatusData, mailingAddresses, inventors  ]
+        if 'patentFileWrapperDataBag' in applicationMetaData.keys():
+            patentFileWrapperDataBag = applicationMetaData.get('patentFileWrapperDataBag', {})
+            print('TEST: USPTO applicationMetaData patentFileWrapperDataBag - applicationNumberText')
+            if 'applicationNumberText' in patentFileWrapperDataBag.keys():
+                applicationNumber = f"uspto_{patentFileWrapperDataBag.get('applicationNumberText', '')}"
+            print('TEST: USPTO applicationMetaData patentFileWrapperDataBag - applicationMetaData')
+            if 'applicationMetaData' in patentFileWrapperDataBag.keys():
+                metaData = patentFileWrapperDataBag.get('applicationMetaData', {})
+                titleData = metaData.get('inventionTitle', '')
+                filingDate = metaData.get('filingDate', '')
+                descriptionData = metaData.get('applicationStatusDescriptionText', '')
+                currentStatusCode = metaData.get('applicationStatusCode', '')
+                currentStatusDate = metaData.get('applicationStatusDate', '')
+                currentStatusData = metaData.get('applicationStatusDescriptionText', '')
+                applicantBag = metaData.get('applicantBag', [])
+                if len(applicantBag) > 0:
+                    for person in applicantBag:
+                        addressData = person.get('correspondenceAddressBag', [])
+                        processedAddress = self.processAddress(addressData)
+                        if processedAddress is not None:
+                            mailingAddresses.append(processedAddress)
+                inventorBag = metaData.get('inventorBag', [])
+                if len(inventorBag) > 0:
+                    for person in inventorBag:
+                        personName = person.get('inventorNameText', '')
+                        correspondenceAddressBag = person.get('correspondenceAddressBag', [])
+                        if (personName is not None) and (personName != ''):
+                            inventors.append(person.get('inventorNameText', ''))
+                        for addressData in correspondenceAddressBag:
+                            processedAddress = self.processAddress(addressData)
+                            if processedAddress is not None:
+                                mailingAddresses.append(processedAddress)
+        # Process all available documents and add url with source to documents
+        print('TEST: USPTO documentsList')
+        if 'documentBag' in documentsList.keys():
+            documentBag = documentsList.get('documentBag', [])
+            if len(documentBag) > 0:
+                for fileData in documentBag:
+                    print('TEST: USPTO documentsList - documentBag')
+                    if 'downloadUrldownloadOptionBag' in fileData.keys():
+                        fileDownloadData = fileData.get('downloadOptionBag', [])
+                        if len(fileDownloadData) > 0:
+                            for downloadData in fileDownloadData:
+                                if 'downloadUrl' in downloadData.keys():
+                                    documents.append({
+                                        'source': 'uspto',
+                                        'url': downloadData.get('downloadUrl', '')
+                                    })
+        if 'patentFileWrapperDataBag' in associatedDocuments.keys():
+            patentFileWrapperDataBag = associatedDocuments.get('patentFileWrapperDataBag', [])
+            for documentData in patentFileWrapperDataBag:
+                grantDocumentData = documentData.get('grantDocumentMetaData', {})
+                grantFileUri = grantDocumentData.get('fileLocationURI', '')
+                if (grantFileUri is not None) and (grantFileUri != ''):
+                    document = {
+                        'source': 'uspto',
+                        'url': grantFileUri
+                    }
+                    if grantFileUri not in documents:
+                        documents.append(document)
+                pgpubDocumentData = documentData.get('pgpubDocumentMetaData', {})
+                pgpubFileUri = pgpubDocumentData.get('fileLocationURI', '')
+                if (pgpubFileUri is not None) and (pgpubFileUri != ''):
+                    document = {
+                        'source': 'uspto',
+                        'url': pgpubFileUri
+                    }
+                    if pgpubFileUri not in documents:
+                        documents.append(document)
+        # Process all available mailing addresses from attorney/agent information
+        print('TEST: USPTO attorneyAgent patentFileWrapperDataBag')
+        if 'patentFileWrapperDataBag' not in attorneyAgent.keys():
+            patentFileWrapperDataBag = attorneyAgent.get('patentFileWrapperDataBag', {})
+            for item in patentFileWrapperDataBag:
+                print('TEST: USPTO attorneyAgent patentFileWrapperDataBag - recordAttorney')
+                if 'recordAttorney' in item.keys():
+                    recordAttorney = item.get('recordAttorney', {})
+                    print('TEST: USPTO attorneyAgent patentFileWrapperDataBag - customerNumberCorrespondenceBag')
+                    if 'customerNumberCorrespondenceData' in recordAttorney.keys():
+                        customerCorrespondenceData = recordAttorney.get('customerNumberCorrespondenceData', {})
+                        if 'powerOfAttorneyAddressBag' in customerCorrespondenceData.keys():
+                            powerOfAttorneyAddressBag = customerCorrespondenceData.get('powerOfAttorneyAddressBag', [])
+                            for addressData in powerOfAttorneyAddressBag:
+                                processedAddress = self.processAddress(addressData)
+                                if (processedAddress is not None) and (processedAddress not in mailingAddresses):
+                                    mailingAddresses.append(processedAddress)
+                    print('TEST: USPTO attorneyAgent patentFileWrapperDataBag - powerOfAttorneyBag')
+                    if 'powerOfAttorneyBag' in recordAttorney.keys():
+                        powerOfAttorneyBag = recordAttorney.get('powerOfAttorneyBag', [])
+                        for personData in powerOfAttorneyBag:
+                            personName = (personData.get('firstName', '') + ' ' + personData.get('lastName', '')).strip()
+                            registrationNumber = personData.get('registrationNumber', '')
+                            telecommunicationBag = personData.get('telecommunicationAddressBag', [])
+                            contacts = []
+                            for communication in telecommunicationBag:
+                                number = communication.get('telecommunicationNumber', '')
+                                if (number!='') and (number!=None) and (number not in contacts):
+                                    contacts.append(number)
+                            attorneyPersonData = {
+                                'name': personName,
+                                'registrationNumber': registrationNumber,
+                                'contact': contacts
+                            }
+                            if (attorneyPersonData not in attorneys) and (personName!='') and (registrationNumber!='') and (len(contacts)>0):
+                                attorneys.append(attorneyPersonData)
+                            addressDataList = personData.get('attorneyAddressBag', [])
+                            for addressData in addressDataList:
+                                processedAddress = self.processAddress(addressData)
+                                if (processedAddress is not None) and (processedAddress not in mailingAddresses):
+                                    mailingAddresses.append(processedAddress)
+                    print('TEST: USPTO attorneyAgent patentFileWrapperDataBag - attorneyBag')
+                    if 'attorneyBag' in recordAttorney.keys():
+                        attorneyBag = recordAttorney.get('attorneyBag', [])
+                        for personData in attorneyBag:
+                            personName = (personData.get('firstName', '') + ' ' + personData.get('lastName', '')).strip()
+                            registrationNumber = personData.get('registrationNumber', '')
+                            contacts = []
+                            telecommunicationBag = personData.get('telecommunicationAddressBag', [])
+                            for communication in telecommunicationBag:
+                                number = communication.get('telecommunicationNumber', '')
+                                if (number!='') and (number!=None) and (number not in contacts):
+                                    contacts.append(number)
+                            attorneyPersonData = {
+                                'name': personName,
+                                'registrationNumber': registrationNumber,
+                                'contact': contacts
+                            }
+                            if (attorneyPersonData not in attorneys) and (personName!='') and (registrationNumber!='') and (len(contacts)>0):
+                                attorneys.append(attorneyPersonData)
+                            personAddresses = personData.get('attorneyAddressBag', [])
+                            for addressData in personAddresses:
+                                processedAddress = self.processAddress(addressData)
+                                if (processedAddress is not None) and (processedAddress not in mailingAddresses):
+                                    mailingAddresses.append(processedAddress)
+
+        returnVal = {
+            '_id': applicationNumber,
+            'title': titleData,
+            'status': currentStatusData,
+            'description': descriptionData,
+            'currentStatusCode': currentStatusCode,
+            'currentStatusDate': currentStatusDate,
+            'attorneys': attorneys,    # Name, Registration Number, Contact
+            'inventors': inventors,    # List of names
+            'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
+            'created_by': filingUser,
+            'created_date': datetime.utcnow().isoformat(),
+            'filing_date': filingDate,
+            'references': [],  # list of dictionaries with url, title, granted_date, similarity_rate
+            'documents': documents
         }
+
+        return returnVal
 
 
 # Convenience functions for direct usage without instantiating the class
