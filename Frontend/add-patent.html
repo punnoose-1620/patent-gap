@@ -829,7 +829,7 @@
                     .then(data => {
                         if(data['success'] === true) {
                             console.log('Patent Imported from USPTO:', data);
-                            triggerSimilarityAnalysis(data['case_id'], formData.keywords)
+                            triggerSimilarityAnalysis(data['case_id'], data['keywords'])
                             setTimeout(() => {
                                 // Reset form
                                 resetForm();
@@ -867,13 +867,15 @@
 
         // Reset form
         function resetForm() {
-            if(source==='manual') {
-                document.getElementById('patentForm').reset();
+            manualForm = document.getElementById('patentForm');
+            usptoForm = document.getElementById('usptoPatentForm');
+            if(manualForm) {
+                manualForm.reset();
                 selectedFiles = [];
                 displayUploadedFiles();
             }
-            else if(source==='uspto') {
-                document.getElementById('usptoPatentForm').reset();
+            else if(usptoForm) {
+                usptoForm.reset();
             }
             else {
                 alert('Unable to reset form. Please try again later.');

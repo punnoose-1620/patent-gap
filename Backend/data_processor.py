@@ -433,13 +433,9 @@ def isolateDataFromUSPTOResults(result):
     filingUser = None
     filingDate = None
     try:
-        print('Keys in result: ', result.keys())
         correspondenceAddressBag = result.get('correspondenceAddressBag')
         recordAttorney = result.get('recordAttorney')
         applicationMetaData = result.get('applicationMetaData')
-        print('Application Meta Data: ', applicationMetaData)
-        print('Record Attorney: ', recordAttorney)
-        print('Correspondence Address Bag: ', correspondenceAddressBag)
 
         if result.get('applicationNumberText') is not None:
             applicationNumber = f"uspto_{result.get('applicationNumberText')}"
@@ -453,11 +449,6 @@ def isolateDataFromUSPTOResults(result):
             currentStatusCode = applicationMetaData.get('applicationStatusCode')
             currentStatusDate = applicationMetaData.get('applicationStatusDate')
             currentStatusData = applicationMetaData.get('applicationStatusDescriptionText')
-            print('Title Data: ', titleData)
-            print('Filing Date: ', filingDate)
-            print('Current Status Code: ', currentStatusCode)
-            print('Current Status Date: ', currentStatusDate)
-            print('Current Status Data: ', currentStatusData)
             if type(tempInventors) is list:
                 for inventor in tempInventors:
                     inventors.append(inventor.get('inventorNameText'))
@@ -643,7 +634,6 @@ def getKeywordDocumentsUSPTO(keywords:list[str], load_to_database:bool = False):
         grant_document_url = api.get_grant_document_url(str(application_number))
         doc_urls = []
 
-        keywords = []
         if((grant_document_url is not None) or (pgpub_document_url is not None)):
             if(grant_document_url is not None):
                 doc_urls.append({
@@ -679,6 +669,14 @@ def getKeywordDocumentsUSPTO(keywords:list[str], load_to_database:bool = False):
         for result in finalResults:
             create_case(result)
     return finalResults
+
+def getKeywordsFromPatent(documents:list[dict]):
+    textContent = ""
+    for document in documents:
+        content = readDocumentFromUrl(url=document['url'], headers={"X-API-KEY": getEnvKey('uspto')})
+        textContent = f"{textContent}\n\n{content}"
+    keywords = getKeywordsFromContent(textContent)
+    return keywords
 
 def isolateDocumentFromUsptoById(document):
     if document is None:

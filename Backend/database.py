@@ -5,6 +5,9 @@ from pymongo import MongoClient
 from typing import Optional, Dict, Any, List
 from env_controller import getDatabaseConnectionString
 
+import firebase_admin
+from firebase_admin import credentials, firestore
+
 # Module-level variable to store MongoDB database instance
 _mongodb_client = None
 _mongodb_db = None
@@ -39,6 +42,7 @@ def connect_to_database():
             _mongodb_client = MongoClient(connection_string)
             # Test the connection
             _mongodb_client.admin.command('ping')
+
             # Get the database (database name is typically in the connection string)
             # Extract database name from connection string or use default
             db_name = 'patent-gap'  # Default, or extract from connection string
@@ -85,7 +89,12 @@ def createCollection(db, collectionName):
         db: MongoDB database instance (from connect_to_database())
         collectionName (str): The name of the collection to create.
     """
-    return db.create_collection(collectionName)
+    try:
+        collection = db.create_collection(collectionName)
+        return collection
+    except Exception as e:
+        print(f"Error creating collection {collectionName}: {e}")
+        return None
 
 def getAllData(db, collectionName):
     """

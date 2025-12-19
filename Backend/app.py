@@ -212,6 +212,7 @@ def login():
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
+        print(f'LOG: Login Request for {email}')
         
         result = login_user(email, password)
         
@@ -262,6 +263,9 @@ def logout():
               type: string
               example: "/"
     """
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    print(f'LOG: {session["user_id"]} Logout')
     session.clear()
     return jsonify({
         'success': True,
@@ -306,9 +310,9 @@ def my_cases():
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    
+    user_id = session['user_id']
+    print(f'LOG: {user_id} Get My Cases')
     try:
-        user_id = session['user_id']
         print('User ID: ', user_id)
         cases = get_case_related_to_user(user_id)
         return jsonify({
@@ -351,6 +355,9 @@ def open_cases():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    print(f'LOG: {session["user_id"]} Get Open Cases')
     try:
         cases = get_open_cases()
         return jsonify({
@@ -398,9 +405,9 @@ def profile():
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    
+    user_id = session['user_id']
+    print(f'LOG: {user_id} Get Profile Data')
     try:
-        user_id = session['user_id']
         profile_data = get_user_profile(user_id)
         return jsonify({
             'success': True,
@@ -459,6 +466,7 @@ def get_case_details(case_id):
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     
+    print(f'LOG: {session["user_id"]} Get Case Details: {case_id}')
     try:
         case_data = get_case_by_id(case_id)
         if case_data:
@@ -538,7 +546,7 @@ def update_case_details(case_id):
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-
+    print(f'LOG: {session["user_id"]} Update Case Details: {case_id}')
     try:
         update_data = request.get_json()
         if not update_data:
@@ -619,7 +627,7 @@ def update_case_status(case_id):
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-
+    print(f'LOG: {session["user_id"]} Update Case Status: {case_id}')
     try:
         update_data = request.get_json()
         if not update_data or not isinstance(update_data, dict):
@@ -678,7 +686,7 @@ def get_case_patents(case_id):
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    
+    print(f'LOG: {session["user_id"]} Get Case Patents: {case_id}')
     try:
         patents = get_case_related_patents(case_id)
         return jsonify({
@@ -740,7 +748,7 @@ def api_verify_password():
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-
+    print(f'LOG: {session["user_id"]} Verify User Password')
     try:
         data = request.get_json()
         entered_password = data.get('password')
@@ -796,7 +804,7 @@ def api_change_password():
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-
+    print(f'LOG: {session["user_id"]} Change User Password')
     try:
         data = request.get_json()
         new_password = data.get('new_password')
@@ -843,7 +851,7 @@ def add_patent():
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-
+    print(f'LOG: {session["user_id"]} Add New Patent: {request.get_json()}')
     try:
         data = request.get_json()
         if not data:
@@ -886,7 +894,7 @@ def upload_file_to_local_storage(case_id):
     # Check authentication
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-
+    print(f'LOG: {session["user_id"]} Upload File to Local Storage')
     # Check file in request
     if 'file' not in request.files:
         return jsonify({'success': False, 'message': 'No file part in the request'}), 400
@@ -952,6 +960,10 @@ def upload_file(case_id):
           type: string
           format: binary
     """
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    print(f'LOG: {session["user_id"]} Upload File: {case_id}')
+
     data = request.get_json()
     if not data:
         return jsonify({'success': False, 'message': 'No data provided'}), 400
@@ -1011,6 +1023,10 @@ def get_all_alerts():
     summary: Get all alerts
     description: Returns all alerts
     """
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    print(f'LOG: {session["user_id"]} Get All Alerts')
+
     try:
         alerts = get_alerts()
         return jsonify({
@@ -1033,6 +1049,7 @@ def get_user_alerts():
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     user_id = session['user_id']
+    print(f'LOG: {session["user_id"]} Get User Alerts')
     try:
         user_alerts = get_alerts_for_user(user_id)
         return jsonify({
@@ -1044,20 +1061,66 @@ def get_user_alerts():
 
 @app.route('/api/trigger-similarity-analysis', methods=['POST'])
 def trigger_similarity_analysis():
+  """
+  Trigger a similarity analysis for a specific case.
+
+  ---
+  tags:
+    - Similarity Analysis
+  summary: Run similarity analysis for a specific case
+  description: 
+    Triggers a keyword-based similarity analysis for a given case. If no keywords are provided in the request, it will attempt to use the keywords from the case itself. 
+    Retrieves similar USPTO documents and references using the keywords, generates and updates reports for the case, and creates an alert for the triggering user.
+  
+  Request Body:
+    - case_id (str): The unique identifier of the case.
+    - keywords (list, optional): A list of keywords to use for the similarity analysis. If omitted or empty, attempts to extract from the given case.
+
+  Responses:
+    200:
+      description: Similarity analysis completed and alert created successfully.
+    400:
+      description: Bad request, such as missing user ID, data, or keywords.
+    500:
+      description: Internal server error during similarity analysis.
+  """
+  if 'user_id' not in session:
+      return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  user_id = session['user_id']
+  print(f'LOG: {session["user_id"]} Trigger Similarity Analysis')
   try:
     data = request.get_json()
-    if 'user_id' not in session:
-      return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-    user_id = session['user_id']
+    print('TEST: trigger_similarity_analysis data: ', json.dumps(data, indent=4))
     if data is None:
       return jsonify({'success': False, 'message': 'No data provided'}), 400
-    case_id = data.get('case_id')
-    keywords = data.get('keywords')
+    case_id = data.get('case_id', None)
+    keywords = data.get('keywords', [])
 
+    if (case_id is None) or (case_id == ''):
+      return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+    if keywords is None:
+      return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+      
+    # Try to get keywords from local case data if not provided
+    if (keywords is None) or (len(keywords) == 0):
+      print('No keywords provided')
+      case_data = get_case_by_id(case_id)
+      if case_data is not None:
+        keywords_from_case = case_data.get('keywords', [])
+        if (keywords_from_case is None) or (len(keywords_from_case) == 0):
+          return jsonify({'success': False, 'message': 'No keywords provided'}), 400
+        keywords = keywords_from_case
+    # Get similar documents from USPTO
     similarUsptoDocuments = getKeywordDocumentsUSPTO(keywords, load_to_database=False)    # Similar documents normalized, processed and with references & embeddings
     print('similarUsptoDocuments sample: ', json.dumps(similarUsptoDocuments[0], indent=4))
+    if (similarUsptoDocuments is None) or (len(similarUsptoDocuments) == 0):
+      return jsonify({'success': False, 'message': 'No similar documents found'}), 400
+    # Get references as normalized list from similar documents
     references = getReferenceFromNormalizedList(similarUsptoDocuments, case_id)
     print('References calculated')
+    if (references is None) or (len(references) == 0):
+      return jsonify({'success': False, 'message': 'No references found'}), 400
+    # Generate reports for the case
     fullReport, summaryReport = generateReports(case_id)
     case_data = get_case_by_id(case_id)
     case_data['report'] = fullReport
@@ -1103,7 +1166,7 @@ def get_case_keywords():
     return jsonify({'success': False, 'message': 'Failed to read document'}), 400
   else:
     keywords = getKeywordsFromContent(content)
-    if keywords is None or len(keywords) == 0:
+    if (keywords is None) or len(keywords) == 0:
       return jsonify({'success': False, 'message': 'No keywords found. The document may be empty or might contain only stop words.'}), 400
     return jsonify({'success': True, 'keywords': keywords})
 
@@ -1116,6 +1179,7 @@ def api_import_patent_from_uspto():
     print('\nUser ID is not in session')
     return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
   user_id = session['user_id']
+  print(f'LOG: {session["user_id"]} Import Patent from USPTO')
   data = request.get_json()
   if data is None:
     print('\nNo Data provided')
@@ -1131,14 +1195,19 @@ def api_import_patent_from_uspto():
   try:
     uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
     uspto_data = uspto_instance.get_complete_patent_info(patent_id)
+    uspto_data['created_by'] = user_id
+    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
+    # TODO: Get Keywords from USPTO Data
     print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
     if uspto_data is None:
       return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
-    normalizedPatentData = isolateDataFromUSPTOResults(uspto_data)
-    if normalizedPatentData is None:
-      return jsonify({'success': False, 'message': 'Failed to normalize patent data. Please check the patent ID and try again.'}), 400
-    print(f'\nNormalized Patent Data: {json.dumps(normalizedPatentData, indent=4)}')
-    return jsonify({'success': True, 'message': 'Patent data imported successfully', 'case_id': f"uspto_{patent_id}"}), 200
+    # creationResult = create_case(uspto_data)
+    return jsonify({
+      'success': True, 
+      'message': 'Patent data imported successfully', 
+      'case_id': f"uspto_{patent_id}",
+      'keywords': uspto_data['keywords']
+      }), 200
   except Exception as e:
     print(f'\nError getting patent data from USPTO: {str(e)}')
     if 'Rate limit exceeded' in str(e):
@@ -1147,13 +1216,14 @@ def api_import_patent_from_uspto():
 
 @app.route('/api/create-patent', methods=['POST'])
 def api_create_patent():
+  if 'user_id' not in session:
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  if session['user_id'] is None:
+    return jsonify({'success': False, 'message': 'User ID is required'}), 400
+  user_id = session['user_id']
+  print(f'LOG: {session["user_id"]} Create Patent')
   try:
     data = request.get_json()
-    if 'user_id' not in session:
-      return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-    if session['user_id'] is None:
-      return jsonify({'success': False, 'message': 'User ID is required'}), 400
-    user_id = session['user_id']
     print(f'Create Patent Data by {user_id}: {json.dumps(data, indent=4)}')
     # patent_data = data.get('patent_data')
     data['created_by'] = user_id
@@ -1243,6 +1313,7 @@ def fetch_patent_from_uspto():
   """
   if 'user_id' not in session:
     return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {session["user_id"]} Fetch Patent from USPTO')
   data = request.get_json()
   if data is None:
     return jsonify({'success': False, 'message': 'No data provided'}), 400
@@ -1265,7 +1336,12 @@ def fetch_patent_from_uspto():
     if 'case_id' not in creationResult:
       return jsonify({'success': False, 'message': 'Failed to create case. Please check the patent data and try again.'}), 400
       
-    return jsonify({'success': True, 'message': 'Patent has been fetched successfully. This case is now being monitored for similarity.', 'case_id': creationResult['case_id']}), 200
+    return jsonify({
+      'success': True, 
+      'message': 'Patent has been fetched successfully. This case is now being monitored for similarity.', 
+      'case_id': creationResult['case_id'],
+      'keywords': patentData['keywords']
+      }), 200
 
   except Exception as e:
     print(f'Error normalizing patent data: {str(e)}')

@@ -80,7 +80,7 @@ def readFromPdfUrl(pdf_url, headers=None, params=None):
         print(f"Error reading PDF from {pdf_url}: {e}")
         return None
 
-def readDocumentFromUrl(url, headers=None, params=None):
+def readDocumentFromUrl(url:str, headers:dict=None, params:dict=None) -> str:
     """
     Reads a document from the provided URL and returns its text content as a string.
     Args:

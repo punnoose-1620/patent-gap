@@ -4,7 +4,6 @@ mock_cases = []
 
 def get_all_cases():
     return getAllData(connect_to_database(), getCaseDatabaseName())
-    # return mock_cases
 
 def get_open_cases():
     """
@@ -29,7 +28,6 @@ def create_case(case_data):
     Returns:
         dict: Result containing success status and case_id if successful
     """
-    global mock_cases
     if '_id' not in case_data:
         return {
             'success': False,
@@ -38,10 +36,15 @@ def create_case(case_data):
     addedId = addDataById(connect_to_database(), getCaseDatabaseName(), case_data)
     if addedId is not None:
         case_data['_id'] = addedId
+        print(f'LOG: Case created successfully: {case_data["_id"]}')
+        return {
+            'success': True,
+            'message': 'Case created successfully',
+            'case_id': case_data['_id']
+        }
     return {
-        'success': True,
-        'message': 'Case created successfully',
-        'case_id': case_data['_id']
+        'success': False,
+        'message': 'Failed to create case'
     }
 
 def update_case(case_id, update_data):
