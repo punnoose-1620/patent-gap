@@ -40,12 +40,13 @@ class USPTOPatentAPI:
         """
         address['addressLineText'] = ''
         if 'nameLineOneText' in address.keys():
-            address['addressLineText'] = address.pop('nameLineOneText')
+            address['addressLineText'] = address.pop('nameLineOneText', '')
         if 'nameLineTwoText' in address.keys():
             if address['addressLineText'] != '':
-                address['addressLineText'] = address['addressLineText'] + ',' + address.pop('nameLineTwoText')
+                address['addressLineText'] = address['addressLineText'] + ',' + address.pop('nameLineTwoText', '')
             else:
-                address['addressLineText'] = address.pop('nameLineTwoText')
+                address['addressLineText'] = address.pop('nameLineTwoText', '')
+        address['addressLineText'] = address['addressLineText'].strip()
         return address
     
     def __init__(self, api_key: Optional[str] = None, require_api_key: bool = True):
@@ -449,7 +450,8 @@ class USPTOPatentAPI:
             >>> metadata = api.get_application_metadata("14412875")
         """
         endpoint = f"patent/applications/{application_number}/meta-data"
-        return self._make_request(endpoint, method="GET")
+        response = self._make_request(endpoint, method="GET")
+        return response
     
     def get_continuity_data(self, application_number: str) -> Dict[str, Any]:
         """
@@ -751,58 +753,47 @@ class USPTOPatentAPI:
         # assignments = self.get_assignments(application_number)
         # foreignPriority = self.get_foreign_priority(application_number)
 
-        print('\nApplication Meta Data type: ', type(applicationMetaData))
-        print('Application Meta Data: ', json.dumps(applicationMetaData, indent=4))
-        print('\nDocuments Data type: ', type(documentsList))
-        print('Documents Data: ', json.dumps(documentsList, indent=4))
-        print('\nAssociated Documents Data type: ', type(associatedDocuments))
-        print('Associated Documents Data: ', json.dumps(associatedDocuments, indent=4))
-        print('\nAttorney Agent Data type: ', type(attorneyAgent))
-        print('Attorney Agent Data: ', json.dumps(attorneyAgent, indent=4))
-
         # Process Metadata and get all other relevant information 
         # [ applicationNumber, titleData, filingDate, descriptionData, currentStatusCode, 
-        print('TEST: USPTO  applicationMetaDatapatentFileWrapperDataBag')
         #   currentStatusDate, currentStatusData, mailingAddresses, inventors  ]
         if 'patentFileWrapperDataBag' in applicationMetaData.keys():
-            patentFileWrapperDataBag = applicationMetaData.get('patentFileWrapperDataBag', {})
-            print('TEST: USPTO applicationMetaData patentFileWrapperDataBag - applicationNumberText')
-            if 'applicationNumberText' in patentFileWrapperDataBag.keys():
-                applicationNumber = f"uspto_{patentFileWrapperDataBag.get('applicationNumberText', '')}"
-            print('TEST: USPTO applicationMetaData patentFileWrapperDataBag - applicationMetaData')
-            if 'applicationMetaData' in patentFileWrapperDataBag.keys():
-                metaData = patentFileWrapperDataBag.get('applicationMetaData', {})
-                titleData = metaData.get('inventionTitle', '')
-                filingDate = metaData.get('filingDate', '')
-                descriptionData = metaData.get('applicationStatusDescriptionText', '')
-                currentStatusCode = metaData.get('applicationStatusCode', '')
-                currentStatusDate = metaData.get('applicationStatusDate', '')
-                currentStatusData = metaData.get('applicationStatusDescriptionText', '')
-                applicantBag = metaData.get('applicantBag', [])
-                if len(applicantBag) > 0:
-                    for person in applicantBag:
-                        addressData = person.get('correspondenceAddressBag', [])
-                        processedAddress = self.processAddress(addressData)
-                        if processedAddress is not None:
-                            mailingAddresses.append(processedAddress)
-                inventorBag = metaData.get('inventorBag', [])
-                if len(inventorBag) > 0:
-                    for person in inventorBag:
-                        personName = person.get('inventorNameText', '')
-                        correspondenceAddressBag = person.get('correspondenceAddressBag', [])
-                        if (personName is not None) and (personName != ''):
-                            inventors.append(person.get('inventorNameText', ''))
-                        for addressData in correspondenceAddressBag:
-                            processedAddress = self.processAddress(addressData)
-                            if processedAddress is not None:
-                                mailingAddresses.append(processedAddress)
+            patentFileWrapperDataBag = applicationMetaData.get('patentFileWrapperDataBag', [])
+            for patentWrapperData in patentFileWrapperDataBag:
+                if 'applicationNumberText' in patentWrapperData.keys():
+                    applicationNumber = f"uspto_{patentWrapperData.get('applicationNumberText', '')}"
+                if 'applicationMetaData' in patentWrapperData.keys():
+                    metaData = patentWrapperData.get('applicationMetaData', {})
+                    titleData = metaData.get('inventionTitle', '')
+                    filingDate = metaData.get('filingDate', '')
+                    descriptionData = metaData.get('applicationStatusDescriptionText', '')
+                    currentStatusCode = metaData.get('applicationStatusCode', 0)
+                    currentStatusDate = metaData.get('applicationStatusDate', '')
+                    currentStatusData = metaData.get('applicationStatusDescriptionText', '')
+                    applicantBag = metaData.get('applicantBag', [])
+                    if len(applicantBag) > 0:
+                        for person in applicantBag:
+                            addressData = person.get('correspondenceAddressBag', [])
+                            if len(addressData) > 0:
+                                for address in addressData:
+                                    processedAddress = self.processAddress(address)
+                                    if (processedAddress is not None) and (processedAddress not in mailingAddresses):
+                                        mailingAddresses.append(processedAddress)
+                    inventorBag = metaData.get('inventorBag', [])
+                    if len(inventorBag) > 0:
+                        for person in inventorBag:
+                            personName = person.get('inventorNameText', '').strip()
+                            correspondenceAddressBag = person.get('correspondenceAddressBag', [])
+                            if (personName is not None) and (personName != '') and (personName not in inventors):
+                                inventors.append(person.get('inventorNameText', ''))
+                            for addressData in correspondenceAddressBag:
+                                processedAddress = self.processAddress(addressData)
+                                if (processedAddress is not None) and (processedAddress not in mailingAddresses):
+                                    mailingAddresses.append(processedAddress)
         # Process all available documents and add url with source to documents
-        print('TEST: USPTO documentsList')
         if 'documentBag' in documentsList.keys():
             documentBag = documentsList.get('documentBag', [])
             if len(documentBag) > 0:
                 for fileData in documentBag:
-                    print('TEST: USPTO documentsList - documentBag')
                     if 'downloadUrldownloadOptionBag' in fileData.keys():
                         fileDownloadData = fileData.get('downloadOptionBag', [])
                         if len(fileDownloadData) > 0:
@@ -834,14 +825,11 @@ class USPTOPatentAPI:
                     if pgpubFileUri not in documents:
                         documents.append(document)
         # Process all available mailing addresses from attorney/agent information
-        print('TEST: USPTO attorneyAgent patentFileWrapperDataBag')
         if 'patentFileWrapperDataBag' not in attorneyAgent.keys():
             patentFileWrapperDataBag = attorneyAgent.get('patentFileWrapperDataBag', {})
             for item in patentFileWrapperDataBag:
-                print('TEST: USPTO attorneyAgent patentFileWrapperDataBag - recordAttorney')
                 if 'recordAttorney' in item.keys():
                     recordAttorney = item.get('recordAttorney', {})
-                    print('TEST: USPTO attorneyAgent patentFileWrapperDataBag - customerNumberCorrespondenceBag')
                     if 'customerNumberCorrespondenceData' in recordAttorney.keys():
                         customerCorrespondenceData = recordAttorney.get('customerNumberCorrespondenceData', {})
                         if 'powerOfAttorneyAddressBag' in customerCorrespondenceData.keys():
@@ -850,7 +838,6 @@ class USPTOPatentAPI:
                                 processedAddress = self.processAddress(addressData)
                                 if (processedAddress is not None) and (processedAddress not in mailingAddresses):
                                     mailingAddresses.append(processedAddress)
-                    print('TEST: USPTO attorneyAgent patentFileWrapperDataBag - powerOfAttorneyBag')
                     if 'powerOfAttorneyBag' in recordAttorney.keys():
                         powerOfAttorneyBag = recordAttorney.get('powerOfAttorneyBag', [])
                         for personData in powerOfAttorneyBag:
@@ -874,7 +861,6 @@ class USPTOPatentAPI:
                                 processedAddress = self.processAddress(addressData)
                                 if (processedAddress is not None) and (processedAddress not in mailingAddresses):
                                     mailingAddresses.append(processedAddress)
-                    print('TEST: USPTO attorneyAgent patentFileWrapperDataBag - attorneyBag')
                     if 'attorneyBag' in recordAttorney.keys():
                         attorneyBag = recordAttorney.get('attorneyBag', [])
                         for personData in attorneyBag:

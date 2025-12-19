@@ -16,6 +16,8 @@ This README uses emoji badges to help you quickly identify different types of co
 **Additional Documentation**:
 - [Technical Requirements](./TechnicalRequirements.md) - GCP infrastructure requirements and specifications for hosting the platform
 - [Technical Description for Non-Technical Staff](./TechnicalDescriptionForNonTechnicalStaff.md) - Business-friendly overview of platform capabilities and technology
+- [File Structure](https://www.canva.com/design/DAG7NqrHH4I/mImb7-j9Tfcqoo2XLsXlOg/edit?utm_content=DAG7NqrHH4I&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton) - Whiteboard to Update File Structure
+- [Flow Chart](https://www.canva.com/design/DAG6v9AHArY/QAgxnI7wmwHy38iH8UGifw/edit?utm_content=DAG6v9AHArY&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton) - Whiteboard to Update Flow Chart
 
 ---
 
@@ -189,12 +191,14 @@ pip install -r requirements.txt
 - `python-dotenv==1.0.0` - Environment variable management
 - `flasgger==0.9.7.1` - Swagger UI integration for API documentation
 - `psycopg2-binary==2.9.7` - PostgreSQL database adapter
-- `pymongo==4.5.0` - MongoDB database driver
-- `firebase-admin==6.4.0` - Firebase Admin SDK for authentication and cloud services
+- `pymongo==4.5.0` - MongoDB database driver (primary database)
+- `firebase-admin==6.4.0` - Firebase Admin SDK (optional, for cloud services)
 - `PyPDF2==3.0.1` - PDF file processing
-- `openai>=1.0.0` - OpenAI API for text embeddings (requires API key)
+- `openai>=1.0.0` - OpenAI API for text embeddings (optional, requires API key)
+- `google-generativeai>=0.3.0` - Google Gemini API for LLM report generation (optional)
 - `numpy>=1.24.0` - Numerical computing library
 - `scikit-learn>=1.3.0` - Machine learning library for TF-IDF embeddings
+- `requests>=2.31.0` - HTTP library for API calls
 
 #### 3. Environment Configuration
 
@@ -205,49 +209,93 @@ Copy the environment example file and configure your settings:
 cp Backend/env_example.txt Backend/.env
 
 # Edit the .env file with your preferred settings
-# Default values:
-# SECRET_KEY=your-secret-key-change-this-in-production
-# PORT=5000
-# DEBUG=True
-# FLASK_ENV=development
-# FIREBASE_CREDENTIALS=path/to/firebase-service-account.json
-# FIREBASE_DATABASE_URL=https://your-project.firebaseio.com
-# GOOGLE_APPLICATION_CREDENTIALS=path/to/gcp-service-account.json
-# OPENAI_API_KEY=sk-your-key-here
 ```
 
-#### Firebase Setup (Optional)
+**Required Environment Variables:**
+```bash
+# Flask Configuration
+SECRET_KEY=your-secret-key-change-this-in-production
+PORT=5000
+DEBUG=True
 
-If you plan to use Firebase for authentication or cloud services:
+# Environment (prod, dev, or test)
+ENVIRONMENT=dev
 
-1. **Create a Firebase project** at [Firebase Console](https://console.firebase.google.com/)
-2. **Generate a service account key**:
-   - Go to Project Settings → Service Accounts
-   - Click "Generate new private key"
-   - Download the JSON file
-3. **Configure environment variables**:
+# MongoDB Connection Strings (required)
+DATABASE_CONNECTION_STRING_DEV=mongodb://localhost:27017/patent-gap
+DATABASE_CONNECTION_STRING_PROD=mongodb://your-prod-connection-string
+DATABASE_CONNECTION_STRING_TEST=mongodb://localhost:27017/patent-gap-test
+
+# Collection Names
+CASE_DATABASE_NAME_DEV=cases
+CASE_DATABASE_NAME_PROD=cases
+ALERT_DATABASE_NAME_DEV=alerts
+ALERT_DATABASE_NAME_PROD=alerts
+DEMO_DATABASE_NAME_DEV=demo_requests
+USERS_DATABASE_NAME_DEV=users
+```
+
+**Optional API Keys:**
+```bash
+# USPTO API (for patent data fetching)
+USPTO_API_KEY=your-uspto-api-key
+
+# Google Gemini API (for LLM report generation - preferred)
+GEMINI_API_KEY=your-gemini-api-key
+
+# OpenAI API (alternative for embeddings/LLM)
+OPENAI_API_KEY=sk-your-key-here
+
+# Google Cloud Storage (for document storage)
+GOOGLE_APPLICATION_CREDENTIALS=path/to/gcp-service-account.json
+```
+
+#### MongoDB Setup (Required)
+
+The application uses MongoDB as its primary database:
+
+1. **Install MongoDB** locally or use [MongoDB Atlas](https://www.mongodb.com/atlas)
+2. **Configure connection string** in your `.env` file
+3. **Collections are created automatically** on first run:
+   - `cases` - Patent cases
+   - `alerts` - User alerts
+   - `demo_requests` - Demo request submissions
+   - `users` - User accounts
+   - `patents` - Patent records
+
+#### USPTO API Setup (Recommended)
+
+For fetching patent data from the US Patent and Trademark Office:
+
+1. **Register for an API key** at [USPTO API Portal](https://account.uspto.gov/api-manager/)
+2. **Configure environment variable**:
    ```bash
-   # Add to your .env file
-   FIREBASE_CREDENTIALS=path/to/your/firebase-service-account.json
-   FIREBASE_DATABASE_URL=https://your-project.firebaseio.com
-   GOOGLE_APPLICATION_CREDENTIALS=path/to/your/gcp-service-account.json
+   USPTO_API_KEY=your-uspto-api-key
    ```
 
-#### OpenAI API Setup (Optional - For Text Embeddings)
+#### Google Gemini API Setup (Optional - For LLM Reports)
 
-If you plan to use OpenAI embeddings for patent analysis:
+For generating AI-powered patent comparison reports:
+
+1. **Get an API key** at [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. **Configure environment variable**:
+   ```bash
+   GEMINI_API_KEY=your-gemini-api-key
+   ```
+3. **Supported models**: `gemini-2.5-flash` (default)
+
+#### OpenAI API Setup (Optional - Alternative LLM/Embeddings)
+
+As an alternative to Gemini for embeddings and LLM:
 
 1. **Create an OpenAI account** at [OpenAI Platform](https://platform.openai.com/)
-2. **Generate an API key**:
-   - Go to [API Keys](https://platform.openai.com/api-keys)
-   - Click "Create new secret key"
-   - Copy the key (starts with `sk-`)
+2. **Generate an API key** from [API Keys](https://platform.openai.com/api-keys)
 3. **Configure environment variable**:
    ```bash
-   # Add to your .env file
    OPENAI_API_KEY=sk-your-key-here
    ```
-4. **Note**: Without an API key, you can still use the offline TF-IDF embedding method (`getEmbeddingOffline`) for patent analysis.
+4. **Supported models**: `gpt-4o-mini` for LLM, `text-embedding-3-small` for embeddings
+5. **Note**: Without an API key, the system uses offline TF-IDF embedding method (`getEmbeddingOffline`) for patent analysis.
 
 #### 4. Create Necessary Directories
 
@@ -375,12 +423,12 @@ Once the backend is running, you can access the API documentation at:
 ### API Endpoints
 
 #### Authentication
-- `POST /api/login` - User login
-- `POST /api/logout` - User logout
+- `POST /api/login` - User login with email and password
+- `POST /api/logout` - User logout and session clearing
 
 #### Cases Management
-- `GET /api/my-cases` - Get user's assigned cases
-- `GET /api/open-cases` - Get available cases for assignment
+- `GET /api/my-cases` - Get user's assigned cases (created_by, assigned_to, or accepted_by)
+- `GET /api/open-cases` - Get available cases for assignment (non-completed cases)
 - `GET /api/cases/<case_id>` - Get detailed information about a specific case
 - `POST /api/cases/<case_id>` - Update case details
 - `POST /api/cases/<case_id>/update-status` - Update case information (status, priority, etc.)
@@ -390,59 +438,80 @@ Once the backend is running, you can access the API documentation at:
 - `POST /api/verify-password` - Verify current password
 - `POST /api/change-password` - Change user password
 
-#### Patent Information
-- `GET /api/cases/<case_id>/patents` - Get related patents for a specific case
+#### Patent Management
+- `GET /api/cases/<case_id>/patents` - Get related patents for a specific case (keyword-based similarity)
+- `POST /api/add-patent` - Add a new patent manually
+- `POST /api/create-patent` - Create a new patent with user attribution
+- `POST /api/import-patent-from-uspto` - Import patent data from USPTO by patent ID
+- `POST /api/fetch-patent-from-uspto` - Fetch and create a case from USPTO patent data
+
+#### File Management
+- `POST /api/upload-file-to-local-storage/<case_id>` - Upload file to local `documentFiles/` directory
+- `POST /api/upload-file/<case_id>` - Upload file to Google Cloud Storage bucket
 
 #### Alert & Notification Management
-- `GET /api/alerts` - Get all alerts
-- `GET /api/alerts/<user_id>` - Get alerts for a specific user with similarity analysis
+- `GET /api/alerts` - Get all alerts in the system
+- `GET /api/alerts/` - Get alerts for the current user with similarity analysis
+
+#### Similarity Analysis
+- `POST /api/trigger-similarity-analysis` - Trigger keyword-based similarity analysis for a case
+- `GET /api/case-keywords` - Extract keywords from a document URL or title/description
 
 #### Demo Requests
 - `POST /api/create-demo-request` - Create a new demo request
 
 #### Web Pages
-- `GET /` - Home page (landing page)
+- `GET /` - Home page (landing page, initializes database collections)
 - `GET /login` - Login page
 - `GET /home` - Client/Attorney dashboard page (requires authentication)
 - `GET /case-details?id=<case_id>` - Case details page (requires authentication)
 - `GET /add-patent` - Add new patent page (requires authentication)
 - `GET /request-demo` - Request demo page
 - `GET /change-password` - Change password page (requires authentication)
+- `GET /favicon.ico` - Serve favicon from Assets directory
+- `GET /images/<path:imageName>` - Serve images from Assets directory
 
 ## ⚙️ Data Processing Module
 
-The `data_processor.py` module provides functionality for processing patent documents and generating text embeddings for similarity analysis.
+The `data_processor.py` module provides functionality for processing patent documents, generating text embeddings, and performing similarity analysis.
 
-### Available Functions
+### Keyword Extraction Functions
 
-#### `readPdf(pdf_path)`
-Extracts text content from PDF files.
+#### `getKeywordsFromContent(content, api_key=None, model="gpt-3.5-turbo")`
+Extracts keywords from text content using online (OpenAI) or offline (TF-IDF) methods.
 
-- **Parameters**: `pdf_path` (str) - Path to the PDF file
-- **Returns**: Text content as a string
-- **Libraries**: PyPDF2
+- **Parameters**: 
+  - `content` (str) - Text to extract keywords from
+  - `api_key` (str, optional) - OpenAI API key for online extraction
+  - `model` (str) - OpenAI model to use (default: gpt-3.5-turbo)
+- **Returns**: List of keyword strings
+- **Fallback**: Uses TF-IDF if no API key provided or API fails
 
-**Example:**
-```python
-text = readPdf('patent_document.pdf')
-```
+#### `getKeywordsFromPatent(documents)`
+Extracts keywords from patent documents by reading their content.
 
-#### `getEmbeddingOnline(text, api_key=None)`
-Generates semantic embeddings using OpenAI's text-embedding-3-small model (replaces previous `getEmbedding`).
+- **Parameters**: `documents` (list) - List of document dictionaries with `url` keys
+- **Returns**: List of keywords extracted from all documents
+
+#### `extract_keywords_from_documents(document_urls, top_n=15)`
+Reads content from document URLs and extracts keywords using TF-IDF.
+
+- **Parameters**: 
+  - `document_urls` (list) - List of URLs/paths to documents
+  - `top_n` (int) - Number of top keywords per document (default: 15)
+- **Returns**: dict - Mapping of document URLs to keyword lists
+
+### Embedding Functions
+
+#### `getEmbeddingOnline(text, api_key=None, model="text-embedding-3-small")`
+Generates semantic embeddings using OpenAI's embedding API.
 
 - **Parameters**: 
   - `text` (str) - Text to embed
-  - `api_key` (str, optional) - OpenAI API key. If not provided, uses `OPENAI_API_KEY` from environment
+  - `api_key` (str, optional) - OpenAI API key
+  - `model` (str) - OpenAI model (default: text-embedding-3-small)
 - **Returns**: List of floats (1536-dimensional vector)
-- **Libraries**: openai
-- **Requirements**: OpenAI API key in environment variables
-
-**Example:**
-```python
-from data_processor import getEmbeddingOnline
-embedding = getEmbeddingOnline("Patent text content here")
-# Returns: [0.123, -0.456, 0.789, ...] (1536 elements)
-```
+- **Requirements**: OpenAI API key
 
 #### `getEmbeddingOffline(text)`
 Generates TF-IDF embeddings for offline text similarity analysis.
@@ -452,92 +521,202 @@ Generates TF-IDF embeddings for offline text similarity analysis.
 - **Libraries**: scikit-learn, numpy
 - **Requirements**: No API key needed (works offline)
 
-**Example:**
-```python
-from data_processor import getEmbeddingOffline
-embedding = getEmbeddingOffline("Patent text content here")
-# Returns: numpy array of TF-IDF features
-```
-
-#### `getSimilarityScore(embedding1, embedding2)`
-Calculates the cosine similarity between two embedding vectors.
-
-- **Parameters**: 
-  - `embedding1` - The first embedding vector
-  - `embedding2` - The second embedding vector
-- **Returns**: float - The similarity score between the two embeddings (range: -1 to 1)
-- **Libraries**: numpy
-- **Performance**: O(n) time complexity, very fast for single comparisons
-
-**Example:**
-```python
-from data_processor import getSimilarityScore
-score = getSimilarityScore(embedding1, embedding2)
-# Returns: 0.85 (85% similarity)
-```
-
-#### `getBulkSimilarityScore(reference_embedding, embeddings_list)`
-Calculates similarity scores between a reference embedding and a list of embeddings.
-
-- **Parameters**: 
-  - `reference_embedding` - The embedding vector to compare others against
-  - `embeddings_list` - List of embedding vectors to compare with the reference
-- **Returns**: List of float similarity scores
-- **Libraries**: numpy
-- **Performance**: O(n*m) where n=embedding dimension, m=number of embeddings
-
-**Example:**
-```python
-from data_processor import getBulkSimilarityScore
-scores = getBulkSimilarityScore(query_embedding, patent_embeddings)
-# Returns: [0.85, 0.72, 0.91, 0.68, ...]
-```
-
 #### `getPatentEmbedding(text, api_key=None)`
-Main embedding function that automatically falls back to offline TF-IDF if OpenAI API fails.
+Main embedding function with automatic fallback to offline TF-IDF.
 
 - **Parameters**: 
   - `text` (str) - Text to embed
   - `api_key` (str, optional) - OpenAI API key
 - **Returns**: List of floats or numpy array
-- **Fallback**: Automatically uses `getEmbeddingOffline` if OpenAI API is unavailable
-
-**Example:**
-```python
-from data_processor import getPatentEmbedding
-embedding = getPatentEmbedding("Patent text content here")
-# Returns: OpenAI embedding if available, otherwise TF-IDF embedding
-```
+- **Fallback**: Uses `getEmbeddingOffline` if no API key or API fails
 
 #### `getEmbeddingsFromDocuments(documents)`
-Extracts embeddings from multiple PDF documents.
+Extracts embeddings from multiple documents using `readDocumentFromUrl`.
 
-- **Parameters**: 
-  - `documents` (list) - List of PDF file paths
+- **Parameters**: `documents` (list) - List of document paths/URLs
 - **Returns**: List of embeddings (combined from all documents)
 
-**Example:**
-```python
-from data_processor import getEmbeddingsFromDocuments
-documents = ['doc1.pdf', 'doc2.pdf', 'doc3.pdf']
-embeddings = getEmbeddingsFromDocuments(documents)
-# Returns: Combined list of embeddings from all documents
-```
+### Similarity Functions
+
+#### `getSimilarityScore(embedding1, embedding2)`
+Calculates cosine similarity between two embedding vectors.
+
+- **Parameters**: 
+  - `embedding1` - First embedding vector
+  - `embedding2` - Second embedding vector
+- **Returns**: float - Similarity score (0 to 1, or -1 on error)
+- **Libraries**: numpy
+- **Note**: Validates embedding dimensions and handles NaN values
+
+#### `getBulkSimilarityScore(reference_embedding, embeddings_list)`
+Calculates similarity scores between a reference and multiple embeddings.
+
+- **Parameters**: 
+  - `reference_embedding` - Reference embedding vector
+  - `embeddings_list` - List of embedding vectors to compare
+- **Returns**: List of float similarity scores
+
+### USPTO Integration Functions
+
+#### `initialize_uspto_api()` / `get_uspto_api()`
+Initialize and retrieve the USPTO Patent API client instance.
+
+- **Returns**: USPTOPatentAPI instance
+- **Requirements**: `USPTO_API_KEY` environment variable
+
+#### `getKeywordDocumentsUSPTO(keywords, load_to_database=False)`
+Retrieves patent documents from USPTO matching specified keywords.
+
+- **Parameters**: 
+  - `keywords` (list) - Keywords to search for
+  - `load_to_database` (bool) - Whether to save results to database
+- **Returns**: List of normalized patent records with documents, embeddings, and references
+
+#### `isolateDataFromUSPTOResults(result)`
+Extracts and normalizes key data from raw USPTO API results.
+
+- **Parameters**: `result` (dict) - Raw USPTO API result
+- **Returns**: Normalized case dictionary with `_id`, `title`, `status`, `attorneys`, `inventors`, etc.
+
+### Reference & Report Functions
+
+#### `getReferenceFromNormalizedList(listOfCases, case_id)`
+Compiles reference list with similarity scores from normalized cases.
+
+- **Parameters**: 
+  - `listOfCases` (list) - List of normalized case dictionaries
+  - `case_id` (str) - ID of the case to compare against
+- **Returns**: List of reference dictionaries with URL, title, date, and similarity rate
+
+#### `generateReports(case_id)`
+Generates full and summary reports for a case using LLM.
+
+- **Parameters**: `case_id` (str) - Case identifier
+- **Returns**: Tuple of (fullReport, summaryReport) strings
+
+#### `populateDummyData(case_id, user_id)`
+Creates dummy case data for testing when USPTO rate limits are hit.
+
+- **Parameters**: 
+  - `case_id` (str) - Case identifier
+  - `user_id` (str) - User identifier
+- **Returns**: Dummy case dictionary
 
 ### Use Cases
 
-1. **PDF Text Extraction**: Extract text from patent documents for analysis
-2. **OpenAI Embeddings**: Generate high-quality semantic embeddings for similarity search (requires internet)
-3. **TF-IDF Embeddings**: Generate statistical embeddings for offline patent analysis
-4. **Similarity Calculation**: Compare patent documents for similarity analysis
-5. **Batch Similarity**: Find similar patents from a database of embeddings
-6. **Document Processing**: Process multiple PDF documents and extract embeddings
+1. **Keyword Extraction**: Extract domain-specific keywords from patent documents
+2. **USPTO Integration**: Search and import patents from USPTO database
+3. **Embedding Generation**: Create embeddings for semantic similarity (online/offline)
+4. **Similarity Analysis**: Compare patent documents using cosine similarity
+5. **Reference Generation**: Build reference lists with similarity scores
+6. **Report Generation**: Create AI-powered comparison reports
 
-### Environment Variables
+## ⚙️ LLM Processor Module
 
-For OpenAI embeddings, set in your `.env` file:
-```bash
-OPENAI_API_KEY=sk-your-key-here
+The `llm_processor.py` module provides AI-powered report generation using Google Gemini or OpenAI.
+
+### Available Functions
+
+##### `getDefaultModelName()`
+Returns the default model name based on available API keys (Gemini > OpenAI).
+
+- **Returns**: `'gemini-2.5-flash'`, `'gpt-4o-mini'`, or `None`
+
+##### `getModelClient(model_name='gemini-2.5-flash')`
+Gets the appropriate LLM client based on model name.
+
+- **Parameters**: `model_name` (str) - Model name (`gemini-*` or `gpt-*`)
+- **Returns**: Model client instance or None
+- **Supported Models**: `gemini-2.5-flash`, `gpt-4o-mini`
+
+##### `llm_health_check(model_name='gemini-2.5-flash')`
+Tests if the LLM service is available and responding.
+
+- **Returns**: bool - True if healthy
+
+##### `getIndividualReport(reference_text, document_text, model_name)`
+Generates a comparison report between two documents.
+
+- **Parameters**: 
+  - `reference_text` (str): Reference document text
+  - `document_text` (str): Document to compare
+  - `model_name` (str): LLM model to use
+- **Returns**: Comparison report (250 words or fewer)
+
+##### `getIndividualTitle(reference_text, document_text, model_name)`
+Generates a title for a document comparison.
+
+- **Parameters**: Same as `getIndividualReport`
+- **Returns**: Title string (10 words or fewer)
+
+##### `getCompleteReport(reference_text, documents, model_name)`
+Generates a complete report comparing multiple documents to a reference.
+
+- **Parameters**: 
+  - `reference_text` (str): Reference document text
+  - `documents` (list): List of document texts to compare
+  - `model_name` (str): LLM model to use
+- **Returns**: Markdown-formatted complete report
+
+##### `getReportSummary(report, model_name)`
+Generates a summary of a report.
+
+- **Parameters**: 
+  - `report` (str): Report text to summarize
+  - `model_name` (str): LLM model to use
+- **Returns**: Summary string (100 words or fewer)
+
+##### `getDummyReportWithSummary(title, model_name)`
+Generates dummy report data for testing/fallback scenarios.
+
+- **Parameters**: 
+  - `title` (str): Patent title
+  - `model_name` (str): LLM model to use
+- **Returns**: Tuple of (report, summary)
+
+## ⚙️ File Controller Module
+
+The `file_controller.py` module provides document reading and conversion functions.
+
+### Available Functions
+
+##### `xml_to_text(xml_content)`
+Converts XML content to plain text.
+
+- **Parameters**: `xml_content` (str or bytes): XML content
+- **Returns**: Extracted text string
+
+##### `readFromXmlUrl(xml_url, headers=None, params=None)`
+Downloads and returns XML content from a URL.
+
+- **Parameters**: 
+  - `xml_url` (str): URL of the XML file
+  - `headers` (dict, optional): HTTP headers
+  - `params` (dict, optional): Query parameters
+- **Returns**: Raw XML content as text
+
+##### `readFromPdfUrl(pdf_url, headers=None, params=None)`
+Downloads a PDF from URL and extracts text content.
+
+- **Parameters**: 
+  - `pdf_url` (str): URL of the PDF file
+  - `headers` (dict, optional): HTTP headers
+  - `params` (dict, optional): Query parameters
+- **Returns**: Extracted text from PDF
+
+##### `readDocumentFromUrl(url, headers=None, params=None)`
+Reads any document from URL based on file extension (.xml or .pdf).
+
+- **Parameters**: 
+  - `url` (str): Document URL
+  - `headers` (dict, optional): HTTP headers (e.g., API keys)
+  - `params` (dict, optional): Query parameters
+- **Returns**: Extracted text content
+
+**Example:**
+```python
+from file_controller import readDocumentFromUrl
+text = readDocumentFromUrl('https://example.com/patent.pdf', headers={"X-API-KEY": "key"})
 ```
 
 ## ⚙️ Architecture Overview
@@ -546,126 +725,172 @@ The backend follows a modular architecture with clear separation of concerns:
 
 ### Models (`Backend/models/`)
 Domain-specific data models organized by entity:
-- **`alerts.py`**: Alert creation, retrieval, and user-specific alert filtering with similarity analysis
-- **`cases.py`**: Case management including CRUD operations, case relationships, and document handling
+- **`alerts.py`**: Alert creation, retrieval, user-specific alert filtering with similarity analysis
+- **`cases.py`**: Case CRUD operations, user-case relationships, document handling, embedding retrieval
 - **`demo.py`**: Demo request creation and management
-- **`users.py`**: User authentication, profile management, and password operations
+- **`users.py`**: User authentication (mock data), profile management, password operations
 
 ### Database Module (`Backend/database.py`)
 Provides connectivity and operations for:
-- **Firebase Realtime Database**: CRUD operations for collections and entries
+- **MongoDB Database**: Primary database for all collections (cases, alerts, users, demo_requests, patents)
 - **Google Cloud Storage**: File upload/download operations for document storage
-- Connection management and configuration via environment variables
+- Environment-aware connection management (dev/prod/test)
+- Auto-creation of collections on first access
 
 ### Controller (`Backend/controller.py`)
 Business logic layer that orchestrates:
-- Patent creation and processing
-- Similarity analysis and alert generation
-- Case-related patent retrieval
-- Coordinates between models and data processing modules
+- Patent creation and processing with keyword-based similarity matching
+- New patent processing workflow with embedding extraction and alert generation
+- Case-related patent retrieval using keyword matching
+- Coordinates between models, data processing, and external APIs
 
 ### Data Processor (`Backend/data_processor.py`)
-Text processing and embedding generation:
-- PDF text extraction
+Text processing, embedding generation, and USPTO integration:
+- Keyword extraction (online via OpenAI or offline via TF-IDF)
 - OpenAI embeddings (online) or TF-IDF embeddings (offline fallback)
-- Similarity calculations for patent analysis
+- Cosine similarity calculations for patent analysis
+- USPTO API integration for patent search and data normalization
+- Report generation coordination with LLM processor
+
+### LLM Processor (`Backend/llm_processor.py`)
+AI-powered content generation:
+- Multi-model support (Google Gemini, OpenAI GPT)
+- Patent comparison report generation
+- Report summarization
+- Automatic model selection based on available API keys
+
+### File Controller (`Backend/file_controller.py`)
+Document reading and conversion:
+- XML to text conversion
+- PDF text extraction from URLs
+- Multi-format document handling with HTTP header support
+
+### Sources (`Backend/sources/`)
+External data source integrations:
+- **`USPTO.py`**: Comprehensive USPTO Patent API wrapper for patent search, document retrieval, and data normalization
+
+### Environment Controller (`Backend/env_controller.py`)
+Configuration management:
+- API key retrieval (USPTO, OpenAI, Gemini)
+- Environment-aware database connection strings
+- Collection name management for different environments
 
 ## ⚙️ Database Module
 
-The `database.py` module provides database connectivity and cloud storage operations.
+The `database.py` module provides MongoDB database connectivity and Google Cloud Storage operations.
 
-### Available Functions
-
-#### Firebase Realtime Database
+### MongoDB Operations
 
 ##### `connect_to_database()`
-Connects to Firebase Realtime Database using credentials from environment variables.
+Connects to MongoDB using connection string from environment variables.
 
-- **Returns**: Firebase app instance
-- **Required Environment Variables**:
-  - `FIREBASE_CREDENTIALS`: Path to Firebase service account JSON file
-  - `FIREBASE_DATABASE_URL`: Firebase database URL
+- **Returns**: MongoDB database instance (`patent-gap` database)
+- **Required Environment Variables**: `DATABASE_CONNECTION_STRING_DEV`, `DATABASE_CONNECTION_STRING_PROD`, or `DATABASE_CONNECTION_STRING_TEST` (based on `ENVIRONMENT` setting)
 
 **Example:**
 ```python
 from database import connect_to_database
-app = connect_to_database()
+db = connect_to_database()
 ```
 
-##### `getAllData(app, collectionName)`
-Fetches all data from a Firebase collection.
+##### `getCollectionsFromDatabase(db)`
+Fetches all collection names from the database.
+
+- **Parameters**: `db` - MongoDB database instance
+- **Returns**: list - List of collection names
+
+##### `checkCollectionExists(db, collectionName)`
+Checks if a collection exists in the database.
 
 - **Parameters**: 
-  - `app`: Firebase app instance
-  - `collectionName` (str): Collection/database path name
-- **Returns**: dict - All data from the collection, or None if not found
+  - `db` - MongoDB database instance
+  - `collectionName` (str): Collection name to check
+- **Returns**: bool - True if exists
 
-**Example:**
-```python
-from database import getAllData
-all_cases = getAllData(app, 'cases')
-```
-
-##### `getDataById(app, collectionName, entryId)`
-Fetches a specific entry by ID from a Firebase collection.
+##### `createCollection(db, collectionName)`
+Creates a new collection in the database.
 
 - **Parameters**: 
-  - `app`: Firebase app instance
+  - `db` - MongoDB database instance
+  - `collectionName` (str): Collection name to create
+- **Returns**: Collection instance or None if failed
+
+##### `getAllData(db, collectionName)`
+Fetches all documents from a MongoDB collection.
+
+- **Parameters**: 
+  - `db` - MongoDB database instance
   - `collectionName` (str): Collection name
-  - `entryId` (str): Entry ID to retrieve
-- **Returns**: dict - Entry data, or None if not found
+- **Returns**: list - List of all documents with `_id` converted to string
 
 **Example:**
 ```python
-from database import getDataById
-case = getDataById(app, 'cases', 'case_001')
+from database import connect_to_database, getAllData
+db = connect_to_database()
+all_cases = getAllData(db, 'cases')
 ```
 
-##### `updateDataById(app, collectionName, entryData)`
-Updates a specific entry in Firebase (entry must include `_id` key).
+##### `getDataById(db, collectionName, entryId)`
+Fetches a specific document by ID from a collection.
 
 - **Parameters**: 
-  - `app`: Firebase app instance
+  - `db` - MongoDB database instance
+  - `collectionName` (str): Collection name
+  - `entryId` (str): Document ID to retrieve
+- **Returns**: dict - Document data, or None if not found
+
+##### `addDataById(db, collectionName, entryData)`
+Adds a new document to a collection. Auto-generates `_id` if not provided.
+
+- **Parameters**: 
+  - `db` - MongoDB database instance
+  - `collectionName` (str): Collection name
+  - `entryData` (dict): Document data to insert
+- **Returns**: str - Inserted document ID
+
+##### `updateDataById(db, collectionName, entryData)`
+Updates a specific document by its `_id` field.
+
+- **Parameters**: 
+  - `db` - MongoDB database instance
   - `collectionName` (str): Collection name
   - `entryData` (dict): Data to update (must include `_id`)
 - **Returns**: bool - True if successful
 
-**Example:**
-```python
-from database import updateDataById
-entry_data = {'_id': 'case_001', 'status': 'Active'}
-success = updateDataById(app, 'cases', entry_data)
-```
-
-##### `deleteDataById(app, collectionName, entryId)`
-Deletes a specific entry by ID from Firebase.
+##### `deleteDataById(db, collectionName, entryId)`
+Deletes a specific document by ID.
 
 - **Parameters**: 
-  - `app`: Firebase app instance
+  - `db` - MongoDB database instance
   - `collectionName` (str): Collection name
-  - `entryId` (str): Entry ID to delete
+  - `entryId` (str): Document ID to delete
 - **Returns**: bool - True if successful
 
-**Example:**
-```python
-from database import deleteDataById
-success = deleteDataById(app, 'cases', 'case_001')
-```
+##### `insertOrUpdateDataById(db, collectionName, entryData)`
+Upsert operation - inserts if not exists, updates if exists.
 
-#### Google Cloud Storage
+- **Parameters**: 
+  - `db` - MongoDB database instance
+  - `collectionName` (str): Collection name
+  - `entryData` (dict): Document data (must include `_id`)
+- **Returns**: str - Document ID
+
+##### `deleteAllData(db, collectionName)`
+Deletes all documents from a collection.
+
+- **Parameters**: 
+  - `db` - MongoDB database instance
+  - `collectionName` (str): Collection name
+- **Returns**: DeleteResult object
+
+### Google Cloud Storage Operations
 
 ##### `connect_to_bucket(bucketName)`
 Connects to a Google Cloud Storage bucket.
 
 - **Parameters**: `bucketName` (str) - GCP bucket name
 - **Returns**: Bucket instance
-- **Requirements**: `GOOGLE_APPLICATION_CREDENTIALS` environment variable must be set
-
-**Example:**
-```python
-from database import connect_to_bucket
-bucket = connect_to_bucket('my-patent-bucket')
-```
+- **Requirements**: `GOOGLE_APPLICATION_CREDENTIALS` environment variable
 
 ##### `uploadToGcpBucket(bucketName, sourceFile, destinationBlob)`
 Uploads a file to GCP Storage.
@@ -676,13 +901,6 @@ Uploads a file to GCP Storage.
   - `destinationBlob` (str): Destination path in bucket
 - **Returns**: str - Bucket URL (`bucket-name/file-name`) or None if failed
 
-**Example:**
-```python
-from database import uploadToGcpBucket
-url = uploadToGcpBucket('my-bucket', 'local_file.pdf', 'documents/file.pdf')
-# Returns: 'my-bucket/documents/file.pdf'
-```
-
 ##### `loadFromGcpBucket(bucketName, fileName)`
 Loads a file from GCP Storage into memory.
 
@@ -691,40 +909,49 @@ Loads a file from GCP Storage into memory.
   - `fileName` (str): File path in bucket
 - **Returns**: bytes - File content, or None if failed
 
-**Example:**
-```python
-from database import loadFromGcpBucket
-file_content = loadFromGcpBucket('my-bucket', 'documents/file.pdf')
-```
-
 ## ⚙️ Development Notes
 
-- The application uses Flask sessions for authentication
-- CORS is enabled for cross-origin requests
-- **Modular Architecture**: Backend organized into models (domain logic), controllers (business logic), and data processors
-- **Model Organization**: Domain-specific models separated into `models/` directory (alerts, cases, demo, users)
-- **Database Integration**: Firebase Realtime Database and Google Cloud Storage support via `database.py`
-- Controller functions coordinate between models and data processing modules
-- Models currently use mock data with TODOs for database integration
-- The frontend uses vanilla JavaScript for API calls
-- Responsive design works on desktop and mobile devices
-- Case details page supports URL parameters for case ID (`?id=<case_id>`)
+### Current Implementation Status
+
+- **Database**: MongoDB is the primary database (not Firebase Realtime Database)
+- **Authentication**: Flask sessions with mock user data in `models/users.py` (TODO: integrate with database)
+- **Cases Module**: Fully integrated with MongoDB database
+- **Alerts Module**: Fully integrated with MongoDB database
+- **User Module**: Currently uses mock data (database integration pending)
+
+### Technical Details
+
+- **Flask Sessions**: Used for authentication state management
+- **CORS**: Enabled for cross-origin requests
+- **Modular Architecture**: Backend organized into models, controllers, processors, and sources
+- **Environment-aware Configuration**: Separate settings for dev/prod/test environments
+- **Auto-collection Creation**: Database collections created automatically on first access
+
+### Frontend Implementation
+
+- **Vanilla JavaScript**: API calls without framework dependencies
+- **Responsive Design**: Works on desktop and mobile devices
+- **URL Parameters**: Case details page uses `?id=<case_id>` format
 - **Dual Dashboard System**: Separate interfaces for attorneys and clients
-- **User Role Management**: Support for 'client' and 'attorney' roles with different permissions
-- **Patent Management**: Full CRUD operations for patent cases with file upload
+- **User Role Management**: Support for 'client' and 'attorney' roles
+
+### Key Features
+
+- **Patent Management**: CRUD operations with USPTO integration and local file upload
+- **Keyword-based Similarity**: Patent matching using extracted keywords
+- **Embedding-based Similarity**: Cosine similarity using TF-IDF or OpenAI embeddings
 - **Alert & Notification System**: 
-  - Interactive alert bell icon in navigation bar
-  - Popup notification panel showing user-specific alerts
-  - Notification cards displaying case titles, descriptions, and trigger dates
-  - Click-to-navigate functionality for similar cases
-  - Automatic similarity analysis for case relationships
-- **Form Validation**: Client-side validation with real-time feedback
-- **File Upload**: Drag-and-drop PDF upload with size and type validation
-- **Demo Scheduling**: Time zone-aware scheduling system for demo requests
-- **API Documentation**: Comprehensive Swagger UI with interactive testing capabilities
-- **OpenAPI 2.0**: Full OpenAPI specification with detailed schemas and examples
-- **Firebase Integration**: Firebase Admin SDK for authentication and cloud services
-- **GCP Storage**: Google Cloud Storage integration for document management
+  - User-specific alerts with similarity analysis
+  - Automatic alert generation on similarity analysis
+  - Notification tracking with open/sent receipts
+- **File Upload**: Local storage (`documentFiles/`) and GCP bucket support
+- **LLM Reports**: AI-generated comparison reports using Gemini or OpenAI
+- **USPTO Integration**: Patent search, document retrieval, and data import
+
+### API Documentation
+
+- **Swagger UI**: Comprehensive interactive documentation at `/swagger/`
+- **OpenAPI 2.0**: Full specification with schemas and examples
 
 ## 🚀 Future Enhancements
 

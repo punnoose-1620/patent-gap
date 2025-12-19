@@ -5,57 +5,6 @@ from data_processor import getEmbeddingsFromDocuments, getSimilarityScore
 from database import *
 from env_controller import getAlertDatabaseName
 
-alerts = [
-    {
-        "alert_id": '01',
-        "triggered_by": 'case_001',
-        "triggered_at": '2025-01-01',
-        "alert_users": ['user_001', 'user_002', 'user_003'],
-        "opened_receipts": ['user_001', 'user_002', 'user_003'],
-        "sent_receipts": ['user_001', 'user_002', 'user_003'],
-    },
-    {
-        "alert_id": '02',
-        "triggered_by": 'case_002',
-        "triggered_at": '2025-02-14',
-        "alert_users": ['user_004', 'user_007'],
-        "opened_receipts": ['user_004'],
-        "sent_receipts": ['user_004', 'user_007'],
-    },
-    {
-        "alert_id": '03',
-        "triggered_by": 'case_003',
-        "triggered_at": '2024-12-31',
-        "alert_users": ['user_005'],
-        "opened_receipts": [],
-        "sent_receipts": ['user_005'],
-    },
-    {
-        "alert_id": '04',
-        "triggered_by": 'case_002',
-        "triggered_at": '2025-03-02',
-        "alert_users": ['user_001', 'user_005', 'user_010'],
-        "opened_receipts": ['user_005', 'user_010'],
-        "sent_receipts": ['user_001', 'user_005', 'user_010'],
-    },
-    {
-        "alert_id": '05',
-        "triggered_by": 'case_004',
-        "triggered_at": '2024-10-10',
-        "alert_users": ['user_003', 'user_008'],
-        "opened_receipts": ['user_003'],
-        "sent_receipts": ['user_003', 'user_008'],
-    },
-    {
-        "alert_id": '06',
-        "triggered_by": 'case_005',
-        "triggered_at": '2024-08-08',
-        "alert_users": ['user_002', 'user_004', 'user_009'],
-        "opened_receipts": [],
-        "sent_receipts": ['user_002', 'user_004', 'user_009'],
-    }
-]
-
 def add_to_alerts(triggered_by, triggered_at, alert_users, title, description):
     newAlert = {
         "_id": str(int(time.time())),
@@ -68,9 +17,6 @@ def add_to_alerts(triggered_by, triggered_at, alert_users, title, description):
         "sent_receipts": []
     }
     addDataById(connect_to_database(), getAlertDatabaseName(), newAlert)
-    # alerts.append(newAlert)
-    # trigger_alert(alert_users)
-    # return newAlert['_id']
     return newAlert['_id']
 
 def get_alerts():

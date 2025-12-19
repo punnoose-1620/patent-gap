@@ -12,9 +12,10 @@ dist/
 # Virtual environments
 .venv/
 venv/
-env/
+env
 .env
-Backend/.env
 
 # Logs
 *.log
+Backend/.env
+logs/

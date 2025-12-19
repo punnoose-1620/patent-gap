@@ -5,6 +5,9 @@ from pymongo import MongoClient
 from typing import Optional, Dict, Any, List
 from env_controller import getDatabaseConnectionString
 
+import firebase_admin
+from firebase_admin import credentials, firestore
+
 # Module-level variable to store MongoDB database instance
 _mongodb_client = None
 _mongodb_db = None
@@ -39,6 +42,7 @@ def connect_to_database():
             _mongodb_client = MongoClient(connection_string)
             # Test the connection
             _mongodb_client.admin.command('ping')
+
             # Get the database (database name is typically in the connection string)
             # Extract database name from connection string or use default
             db_name = 'patent-gap'  # Default, or extract from connection string
@@ -85,7 +89,12 @@ def createCollection(db, collectionName):
         db: MongoDB database instance (from connect_to_database())
         collectionName (str): The name of the collection to create.
     """
-    return db.create_collection(collectionName)
+    try:
+        collection = db.create_collection(collectionName)
+        return collection
+    except Exception as e:
+        print(f"Error creating collection {collectionName}: {e}")
+        return None
 
 def getAllData(db, collectionName):
     """
@@ -232,24 +241,6 @@ def addDataById(db, collectionName, entryData):
         allData = getAllData(db, collectionName)
         if '_id' not in entryData.keys():
             entryData['_id'] = str(int(datetime.now().timestamp()))
-        
-        # tempEntry = entryData.copy()
-        # tempEntry.pop('_id')
-        # for data in allData:
-            data.pop('_id')
-            if data == tempEntry:
-                keys = tempEntry.keys()
-                update = False
-                for key in keys:
-                    if (data[key] is None or data[key] == '') and (entryData[key] is not None and entryData[key] != ''):
-                        update = True
-                        data[key] = entryData[key]
-                if update:
-                    if updateDataById(db, collectionName, entryData):
-                        return str(data['_id'])
-                else:
-                    return None
-        
         result = collection.insert_one(entryData)
         return str(result.inserted_id)
     except Exception as e:
