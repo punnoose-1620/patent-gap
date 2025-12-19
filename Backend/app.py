@@ -829,12 +829,14 @@ def api_change_password():
 @app.route('/api/add-patent', methods=['POST'])
 def add_patent():
     """
-    Add a new patent
+    Add a new patent (legacy endpoint)
     ---
     tags:
       - Patents
-    summary: Add a new patent
-    description: Adds a new patent to the database
+    summary: Add a new patent (deprecated)
+    description: |
+      Legacy endpoint for adding patents. Consider using /api/create-patent instead.
+      Adds a new patent to the database.
     consumes:
       - application/json
     produces:
@@ -847,12 +849,24 @@ def add_patent():
         description: Patent information
         required: true
         schema:
-          $ref: '#/definitions/Patent'
+          $ref: '#/definitions/PatentCreateRequest'
     responses:
       200:
         description: Patent added successfully
         schema:
           $ref: '#/definitions/PatentResponse'
+      400:
+        description: Bad request - invalid data
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
@@ -878,20 +892,44 @@ def upload_file_to_local_storage(case_id):
     tags:
       - Files
     summary: Upload file to local storage
-    description: Saves the uploaded file to 'documentFiles' folder and returns its URL
+    description: |
+      Saves the uploaded file to 'documentFiles' folder and returns its URL. 
+      The file is automatically added to the case's documents list.
     consumes:
       - multipart/form-data
     produces:
       - application/json
+    security:
+      - session: []
     parameters:
+      - name: case_id
+        in: path
+        type: string
+        required: true
+        description: The unique identifier of the case
+        example: "case_001"
       - in: formData
         name: file
         type: file
         required: true
-        description: The file to upload
+        description: The file to upload (PDF, XML, or other document formats)
     responses:
       200:
         description: File uploaded successfully
+        schema:
+          $ref: '#/definitions/FileUploadResponse'
+      400:
+        description: Bad request - no file provided or invalid case ID
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error during file upload
+        schema:
+          $ref: '#/definitions/ErrorResponse'
     """
 
     from werkzeug.utils import secure_filename
@@ -944,12 +982,14 @@ def upload_file_to_local_storage(case_id):
 @app.route('/api/upload-file/<case_id>', methods=['POST'])
 def upload_file(case_id):
     """
-    Upload a file
+    Upload a file to Google Cloud Storage
     ---
     tags:
       - Files
-    summary: Upload a file
-    description: Uploads a file to the database
+    summary: Upload file to GCP bucket
+    description: |
+      Uploads a file to a Google Cloud Storage bucket and adds it to the case's documents.
+      Requires GCP credentials and bucket configuration.
     consumes:
       - application/json
     produces:
@@ -957,13 +997,48 @@ def upload_file(case_id):
     security:
       - session: []
     parameters:
+      - name: case_id
+        in: path
+        type: string
+        required: true
+        description: The unique identifier of the case
+        example: "case_001"
       - in: body
-        name: file
-        description: The file to upload
+        name: upload_request
+        description: File upload information for GCP
         required: true
         schema:
-          type: string
-          format: binary
+          $ref: '#/definitions/GcpFileUploadRequest'
+    responses:
+      200:
+        description: File uploaded successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: True
+            message:
+              type: string
+              example: "File uploaded successfully"
+            bucket:
+              type: string
+              example: "my-patent-bucket"
+            blob:
+              type: string
+              example: "documents/patent.pdf"
+      400:
+        description: Bad request - missing required parameters or upload failed
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error during file upload
+        schema:
+          $ref: '#/definitions/ErrorResponse'
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
@@ -1021,12 +1096,25 @@ def upload_file(case_id):
 @app.route('/api/alerts', methods=['GET'])
 def get_all_alerts():
     """
-    Get all alerts
+    Get all alerts in the system
     ---
     tags:
       - Alerts
     summary: Get all alerts
-    description: Returns all alerts
+    description: Returns all alerts in the system (admin/global view)
+    produces:
+      - application/json
+    security:
+      - session: []
+    responses:
+      200:
+        description: Alerts retrieved successfully
+        schema:
+          $ref: '#/definitions/AlertsResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
@@ -1044,12 +1132,31 @@ def get_all_alerts():
 @app.route('/api/alerts/', methods=['GET'])
 def get_user_alerts():
     """
-    Get all alerts related to a specific user
+    Get alerts for the current user
     ---
     tags:
       - Alerts
-    summary: Get all alerts related to a specific user
-    description: Returns all alerts related to the specified user
+    summary: Get user-specific alerts with similarity analysis
+    description: |
+      Returns all alerts related to the authenticated user. Each alert includes similarity 
+      analysis showing which of the user's cases are most similar to the alert-triggering case.
+    produces:
+      - application/json
+    security:
+      - session: []
+    responses:
+      200:
+        description: User alerts retrieved successfully
+        schema:
+          $ref: '#/definitions/AlertsResponse'
+      401:
+        description: Not authenticated
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: Server error
+        schema:
+          $ref: '#/definitions/ErrorResponse'
     """
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
@@ -1067,30 +1174,41 @@ def get_user_alerts():
 @app.route('/api/trigger-similarity-analysis', methods=['POST'])
 def trigger_similarity_analysis():
   """
-  Trigger a similarity analysis for a specific case.
-
+  Trigger a similarity analysis for a specific case
   ---
   tags:
     - Similarity Analysis
   summary: Run similarity analysis for a specific case
-  description: 
+  description: |
     Triggers a keyword-based similarity analysis for a given case. If no keywords are provided in the request, it will attempt to use the keywords from the case itself. 
     Retrieves similar USPTO documents and references using the keywords, generates and updates reports for the case, and creates an alert for the triggering user.
-  
-  Request Body:
-    - case_id (str): The unique identifier of the case.
-    - keywords (list, optional): A list of keywords to use for the similarity analysis. If omitted or empty, attempts to extract from the given case.
-
-  Responses:
+  consumes:
+    - application/json
+  produces:
+    - application/json
+  security:
+    - session: []
+  parameters:
+    - in: body
+      name: analysis_request
+      description: Similarity analysis request data
+      required: true
+      schema:
+        $ref: '#/definitions/SimilarityAnalysisRequest'
+  responses:
     200:
-      description: Similarity analysis completed and alert created successfully.
+      description: Similarity analysis completed and alert created successfully
+      schema:
+        $ref: '#/definitions/SimilarityAnalysisResponse'
     400:
-      description: Bad request, such as missing user ID, data, or keywords.
+      description: Bad request - missing user ID, data, or keywords
+      schema:
+        $ref: '#/definitions/ErrorResponse'
     500:
-      description: Internal server error during similarity analysis.
+      description: Internal server error during similarity analysis
+      schema:
+        $ref: '#/definitions/ErrorResponse'
   """
-  if 'user_id' not in session:
-      return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
   user_id = session['user_id']
   print(f'LOG: {session["user_id"]} Trigger Similarity Analysis')
   try:
@@ -1145,8 +1263,43 @@ def trigger_similarity_analysis():
     print(f'Error triggering similarity analysis: {str(e)}')
     return jsonify({'success': False, 'message': f'Error triggering similarity analysis: {str(e)}'}), 500
 
-@app.route('/api/case-keywords', methods=['GET'])
+@app.route('/api/case-keywords', methods=['POST'])
 def get_case_keywords():
+  """
+  Extract keywords from a document or case information
+  ---
+  tags:
+    - Similarity Analysis
+  summary: Extract keywords from document or case data
+  description: |
+    Extracts keywords from a document URL, or from title/description if no URL is provided.
+    Supports both USPTO documents (requires API key) and local documents.
+    Uses online (OpenAI) or offline (TF-IDF) keyword extraction methods.
+  consumes:
+    - application/json
+  produces:
+    - application/json
+  parameters:
+    - in: body
+      name: keyword_request
+      description: Document or case information for keyword extraction
+      required: true
+      schema:
+        $ref: '#/definitions/CaseKeywordsRequest'
+  responses:
+    200:
+      description: Keywords extracted successfully
+      schema:
+        $ref: '#/definitions/KeywordsResponse'
+    400:
+      description: Bad request - missing document URL or title/description, or no keywords found
+      schema:
+        $ref: '#/definitions/ErrorResponse'
+    500:
+      description: Server error during keyword extraction
+      schema:
+        $ref: '#/definitions/ErrorResponse'
+  """
   headers = None
   data = request.get_json()
   document_url = data.get('document_url')
@@ -1178,7 +1331,40 @@ def get_case_keywords():
 @app.route('/api/import-patent-from-uspto', methods=['POST'])
 def api_import_patent_from_uspto():
   """
-  Import a patent from the US Patent Office and create a case
+  Import patent data from USPTO
+  ---
+  tags:
+    - Patents
+  summary: Import patent data from USPTO
+  description: |
+    Fetches and normalizes patent data from USPTO by patent ID. Returns the normalized data 
+    but does not automatically create a case. Use this to preview patent data before creating a case.
+  consumes:
+    - application/json
+  produces:
+    - application/json
+  security:
+    - session: []
+  parameters:
+    - in: body
+      name: patent_request
+      description: USPTO patent ID to import
+      required: true
+      schema:
+        $ref: '#/definitions/PatentImportRequest'
+  responses:
+    200:
+      description: Patent data imported successfully
+      schema:
+        $ref: '#/definitions/PatentImportResponse'
+    400:
+      description: Bad request - missing or invalid patent ID, or failed to fetch/normalize data
+      schema:
+        $ref: '#/definitions/ErrorResponse'
+    500:
+      description: Server error or USPTO rate limit exceeded
+      schema:
+        $ref: '#/definitions/ErrorResponse'
   """
   if 'user_id' not in session:
     print('\nUser ID is not in session')
@@ -1221,14 +1407,13 @@ def api_import_patent_from_uspto():
 
 @app.route('/api/create-patent', methods=['POST'])
 def api_create_patent():
-  if 'user_id' not in session:
-    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-  if session['user_id'] is None:
-    return jsonify({'success': False, 'message': 'User ID is required'}), 400
-  user_id = session['user_id']
-  print(f'LOG: {session["user_id"]} Create Patent')
   try:
     data = request.get_json()
+    if 'user_id' not in session:
+      return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+    if session['user_id'] is None:
+      return jsonify({'success': False, 'message': 'User ID is required'}), 400
+    user_id = session['user_id']
     print(f'Create Patent Data by {user_id}: {json.dumps(data, indent=4)}')
     # patent_data = data.get('patent_data')
     data['created_by'] = user_id
