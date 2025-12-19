@@ -1,4 +1,6 @@
 import datetime
+from database import *
+from env_controller import getDemoDatabaseName
 
 demo_requests = [
     {
@@ -13,30 +15,39 @@ demo_requests = [
     }
 ]
 
-def create_demo_request(name, email, organization, role, date, time, timezone):
-    try:
-        demo_requests.append({
-            "id": f"{role}_{int(timezone.datetime.now().timestamp())}",
-            "name": name,
-            "email": email,
-            "organization": organization,
-            "role": role,
-            "date": date,
-            "time": time,
-            "timezone": timezone
-        })
-        return {
-            "success": True,
-            "message": "Demo request created successfully"
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Demo request creation failed: {str(e)}"
-        }
+# def create_demo_request(name, email, organization, role, date, time, timezone):
+#     try:
+#         newEntry = {
+#             "id": f"{role}_{int(timezone.datetime.now().timestamp())}",
+#             "name": name,
+#             "email": email,
+#             "organization": organization,
+#             "role": role,
+#             "date": date,
+#             "time": time,
+#             "timezone": timezone
+#         }
+#         created_id = addDataById(connect_to_database(), getDemoDatabaseName(), newEntry)
+#         if created_id is not None:
+#             newEntry['_id'] = created_id
+#             return {
+#                 "success": True,
+#                 "message": "Demo request created successfully",
+#                 "request_id": created_id
+#             }
+#         return {
+#             "success": False,
+#             "message": "Unable to create demo request. Please try again later.",
+#         }
+#     except Exception as e:
+#         return {
+#             "success": False,
+#             "message": f"Demo request creation failed: {str(e)}"
+#         }
 
 def get_demo_requests():
-    return demo_requests
+    all_requests = getAllData(connect_to_database(), getDemoDatabaseName())
+    return all_requests
 
 def create_demo_request(name, email, organization, role, date, time, timezone):
     """
@@ -78,10 +89,15 @@ def create_demo_request(name, email, organization, role, date, time, timezone):
         'status': 'pending',
         'created_at': datetime.datetime.utcnow().isoformat() + 'Z'  # Use current UTC timestamp
     }
-    
-    return {
+    created_id = addDataById(connect_to_database(), getDemoDatabaseName(), demo_request)
+    if created_id is not None:
+        return {
         'success': True,
         'message': 'Demo request submitted successfully',
         'request_id': request_id,
         'demo_request': demo_request
+    }
+    return {
+        'success': False,
+        'message': 'Unable to create demo request. Please try again later.',
     }

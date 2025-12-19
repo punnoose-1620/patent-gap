@@ -33,6 +33,11 @@ swagger = initialize_swagger(app)
 # Routes for serving HTML pages
 @app.route('/')
 def index():
+
+    connectionString = connect_to_database()
+    print('TEST: Connect to database: ', connectionString)
+
+
     """Serve the home page"""
     print('Collections: ', getCollectionsFromDatabase(connect_to_database()))
     if not checkCollectionExists(connect_to_database(), getCaseDatabaseName()):

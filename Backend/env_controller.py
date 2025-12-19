@@ -22,6 +22,8 @@ def getEnvKey(key):
 def getDatabaseConnectionString():
     # Load environment variables
     load_dotenv()
+
+    return os.environ.get('PYTHON_MONGODB_CONNECT_STRING')
     
     environment = os.environ.get('ENVIRONMENT')
     if environment == production:

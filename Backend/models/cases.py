@@ -1,6 +1,5 @@
 from database import *
 from env_controller import getCaseDatabaseName
-mock_cases = []
 
 def get_all_cases():
     return getAllData(connect_to_database(), getCaseDatabaseName())
@@ -80,13 +79,12 @@ def delete_case(case_id):
     Returns:
         dict: Result containing success status
     """
-    for case in mock_cases:
-        if case['_id'] == case_id:
-            mock_cases.remove(case)
-            return {
-                'success': True,
-                'message': 'Case deleted successfully'
-            }
+    deleted_id = deleteDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    if deleted_id is not None:
+        return {
+            'success': True,
+            'message': 'Case deleted successfully'
+        }
     return {
         'success': False,
         'message': 'Case not found'
@@ -144,10 +142,6 @@ def get_documents_from_case(case_id):
     """
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     patentDocuments = case.get('documents', [])
-    # for case in mock_cases:
-    #     if case.get('_id') == case_id:
-    #         patentDocuments = case.get('documents', [])
-    #         break
     return patentDocuments
 
 def get_case_embedding(case_id):
@@ -187,7 +181,3 @@ def get_case_creator(case_id):
     """
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     return case.get('created_by')
-    # for case in mock_cases:
-    #     if case.get('_id') == case_id:
-    #         return case.get('created_by')
-    # return 'Unknown'

@@ -241,24 +241,6 @@ def addDataById(db, collectionName, entryData):
         allData = getAllData(db, collectionName)
         if '_id' not in entryData.keys():
             entryData['_id'] = str(int(datetime.now().timestamp()))
-        
-        # tempEntry = entryData.copy()
-        # tempEntry.pop('_id')
-        # for data in allData:
-            data.pop('_id')
-            if data == tempEntry:
-                keys = tempEntry.keys()
-                update = False
-                for key in keys:
-                    if (data[key] is None or data[key] == '') and (entryData[key] is not None and entryData[key] != ''):
-                        update = True
-                        data[key] = entryData[key]
-                if update:
-                    if updateDataById(db, collectionName, entryData):
-                        return str(data['_id'])
-                else:
-                    return None
-        
         result = collection.insert_one(entryData)
         return str(result.inserted_id)
     except Exception as e:
