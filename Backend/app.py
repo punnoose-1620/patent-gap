@@ -14,6 +14,7 @@ from data_processor import *
 from llm_processor import *
 from datetime import datetime
 from sources.USPTO import *
+from sources.Gemini import *
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -1537,6 +1538,38 @@ def fetch_patent_from_uspto():
     print(f'Error normalizing patent data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error normalizing patent data: {str(e)}'}), 500
 
+@app.route('/api/similarity-analysis-gemini', methods=['POST'])
+def similarity_analysis_gemini():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'document_urls' not in data:
+    return jsonify({'success': False, 'message': 'Document URLs are required'}), 400
+  document_urls = data.get('document_urls', [])
+  document_contents = []
+  for document in document_urls:
+    content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+    document_contents.append(content)
+  if (len(document_contents) == 0) or (document_contents is None):
+    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+  complete_document_contents = ""
+  for content in document_contents:
+    if content.strip() != "":
+      complete_document_contents = f"{complete_document_contents}\n\n{content}"
+  
+  if complete_document_contents.strip() == "":
+    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+  
+  similar_infringements = get_complete_infringements(complete_document_contents)
+  # if (similar_infringements is None) or (len(similar_infringements) == 0):
+  #   return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
+  # print('TEST: similar_infringements: ', json.dumps(similar_infringements, indent=4))
+  return jsonify({
+    'success': True, 
+    # 'claims': claims,
+    'message': 'Similarity analysis completed', 
+    'similar_infringements': similar_infringements
+    }), 200
 if __name__ == '__main__':
     port = app.config['PORT']
     debug = app.config['DEBUG']
