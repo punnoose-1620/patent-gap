@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload Patent - Step 1</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --background: hsl(210, 20%, 98%);
+      --foreground: hsl(222, 47%, 11%);
+      --card: hsl(0, 0%, 100%);
+      --primary: hsl(170, 70%, 8%);
+      --primary-foreground: hsl(0, 0%, 100%);
+      --muted: hsl(210, 40%, 96%);
+      --muted-foreground: hsl(215, 16%, 47%);
+      --border: hsl(214, 32%, 91%);
+      --input: hsl(214, 32%, 91%);
+      --radius: 0.5rem;
+      --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -4px hsl(0 0% 0% / 0.1);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+
+    .modal-content {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 672px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .modal-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius);
+      background: hsl(170, 70%, 8%, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      font-size: 20px;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .modal-subtitle {
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+
+    .close-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted-foreground);
+      transition: background 0.2s;
+    }
+
+    .close-btn:hover {
+      background: var(--muted);
+    }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .info-banner {
+      background: hsl(170, 70%, 8%, 0.05);
+      border: 1px solid hsl(170, 70%, 8%, 0.2);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .info-icon {
+      color: var(--primary);
+      font-size: 20px;
+      margin-top: 2px;
+    }
+
+    .info-content h4 {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .info-content p {
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--input);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--background);
+      transition: all 0.2s;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px hsl(170, 70%, 8%, 0.1);
+    }
+
+    .tabs-container {
+      margin-top: 24px;
+    }
+
+    .tabs-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 24px;
+      background: var(--muted);
+      padding: 4px;
+      border-radius: var(--radius);
+    }
+
+    .tab-trigger {
+      padding: 8px 16px;
+      border: none;
+      background: transparent;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      color: var(--muted-foreground);
+    }
+
+    .tab-trigger.active {
+      background: var(--card);
+      color: var(--foreground);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .file-upload-area {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 48px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .file-upload-area:hover {
+      border-color: var(--primary);
+      background: hsl(170, 70%, 8%, 0.05);
+    }
+
+    .file-upload-icon {
+      font-size: 64px;
+      color: var(--muted-foreground);
+      margin-bottom: 16px;
+    }
+
+    .file-upload-text {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .file-upload-hint {
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .file-selected {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: var(--muted);
+      border-radius: var(--radius);
+      margin-top: 16px;
+    }
+
+    .patent-id-input {
+      font-family: 'Courier New', monospace;
+      font-size: 18px;
+    }
+
+    .patent-formats {
+      background: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .patent-formats-title {
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .patent-formats-list {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      line-height: 1.8;
+    }
+
+    .modal-footer {
+      padding: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .btn {
+      padding: 8px 24px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-family: inherit;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--foreground);
+    }
+
+    .btn-secondary:hover {
+      background: var(--muted);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+
+    .btn-primary:hover {
+      background: hsl(170, 70%, 8%, 0.9);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-icon">📄</div>
+          <div>
+            <h2 class="modal-title">New Patent Analysis</h2>
+            <p class="modal-subtitle">Step 1: Upload Patent</p>
+          </div>
+        </div>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="info-banner">
+          <div class="info-icon">🛡️</div>
+          <div class="info-content">
+            <h4>Secure Upload</h4>
+            <p>ISO/SOC2 Compliant. Your data is encrypted and secure.</p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Project Name</label>
+          <input
+            type="text"
+            id="projectName"
+            class="form-input"
+            placeholder="e.g., Foldable Display Hinge Analysis"
+            oninput="validateForm()"
+          />
+        </div>
+
+        <div class="tabs-container">
+          <div class="tabs-list">
+            <button class="tab-trigger active" onclick="switchTab('upload')">
+              <span>📤</span>
+              Upload File
+            </button>
+            <button class="tab-trigger" onclick="switchTab('patentId')">
+              <span>📄</span>
+              Patent ID
+            </button>
+          </div>
+
+          <div id="uploadTab" class="tab-content active">
+            <label for="fileInput" class="file-upload-area">
+              <div class="file-upload-icon">📤</div>
+              <div class="file-upload-text">Click to upload or drag and drop</div>
+              <div class="file-upload-hint">PDF or Patent Portfolio (Max 50MB)</div>
+              <input
+                type="file"
+                id="fileInput"
+                class="file-input"
+                accept=".pdf"
+                onchange="handleFileSelect(event)"
+              />
+            </label>
+            <div id="fileSelected" class="file-selected" style="display: none;">
+              <span>📄</span>
+              <div>
+                <div id="fileName" style="font-weight: 500;"></div>
+                <div id="fileSize" style="font-size: 12px; color: var(--muted-foreground);"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="patentIdTab" class="tab-content">
+            <div class="form-group">
+              <label class="form-label">Enter Patent Number</label>
+              <input
+                type="text"
+                id="patentNumber"
+                class="form-input patent-id-input"
+                placeholder="e.g., US10203040"
+                oninput="validateForm()"
+              />
+              <p style="font-size: 12px; color: var(--muted-foreground); margin-top: 8px;">
+                We'll automatically fetch patent details from USPTO
+              </p>
+            </div>
+
+            <div class="patent-formats">
+              <div class="patent-formats-title">Supported Formats:</div>
+              <div class="patent-formats-list">
+                <div>• US Patents: US10203040, US-10203040-B2</div>
+                <div>• EP Patents: EP1234567, EP-1234567-A1</div>
+                <div>• WO Patents: WO2023123456, WO-2023/123456</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="continueBtn" onclick="handleContinue()" disabled>
+          Continue
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'http://localhost:5000/api';
+    let selectedFile = null;
+    let activeTab = 'upload';
+
+    function switchTab(tab) {
+      activeTab = tab;
+      
+      // Update tab triggers
+      document.querySelectorAll('.tab-trigger').forEach(trigger => {
+        trigger.classList.remove('active');
+      });
+      event.target.classList.add('active');
+      
+      // Update tab content
+      document.getElementById('uploadTab').classList.toggle('active', tab === 'upload');
+      document.getElementById('patentIdTab').classList.toggle('active', tab === 'patentId');
+      
+      validateForm();
+    }
+
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        selectedFile = file;
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('fileSize').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+        document.getElementById('fileSelected').style.display = 'flex';
+        validateForm();
+      }
+    }
+
+    function validateForm() {
+      const projectName = document.getElementById('projectName').value.trim();
+      const patentNumber = document.getElementById('patentNumber').value.trim();
+      const continueBtn = document.getElementById('continueBtn');
+      
+      let isValid = false;
+      
+      if (projectName) {
+        if (activeTab === 'upload' && selectedFile) {
+          isValid = true;
+        } else if (activeTab === 'patentId' && patentNumber) {
+          isValid = true;
+        }
+      }
+      
+      continueBtn.disabled = !isValid;
+    }
+
+    function handleContinue() {
+      const projectName = document.getElementById('projectName').value.trim();
+      const patentNumber = document.getElementById('patentNumber').value.trim();
+      
+      // Store data in sessionStorage for next step
+      const formData = {
+        projectName,
+        activeTab,
+        patentNumber: activeTab === 'patentId' ? patentNumber : null,
+        fileName: activeTab === 'upload' && selectedFile ? selectedFile.name : null,
+        fileSize: activeTab === 'upload' && selectedFile ? selectedFile.size : null
+      };
+      
+      sessionStorage.setItem('patentUploadStep1', JSON.stringify(formData));
+      
+      // Navigate to Step 2
+      window.location.href = 'patent-upload-step2.html';
+    }
+
+    function closeModal() {
+      if (confirm('Are you sure you want to cancel? Your progress will be lost.')) {
+        sessionStorage.removeItem('patentUploadStep1');
+        window.location.href = 'dashboard.html';
+      }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      validateForm();
+    });
+  </script>
+</body>
+</html>

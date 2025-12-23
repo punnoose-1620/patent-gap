@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check Patent - Patent Gap</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #EDEADC;
+            color: #0A1F14;
+        }
+
+        .top-nav {
+            background-color: #0A1F14;
+            color: #EDEADC;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-bottom: 3px solid #191970;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Merriweather', serif;
+        }
+
+        .nav-brand img {
+            height: 40px;
+            width: auto;
+        }
+
+        .main-content {
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .page-title {
+            font-family: 'Merriweather', serif;
+            font-size: 2.5rem;
+            color: #0A1F14;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            font-size: 1.1rem;
+            color: #0A1F14;
+            opacity: 0.8;
+        }
+
+        .form-container {
+            background: #F8F7F3;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border: 1px solid #D8D6C4;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: #0A1F14;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #D8D6C4;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.3s ease;
+            background-color: #fff;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #191970;
+            box-shadow: 0 0 0 3px rgba(25, 25, 112, 0.1);
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #D8D6C4;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.3s ease;
+            background-color: #fff;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: #191970;
+            box-shadow: 0 0 0 3px rgba(25, 25, 112, 0.1);
+        }
+
+        .file-upload-area {
+            border: 2px dashed #D8D6C4;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            background-color: #fff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-upload-area:hover {
+            border-color: #191970;
+            background-color: #f8f9fa;
+        }
+
+        .file-upload-area.dragover {
+            border-color: #191970;
+            background-color: #f0f0ff;
+        }
+
+        .file-upload-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #191970;
+        }
+
+        .file-upload-text {
+            font-size: 1rem;
+            color: #0A1F14;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-upload-hint {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .uploaded-files {
+            margin-top: 1rem;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem;
+            background-color: #e8f4f8;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-name {
+            font-size: 0.9rem;
+            color: #0A1F14;
+        }
+
+        .file-remove {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .file-remove:hover {
+            background: #c0392b;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background-color: #191970;
+            color: #EDEADC;
+        }
+
+        .btn-primary:hover {
+            background-color: #2A2A8A;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(25, 25, 112, 0.3);
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+        }
+
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: #c0392b;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+
+        .claim-card-container {
+            background: #F8F7F3;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border: 1px solid #D8D6C4;
+            padding: 2rem;
+        }
+
+        .claim-card-container .claim-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #000 !important;
+            margin-bottom: 0.5rem;
+        }
+
+        .claim-card-container .claim-similarity-score{
+            font-size: 14px;
+            color: green;
+            padding: 10px;
+            background-color: #d4f7d4;
+            border-radius: 8px;
+        }
+
+        .claim-card-container .claim-card {
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(25, 25, 112, 0.16), 0 1.5px 8px rgba(0,0,0,0.09);
+            background: #fff;
+            margin-bottom: 1rem;
+            border: 1.5px solid #e2e6ed;
+            padding: 1rem;
+        }
+
+        .claim-card-container :hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 4px 12px rgba(25, 25, 112, 0.3);
+            transition: transform 0.7s cubic-bezier(0.4, 0.2, 0.2, 1), box-shadow 0.7s cubic-bezier(0.4, 0.2, 0.2, 1);
+        }
+
+        .keywords-hint {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        .keyword-suggestions {
+            display: flex;
+            flex-direction: row;
+            gap: 0.7rem;
+            overflow-x: auto;
+            align-items: flex-start;
+            padding-bottom: 0rem;
+            margin-top: 1rem;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE and Edge */
+        }
+        .keyword-suggestions::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+        }
+
+        .keyword-suggestion-btn {
+            background-color: #191970;
+            color: #EDEADC;
+            border: none;
+            border-radius: 18px;
+            padding: 0.4rem 1.1rem;
+            font-size: 0.95rem;
+            cursor: pointer;
+            width: fit-content !important;
+        }
+
+        .required {
+            color: #e74c3c;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.2rem;
+            padding: 0.75rem;
+            background-color: #fff;
+            border: 2px solid #D8D6C4;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .checkbox-group:hover {
+            border-color: #191970;
+            background-color: #f8f9fa;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 0.75rem;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #191970;
+        }
+
+        .checkbox-group label {
+            font-weight: 500;
+            cursor: pointer;
+            color: #0A1F14;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+        }
+
+        .checkbox-group input[type="checkbox"]:checked + label {
+            color: #191970;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 1rem;
+            }
+
+            .form-container {
+                padding: 1.5rem;
+            }
+
+            .page-title {
+                font-size: 2rem;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Check Your Patent</h1>
+            <p class="page-subtitle">Submit your patent application with supporting documents</p>
+        </div>
+
+        <div class="checkbox-group">
+            <input 
+                type="checkbox" 
+                id="usptoFetchCheckbox" 
+                name="usptoFetchCheckbox"
+            >
+            <label for="usptoFetchCheckbox">
+                Get my patent from US Patent Office
+            </label>
+        </div>
+
+        <div class="form-container" id="patentEntryContainer">
+            <form id="patentForm">
+                <!-- Patent Title -->
+                <div class="form-group">
+                    <label for="patentTitle" class="form-label">
+                        Patent Title <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="patentTitle" 
+                        name="patentTitle" 
+                        class="form-input" 
+                        placeholder="Enter the patent title"
+                        required
+                    >
+                </div>
+
+                <!-- Patent Description -->
+                <div class="form-group">
+                    <label for="patentDescription" class="form-label">
+                        Patent Description <span class="required">*</span>
+                    </label>
+                    <textarea 
+                        id="patentDescription" 
+                        name="patentDescription" 
+                        class="form-textarea" 
+                        placeholder="Provide a detailed description of your patent"
+                        required
+                    ></textarea>
+                </div>
+
+                <!-- Keywords -->
+                <div class="form-group">
+                    <label for="keywords" class="form-label">
+                        Keywords <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="keywords" 
+                        name="keywords" 
+                        class="form-input" 
+                        placeholder="Enter keywords separated by commas (e.g., AI, machine learning, automation)"
+                        required
+                    >
+                    <div class="keyword-suggestions" id="keyword-suggestions"></div>
+                    <div class="keywords-hint">
+                        Separate multiple keywords with commas
+                    </div>
+                </div>
+
+                <!-- Document Upload -->
+                <div class="form-group">
+                    <label class="form-label">
+                        Upload Documents
+                    </label>
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <div class="file-upload-icon">📄</div>
+                        <div class="file-upload-text">Click to upload or drag and drop PDF files</div>
+                        <div class="file-upload-hint">PDF files only (max 10MB each)</div>
+                        <input 
+                            type="file" 
+                            id="fileInput" 
+                            class="file-input" 
+                            multiple 
+                            accept=".pdf"
+                        >
+                    </div>
+                    <div class="uploaded-files" id="uploadedFiles"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">
+                        Submit Patent
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="goBackToDashboard()">
+                        Back to Dashboard
+                    </button>
+                    <button type="button" class="btn btn-danger" onclick="discardChanges()">
+                        Discard
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="results-container" id="resultDisplayContainer">
+
+        </div>
+    </div>
+
+    <script>
+        // File upload functionality
+        const patentEntryContainer = document.getElementById('patentEntryContainer');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const uploadedFiles = document.getElementById('uploadedFiles');
+        const fileInput = document.getElementById('fileInput');
+        let keywordSuggestions = [];
+        let selectedFiles = [];
+        let source = 'manual';
+
+        // USPTO Fetch Checkbox handler
+        const usptoFetchCheckbox = document.getElementById('usptoFetchCheckbox');
+        if (usptoFetchCheckbox) {
+            usptoFetchCheckbox.addEventListener('change', function(e) {
+                const isChecked = e.target.checked;
+                
+                if (isChecked) {
+                    // When checked, you can add functionality here
+                    // For example: show a patent number input field, fetch from USPTO, etc.
+                    handleUSPTOFetchEnabled();
+                }
+                else {
+                    // When unchecked, reset any USPTO-related fields
+                    handleUSPTOFetchDisabled();
+                }
+                console.log('Source: ', source);
+            });
+        }
+
+        function handleUSPTOFetchEnabled() {
+            // Add functionality when USPTO fetch is enabled
+            // This could show additional fields, fetch data, etc.
+            patentEntryContainer.innerHTML = `
+                <form id="usptoPatentForm">
+                    <div class="form-group">
+                        <label for="usptoPatentId" class="form-label">
+                            USPTO Patent ID <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="usptoPatentId" 
+                            name="usptoPatentId" 
+                            class="form-input" 
+                            placeholder="Enter the USPTO patent number"
+                            required
+                        >
+                    </div>
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">
+                            Fetch Patent
+                        </button>
+                    </div>
+                </form>
+            `;
+            console.log('USPTO fetch enabled');
+            source = 'uspto';
+
+            // USPTO Fetch Form Submission
+            usptoForm = document.getElementById('usptoPatentForm');
+            console.log('USPTO Form:', usptoForm);
+            if (usptoForm) {
+                usptoForm.addEventListener('submit', function(e) {
+                    console.log('USPTO Form Submitted');
+                    e.preventDefault();
+                    const patentIdInput = document.getElementById('usptoPatentId');
+                    if (!patentIdInput) {
+                        alert('Some error occured. Please refresh the page and try again.');
+                        return;
+                    }
+                    let usptoPatentId = patentIdInput.value.trim();
+                    if (usptoPatentId === '' || usptoPatentId.length === 0) {
+                        alert('Please enter a valid USPTO patent ID.');
+                        return;
+                    }
+                    console.log('USPTO Patent ID:', usptoPatentId);
+                    const formData = {
+                        patentId: usptoPatentId
+                    };
+                    fetchPatentFromUspto(formData);
+                });
+            }
+            // Example: You might want to show a patent number input field
+            // or automatically fetch patent data
+        }
+
+        function handleUSPTOFetchDisabled() {
+            // Add functionality when USPTO fetch is disabled
+            // This could hide fields, clear data, etc.
+            patentEntryContainer.innerHTML = `
+            <form id="patentForm">
+                <div class="form-group">
+                    <label for="patentTitle" class="form-label">
+                        Patent Title <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="patentTitle" 
+                        name="patentTitle" 
+                        class="form-input" 
+                        placeholder="Enter the patent title"
+                        required
+                    >
+                </div>
+
+                <!-- Patent Description -->
+                <div class="form-group">
+                    <label for="patentDescription" class="form-label">
+                        Patent Description <span class="required">*</span>
+                    </label>
+                    <textarea 
+                        id="patentDescription" 
+                        name="patentDescription" 
+                        class="form-textarea" 
+                        placeholder="Provide a detailed description of your patent"
+                        required
+                    ></textarea>
+                </div>
+
+                <!-- Keywords -->
+                <div class="form-group">
+                    <label for="keywords" class="form-label">
+                        Keywords <span class="required">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="keywords" 
+                        name="keywords" 
+                        class="form-input" 
+                        placeholder="Enter keywords separated by commas (e.g., AI, machine learning, automation)"
+                        required
+                    >
+                    <div class="keyword-suggestions" id="keyword-suggestions"></div>
+                    <div class="keywords-hint">
+                        Separate multiple keywords with commas
+                    </div>
+                </div>
+
+                <!-- Document Upload -->
+                <div class="form-group">
+                    <label class="form-label">
+                        Upload Documents
+                    </label>
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <div class="file-upload-icon">📄</div>
+                        <div class="file-upload-text">Click to upload or drag and drop PDF files</div>
+                        <div class="file-upload-hint">PDF files only (max 10MB each)</div>
+                        <input 
+                            type="file" 
+                            id="fileInput" 
+                            class="file-input" 
+                            multiple 
+                            accept=".pdf"
+                        >
+                    </div>
+                    <div class="uploaded-files" id="uploadedFiles"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">
+                        Submit Patent
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="goBackToDashboard()">
+                        Back to Dashboard
+                    </button>
+                    <button type="button" class="btn btn-danger" onclick="discardChanges()">
+                        Discard
+                    </button>
+                </div>
+            </form>`;
+            console.log('USPTO fetch disabled');
+            source = 'manual';
+            // Example: Clear any auto-filled fields
+        }
+
+        // Listen for word completion in patent title input
+        const patentTitleInput = document.getElementById('patentTitle');
+        const patentDescriptionInput = document.getElementById('patentDescription');
+        if (patentTitleInput) {
+            patentTitleInput.addEventListener('input', function (e) {
+                // Check if the last character is a space or punctuation (word finished)
+                const val = e.target.value;
+                if (val.length > 0) {
+                    const lastChar = val.slice(-1);
+                    if (/\s|[.,;:!?]/.test(lastChar)) {
+                        fetchKeywordSuggestions(patentTitleInput.value, patentDescriptionInput.value);
+                    }
+                }
+            });
+        }
+        if (patentDescriptionInput) {
+            patentDescriptionInput.addEventListener('input', function (e) {
+                // Check if the last character is a space or punctuation (word finished)
+                const val = e.target.value;
+                if (val.length > 0) {
+                    const lastChar = val.slice(-1);
+                    if (/\s|[.,;:!?]/.test(lastChar)) {
+                        fetchKeywordSuggestions(patentTitleInput.value, patentDescriptionInput.value);
+                    }
+                }
+            });
+        }
+
+        // Fetch keyword suggestions
+        function fetchKeywordSuggestions(title, description) {
+            body = JSON.stringify({
+                    document_url: document_url, 
+                    title: title,
+                    description: description
+                });
+            console.log('Fetching keyword suggestions');
+            fetch('/api/get-case-keywords', {
+                method: 'GET',
+                body: body
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data['success']===True) {
+                    newKeywords = data['keywords'];
+                    for(let keyword of newKeywords){
+                        if(!keywordSuggestions.includes(keyword)){
+                            keywordSuggestions.push(keyword);
+                        }
+                    }
+                    renderKeywordSuggestions();
+                }
+                else{
+                    alert('Unable to fetch keyword suggestions. Please try again later.');
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        // Add keyword to entry and remove from suggestions
+        function addKeyword(keyword) {
+            const keywordsInput = document.getElementById('keywords');
+            if (keywordsInput) {
+                if (keywordsInput.value.trim() !== '') {
+                    keywordsInput.value += ', ' + keyword;
+                } else {
+                    keywordsInput.value = keyword;
+                }
+            }
+            if (keywordSuggestions.includes(keyword)) {
+                const index = keywordSuggestions.indexOf(keyword);
+                if (index !== -1) {
+                    keywordSuggestions.splice(index, 1);
+                    renderKeywordSuggestions();
+                }
+                return;
+            }
+            keywordSuggestions.push(keyword);
+            renderKeywordSuggestions();
+        }
+
+        // Render keyword suggestions
+        function renderKeywordSuggestions() {
+            const suggestionsContainer = document.getElementById('keyword-suggestions');
+            if (!suggestionsContainer) return;
+
+            console.log('Rendering keyword suggestions');
+            suggestionsContainer.innerHTML = '';
+            keywordSuggestions.forEach(keyword => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'keyword-suggestion-btn';
+                btn.textContent = keyword;
+                btn.onclick = function() {
+                    addKeyword(keyword);
+                };
+                suggestionsContainer.appendChild(btn);
+            });
+        }
+
+        // Handle selected files
+        function handleFiles(files) {
+            const pdfFiles = files.filter(file => file.type === 'application/pdf');
+            
+            if (pdfFiles.length !== files.length) {
+                alert('Only PDF files are allowed. Some files were not added.');
+            }
+
+            pdfFiles.forEach(file => {
+                if (file.size > 10 * 1024 * 1024) { // 10MB limit
+                    alert(`File "${file.name}" is too large. Maximum size is 10MB.`);
+                    return;
+                }
+
+                if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+                    selectedFiles.push(file);
+                }
+            });
+
+            displayUploadedFiles();
+        }
+
+        // Display uploaded files
+        function displayUploadedFiles() {
+            uploadedFiles.innerHTML = '';
+            
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <span class="file-name">${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                    <button type="button" class="file-remove" onclick="removeFile(${index})">Remove</button>
+                `;
+                uploadedFiles.appendChild(fileItem);
+            });
+        }
+
+        // Remove file
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            displayUploadedFiles();
+        }
+
+        async function createPatent(formData) {
+            fetch('/api/create-patent', {
+                method: 'POST',
+                body: JSON.stringify(formData),
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Created Patent:', data);
+                if (data['success'] === true) {
+                    console.log('Case ID Final Updated:', data['case_id']);
+                    if (data['case_id'] !== '') {
+                        triggerSimilarityAnalysis(data['case_id'], formData.keywords)
+                        .catch(error => {
+                            console.error('Similarity Analysis Error:', error);
+                        });
+                        setTimeout(() => {
+                            // Reset form
+                            resetForm();
+                            window.location.href = '/home';
+                        }, 1000);
+                    }
+                }
+                else{
+                    alert('Unable to create patent. Please try again later.');
+                }
+                console.log('Patent Created:', data);
+            })
+            .catch(error => {
+                console.error('Error:', error)
+            });
+        }
+
+        async function fetchPatentFromUspto(formData) {
+            try {       //Replace call with 'fetch-patent-from-uspto'
+                let resultsContainer = document.getElementById('resultDisplayContainer');
+                resultsContainer.innerHTML = createCircularProgressIndicator(48, 'Fetching Patent from USPTO...').outerHTML;
+                fetch(
+                    '/api/fetch-patent-from-uspto', {
+                        method: 'POST',
+                        body: JSON.stringify(formData),
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'include'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data['success'] === true) {
+                            console.log('Patent Imported from USPTO:', data);
+                            resultsContainer.style.backgroundColor = '#F8F7F3';
+                            resultsContainer.style.borderRadius = '12px';
+                            resultsContainer.style.boxShadow = '0 10px 20px rgba(0,0,0,0.1)';
+                            resultsContainer.style.border = '1px solid #D8D6C4';
+                            resultsContainer.style.padding = '2rem';
+                            caseDataNew = data['case_data'];
+                            const description = caseDataNew['description'];
+                            const title = caseDataNew['title'];
+                            const filingDate =caseDataNew['filing_date'];
+
+                            resultsContainer.innerHTML = `
+                                <div class="results-title" style="font-size:18px; font-weight:bold;">${title}</div>
+                                <div class="results-description" style="font-size:12px; font-weight:bold; margin-bottom:0.5rem; margin-top:0.5rem;">${description}</div>
+                                <div class="results-filing-date" style="font-size:12px; margin-bottom:0.5rem;">Filing Date: ${filingDate}</div>
+                                <hr style="margin: 1em 0;">
+                            `;
+                            resultsContainer.appendChild(createCircularProgressIndicator(48, 'Triggering Similarity Analysis...'));
+                            triggerSimilarityAnalysis(caseDataNew, data['keywords'])
+                        }
+                    });
+            } catch(error) {
+                console.error('Error fetchin patent from USPTO:', error)
+            }
+        }
+        
+        async function triggerSimilarityAnalysis(case_data, keywords) {
+            console.log('Triggering similarity analysis');
+            documents = case_data['documents']
+            urls = documents.map(doc => doc.url);
+            let body = {
+                keywords: keywords,
+                document_urls: urls
+            };
+            let headers = {
+                'Content-Type': 'application/json'
+            };
+            try {
+                fetch('/api/similarity-analysis-gemini', {      // Replace call with 'similarity-analysis-gemini'
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                    headers: headers,
+                    credentials: 'include',
+                    keepalive: true
+                }).then(response => response.json())
+                .then(data => {
+                    console.log('Similarity Analysis Data:', data);
+                    if (data && 'similar_infringements' in data) {
+                        let resultsContainer = document.getElementById('resultDisplayContainer');
+                        const titleElement = document.createElement('div');
+                        const dividerElement = document.createElement('hr');
+                        const circularProgressIndicator = document.getElementById('circularProgressIndicator');
+                        resultsContainer.removeChild(circularProgressIndicator);
+
+                        titleElement.className = 'results-title';
+                        titleElement.textContent = 'Results of Similarity Analysis';
+                        dividerElement.style.marginBottom = '1em';
+                        resultsContainer.appendChild(titleElement);
+                        resultsContainer.appendChild(dividerElement);
+
+                        similarInfringementsList = data['similar_infringements'];
+                        if(similarInfringementsList) {
+                            similarInfringementsList.forEach(infringement => {
+                                infringementId = infringement['entry_id'];
+                                ingringementSource = infringement['source'];
+                                claimsInfringed = infringement['similar_claims'];
+                                claimCardContainer = document.createElement('div');
+                                claimCardContainer.style.marginBottom = '1rem';
+                                claimCardContainer.innerHTML = `
+                                    <div class="claim-card-container-title">Patent number ${infringementId} from ${ingringementSource} as a source</div>
+                                    <hr style="margin: 1em 0;">
+                                `;
+                                claimCardContainer.className = 'claim-card-container';
+                                claimsInfringed.forEach(claim => {
+                                    claimTitle = claim['claim'];
+                                    claimSimilarityScore = claim['similarity_score'];
+                                    claimUrl = claim['url_to_claim'];
+                                    claimCard = document.createElement('div');
+                                    claimCard.className = 'claim-card';
+                                    claimCard.onclick = function() {
+                                        if(claimUrl) {
+                                            window.open(claimUrl, '_blank');
+                                        }
+                                    };
+                                    claimCard.innerHTML = `
+                                        <div class="claim-title">${claimTitle}</div>
+                                        <div class="claim-similarity-score">${claimSimilarityScore}</div>
+                                    `;
+                                    claimCardContainer.appendChild(claimCard);
+                                });
+                                resultsContainer.appendChild(claimCardContainer);
+                            });
+                        }
+                    }
+                });
+                // Populate resultDisplayContainer Div
+            }
+            catch(error) {
+                console.error('Similarity Analysis Error:', error)
+            }
+        }
+
+        /**
+         * Creates and returns a circular progress indicator element.
+         * @param {number} size - Width/height in pixels.
+         * @returns {HTMLElement}
+         */
+        function createCircularProgressIndicator(size=48, title='Loading...') {
+            // Container div
+            const indicator = document.createElement('div');
+            indicator.style.display = 'inline-block';
+            indicator.style.position = 'relative';
+            indicator.style.width = size + 'px';
+            indicator.style.height = size + 'px';
+            indicator.id = 'circularProgressIndicator';
+
+            // Spinner SVG
+            indicator.innerHTML = `
+                <div class="progress-title" style="margin-top: 1rem; font-weight: bold;">${title}</div>
+                <svg width="${size}" height="${size}" viewBox="0 0 50 50">
+                  <circle
+                    cx="25"
+                    cy="25"
+                    r="20"
+                    fill="none"
+                    stroke="#191970"
+                    stroke-width="5"
+                    stroke-linecap="round"
+                    stroke-dasharray="94"
+                    stroke-dashoffset="72"
+                  >
+                    <animateTransform 
+                      attributeName="transform"
+                      type="rotate"
+                      from="0 25 25"
+                      to="360 25 25"
+                      dur="1s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                </svg>
+            `;
+            return indicator;
+        }
+
+        // Reset form
+        function resetForm() {
+            manualForm = document.getElementById('patentForm');
+            usptoForm = document.getElementById('usptoPatentForm');
+            if(manualForm) {
+                manualForm.reset();
+                selectedFiles = [];
+                displayUploadedFiles();
+            }
+            else if(usptoForm) {
+                usptoForm.reset();
+            }
+            else {
+                alert('Unable to reset form. Please try again later.');
+            }
+        }
+
+        // Go back to dashboard
+        function goBackToDashboard() {
+            if (hasUnsavedChanges()) {
+                if (confirm('You have unsaved changes. Are you sure you want to go back?')) {
+                    window.location.href = '/home';
+                }
+            } else {
+                window.location.href = '/home';
+            }
+        }
+
+        // Discard changes
+        function discardChanges() {
+            if (hasUnsavedChanges()) {
+                if (confirm('Are you sure you want to discard all changes?')) {
+                    resetForm();
+                    window.location.href = '/home';
+                }
+            } else {
+                window.location.href = '/home';
+            }
+        }
+
+        // Check if there are unsaved changes
+        function hasUnsavedChanges() {
+            const title = document.getElementById('patentTitle').value;
+            const description = document.getElementById('patentDescription').value;
+            const keywords = document.getElementById('keywords').value;
+            
+            return title.trim() !== '' || description.trim() !== '' || keywords.trim() !== '' || selectedFiles.length > 0;
+        }
+
+        // Manual Entry Form submission
+        manualForm = document.getElementById('patentForm');
+        console.log('Manual Form:', manualForm);
+        if (manualForm) {
+            manualForm.addEventListener('submit', function(e) {
+                console.log('Manual Form Submitted');
+                e.preventDefault();
+
+                keywordsFinal = document.getElementById('keywords').value.split(',').map(k => k.trim()).filter(k => k);
+                if (keywordsFinal.length === 0) {
+                    fetchKeywordSuggestions();
+                    keywordsFinal = keywordSuggestions;
+                }
+                
+                const formData = {
+                    title: document.getElementById('patentTitle').value,
+                    description: document.getElementById('patentDescription').value,
+                    keywords: keywordsFinal,
+                    files: selectedFiles.map(file => ({
+                        name: file.name,
+                        size: file.size,
+                        type: file.type
+                    }))
+                };
+
+                console.log('Patent Data Submitted:', formData);
+                console.log('Selected Files:', selectedFiles);
+                // TODO: Call the create patent api
+                createPatent(formData);
+            });
+
+        }
+        
+        // Click to upload
+        fileUploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Drag and drop functionality
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            handleFiles(files);
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            // Upload file to database
+            // Assume there is a global or accessible variable "currentCaseId" which stores the case_id for which files are being uploaded
+            if (typeof currentCaseId !== 'undefined' && currentCaseId) {
+                files.forEach(file => {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    fetch(`/api/upload-file-to-local-storage/${currentCaseId}`, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) {
+                            console.error(`Failed to upload file ${file.name}: ${data.message}`);
+                            alert(`Failed to upload file: ${file.name}`);
+                        }
+                    })
+                    .catch(err => {
+                        console.error(`Error uploading file ${file.name}:`, err);
+                        alert(`Error uploading file: ${file.name}`);
+                    });
+                });
+            }
+            handleFiles(files);
+        });
+
+        // Add visual feedback for form validation
+        document.querySelectorAll('.form-input, .form-textarea').forEach(input => {
+            input.addEventListener('blur', function() {
+                if (this.hasAttribute('required') && this.value.trim() === '') {
+                    this.style.borderColor = '#e74c3c';
+                } else {
+                    this.style.borderColor = '#D8D6C4';
+                }
+            });
+
+            input.addEventListener('input', function() {
+                if (this.style.borderColor === 'rgb(231, 76, 60)') {
+                    this.style.borderColor = '#D8D6C4';
+                }
+            });
+        });
+    </script>   
+</body>
+</html>

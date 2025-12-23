@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Case Details - Patent Gap AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --background: hsl(210, 20%, 98%);
+      --foreground: hsl(222, 47%, 11%);
+      --card: hsl(0, 0%, 100%);
+      --primary: hsl(170, 70%, 8%);
+      --primary-foreground: hsl(0, 0%, 100%);
+      --secondary: hsl(210, 40%, 96%);
+      --muted: hsl(210, 40%, 96%);
+      --muted-foreground: hsl(215, 16%, 47%);
+      --success: hsl(142, 71%, 45%);
+      --warning: hsl(38, 92%, 50%);
+      --destructive: hsl(0, 72%, 51%);
+      --border: hsl(214, 32%, 91%);
+      --radius: 0.5rem;
+      --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+      --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -2px hsl(0 0% 0% / 0.1);
+      --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -4px hsl(0 0% 0% / 0.1);
+      
+      /* Sidebar colors */
+      --sidebar-background: hsl(170, 70%, 8%);
+      --sidebar-foreground: hsl(0, 0%, 100%);
+      --sidebar-primary: hsl(170, 70%, 15%);
+      --sidebar-accent: hsl(170, 60%, 12%);
+      --sidebar-border: hsl(170, 50%, 10%);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: var(--background);
+      color: var(--foreground);
+      line-height: 1.6;
+      padding: 0;
+      margin: 0;
+      display: flex;
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 100vh;
+      width: 256px;
+      background: var(--sidebar-background);
+      color: var(--sidebar-foreground);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+
+    .sidebar.open {
+      transform: translateX(0);
+    }
+
+    @media (min-width: 1024px) {
+      .sidebar {
+        transform: translateX(0);
+        position: relative;
+      }
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--sidebar-border);
+    }
+
+    .sidebar-header h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--sidebar-foreground);
+    }
+
+    .sidebar-content {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .sidebar-group {
+      margin-bottom: 24px;
+    }
+
+    .sidebar-group-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--sidebar-foreground);
+      opacity: 0.6;
+      margin-bottom: 8px;
+      padding: 0 12px;
+    }
+
+    .sidebar-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      padding-left: 12px;
+      border-radius: var(--radius);
+      color: var(--sidebar-foreground);
+      opacity: 0.8;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-nav-item:hover {
+      background: var(--sidebar-accent);
+      color: var(--sidebar-foreground);
+      opacity: 1;
+    }
+
+    .sidebar-nav-item.active {
+      background: var(--sidebar-primary);
+      color: var(--sidebar-foreground);
+      opacity: 1;
+    }
+
+    .sidebar-nav-item-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid var(--sidebar-border);
+    }
+
+    .sidebar-footer p {
+      font-size: 12px;
+      color: var(--sidebar-foreground);
+      opacity: 0.6;
+    }
+
+    /* Hamburger Menu */
+    .hamburger-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 1001;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      transition: all 0.2s;
+    }
+
+    .hamburger-btn:hover {
+      background: var(--muted);
+    }
+
+    @media (min-width: 1024px) {
+      .hamburger-btn {
+        display: none;
+      }
+    }
+
+    .hamburger-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+    }
+
+    .hamburger-icon span {
+      width: 100%;
+      height: 2px;
+      background: var(--foreground);
+      border-radius: 2px;
+      transition: all 0.3s;
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(1) {
+      transform: rotate(45deg) translate(5px, 5px);
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(3) {
+      transform: rotate(-45deg) translate(7px, -6px);
+    }
+
+    .sidebar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+    }
+
+    .sidebar-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      margin-left: 0;
+      transition: margin-left 0.3s ease;
+    }
+
+    @media (min-width: 1024px) {
+      .main-content {
+        margin-left: 256px;
+      }
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    @media (min-width: 1024px) {
+      .container {
+        padding: 32px;
+      }
+    }
+
+    /* Header Section */
+    .page-header {
+      margin-bottom: 32px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .page-header-left {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--foreground);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .back-button:hover {
+      background: var(--muted);
+    }
+
+    .page-title {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .page-subtitle {
+      color: var(--muted-foreground);
+      margin-top: 4px;
+    }
+
+    .page-header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Status Badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 14px;
+      font-weight: 500;
+      border: 1px solid;
+    }
+
+    .status-badge-complete {
+      background: hsl(142, 71%, 45%, 0.1);
+      color: var(--success);
+      border-color: hsl(142, 71%, 45%, 0.2);
+    }
+
+    .status-badge-processing {
+      background: hsl(38, 92%, 50%, 0.1);
+      color: var(--warning);
+      border-color: hsl(38, 92%, 50%, 0.2);
+    }
+
+    .status-badge-draft {
+      background: var(--muted);
+      color: var(--muted-foreground);
+      border-color: var(--border);
+    }
+
+    /* Info Grid */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .info-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .info-card-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+    }
+
+    .info-card-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--foreground);
+    }
+
+    .info-card-value.mono {
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+    }
+
+    /* Content Sections */
+    .content-section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 16px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .card-content {
+      color: var(--muted-foreground);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Progress Section */
+    .progress-section {
+      margin-bottom: 24px;
+    }
+
+    .progress-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .progress-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--muted-foreground);
+    }
+
+    .progress-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--foreground);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--muted);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--warning);
+      transition: width 0.3s;
+    }
+
+    /* Matches Section */
+    .matches-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .match-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.2s;
+      cursor: pointer;
+    }
+
+    .match-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .match-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .match-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .match-card-patent {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+
+    .risk-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid;
+    }
+
+    .risk-high {
+      background: hsl(0, 72%, 51%, 0.1);
+      color: var(--destructive);
+      border-color: hsl(0, 72%, 51%, 0.2);
+    }
+
+    .risk-medium {
+      background: hsl(38, 92%, 50%, 0.1);
+      color: var(--warning);
+      border-color: hsl(38, 92%, 50%, 0.2);
+    }
+
+    .risk-low {
+      background: hsl(142, 71%, 45%, 0.1);
+      color: var(--success);
+      border-color: hsl(142, 71%, 45%, 0.2);
+    }
+
+    .match-score {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .score-label {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+    }
+
+    .score-bar {
+      width: 100%;
+      height: 6px;
+      background: var(--muted);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+
+    .score-fill {
+      height: 100%;
+      transition: width 0.3s;
+    }
+
+    .score-fill.high {
+      background: var(--destructive);
+    }
+
+    .score-fill.medium {
+      background: var(--warning);
+    }
+
+    .score-fill.low {
+      background: var(--success);
+    }
+
+    .score-value {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-family: inherit;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+
+    .btn-primary:hover {
+      background: hsl(170, 70%, 8%, 0.9);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--foreground);
+      border: 1px solid var(--border);
+    }
+
+    .btn-outline:hover {
+      background: var(--muted);
+    }
+
+    /* Loading States */
+    .loading {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted-foreground);
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--muted);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-message {
+      background: hsl(0, 72%, 51%, 0.1);
+      border: 1px solid hsl(0, 72%, 51%, 0.2);
+      color: var(--destructive);
+      padding: 16px;
+      border-radius: var(--radius);
+      text-align: center;
+    }
+
+    /* Empty States */
+    .empty-state {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted-foreground);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    /* Metadata List */
+    .metadata-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .metadata-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+    }
+
+    .metadata-icon {
+      width: 16px;
+      height: 16px;
+      color: var(--muted-foreground);
+    }
+
+    .metadata-label {
+      color: var(--muted-foreground);
+      min-width: 100px;
+    }
+
+    .metadata-value {
+      color: var(--foreground);
+      font-weight: 500;
+    }
+
+    /* Tags */
+    .tags-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      background: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 12px;
+      color: var(--foreground);
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar Overlay (Mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Hamburger Menu Button -->
+  <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()">
+    <div class="hamburger-icon">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  </button>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>Patent Gap AI</h2>
+    </div>
+    <div class="sidebar-content">
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">Main</div>
+        <a href="dashboard.html" class="sidebar-nav-item" onclick="handleNavClick('dashboard', event)">
+          <div class="sidebar-nav-item-icon">📊</div>
+          <span>Dashboard</span>
+        </a>
+        <a href="#new-project" class="sidebar-nav-item" onclick="handleNavClick('new-project', event)">
+          <div class="sidebar-nav-item-icon">📁</div>
+          <span>New Project</span>
+        </a>
+        <a href="history.html" class="sidebar-nav-item" onclick="handleNavClick('history', event)">
+          <div class="sidebar-nav-item-icon">🕐</div>
+          <span>History</span>
+        </a>
+        <a href="settings.html" class="sidebar-nav-item" onclick="handleNavClick('settings', event)">
+          <div class="sidebar-nav-item-icon">⚙️</div>
+          <span>Settings</span>
+        </a>
+        <a href="help.html" class="sidebar-nav-item" onclick="handleNavClick('help', event)">
+          <div class="sidebar-nav-item-icon">❓</div>
+          <span>Help</span>
+        </a>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <p>© 2025 Patent Gap AI</p>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      <!-- Page Header -->
+      <div class="page-header">
+        <div class="page-header-left">
+          <a href="dashboard.html" class="back-button">
+            <span>←</span>
+            Back to Dashboard
+          </a>
+          <h1 class="page-title" id="caseTitle">Loading...</h1>
+          <p class="page-subtitle" id="casePatentId">Loading case details...</p>
+        </div>
+        <div class="page-header-right">
+          <span class="status-badge" id="statusBadge">Loading...</span>
+        </div>
+      </div>
+
+      <!-- Info Grid -->
+      <div class="info-grid" id="infoGrid">
+        <!-- Will be populated dynamically -->
+      </div>
+
+      <!-- Progress Section (if processing) -->
+      <div class="content-section" id="progressSection" style="display: none;">
+        <div class="card">
+          <div class="progress-section">
+            <div class="progress-header">
+              <span class="progress-label">Analysis Progress</span>
+              <span class="progress-value" id="progressValue">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-bar-fill" id="progressBar" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Case Details Section -->
+      <div class="content-section">
+        <h2 class="section-title">Case Information</h2>
+        <div class="card">
+          <div class="card-content">
+            <div class="metadata-list" id="caseMetadata">
+              <!-- Will be populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Context Section -->
+      <div class="content-section" id="contextSection" style="display: none;">
+        <h2 class="section-title">Context & Description</h2>
+        <div class="card">
+          <div class="card-content" id="contextContent">
+            <!-- Will be populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Search Strategy Section -->
+      <div class="content-section" id="strategySection" style="display: none;">
+        <h2 class="section-title">Search Strategy</h2>
+        <div class="card">
+          <div class="card-content">
+            <div id="strategyContent">
+              <!-- Will be populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Matches Section (if complete) -->
+      <div class="content-section" id="matchesSection" style="display: none;">
+        <div class="card-header" style="margin-bottom: 16px;">
+          <h2 class="section-title" style="margin: 0;">Potential Matches</h2>
+          <span class="status-badge status-badge-complete" id="matchCountBadge">0 matches</span>
+        </div>
+        <div class="matches-grid" id="matchesGrid">
+          <!-- Will be populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="content-section">
+        <div class="action-buttons">
+          <button class="btn btn-primary" id="viewResultsBtn" style="display: none;" onclick="viewResults()">
+            <span>📊</span>
+            View Full Results
+          </button>
+          <button class="btn btn-outline" onclick="exportCase()">
+            <span>📥</span>
+            Export Case
+          </button>
+          <button class="btn btn-outline" onclick="deleteCase()" style="color: var(--destructive);">
+            <span>🗑️</span>
+            Delete Case
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const API_BASE_URL = 'http://localhost:5000';
+
+    // Get case ID from URL
+    function getCaseId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('id');
+    }
+
+    // Sidebar Toggle
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+      const hamburger = document.getElementById('hamburgerBtn');
+      
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+      hamburger.classList.toggle('open');
+    }
+
+    function handleNavClick(page, event) {
+      event.preventDefault();
+      
+      document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      event.currentTarget.classList.add('active');
+      
+      if (window.innerWidth < 1024) {
+        toggleSidebar();
+      }
+      
+      if (page === 'new-project') {
+        window.dispatchEvent(new CustomEvent('openPatentModal'));
+      }
+    }
+
+    document.getElementById('sidebarOverlay').addEventListener('click', () => {
+      if (window.innerWidth < 1024) {
+        toggleSidebar();
+      }
+    });
+
+    // Fetch case details
+    async function fetchCaseDetails() {
+      const caseId = getCaseId();
+      const userId = getUserId();
+      
+      if (!caseId) {
+        showError('No case ID provided');
+        return null;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/${caseId}`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error('Case not found');
+          }
+          throw new Error(`Failed to fetch case: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('Error fetching case details:', error);
+        showError(`Error loading case: ${error.message}`);
+        return null;
+      }
+    }
+
+    // Render case details
+    function renderCaseDetails(caseData) {
+      if (!caseData) return;
+
+      // Header
+      document.getElementById('caseTitle').textContent = caseData.title || caseData.name || 'Untitled Case';
+      document.getElementById('casePatentId').textContent = caseData.patentId || caseData.patent_id || 'N/A';
+
+      // Status badge
+      const status = caseData.status || 'draft';
+      const statusBadge = document.getElementById('statusBadge');
+      statusBadge.className = `status-badge status-badge-${status}`;
+      statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+
+      // Info grid
+      const infoGrid = document.getElementById('infoGrid');
+      infoGrid.innerHTML = `
+        <div class="info-card">
+          <div class="info-card-label">Patent ID</div>
+          <div class="info-card-value mono">${escapeHtml(caseData.patentId || caseData.patent_id || 'N/A')}</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label">Status</div>
+          <div class="info-card-value">${status.charAt(0).toUpperCase() + status.slice(1)}</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label">Matches Found</div>
+          <div class="info-card-value">${caseData.matchCount || caseData.match_count || 0}</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label">Last Updated</div>
+          <div class="info-card-value">${formatDate(caseData.lastUpdated || caseData.updated_at || caseData.created_at)}</div>
+        </div>
+      `;
+
+      // Progress section (if processing)
+      if (status === 'processing' && caseData.progress !== undefined) {
+        const progressSection = document.getElementById('progressSection');
+        progressSection.style.display = 'block';
+        document.getElementById('progressValue').textContent = `${caseData.progress}%`;
+        document.getElementById('progressBar').style.width = `${caseData.progress}%`;
+      }
+
+      // Case metadata
+      const metadata = document.getElementById('caseMetadata');
+      metadata.innerHTML = `
+        <div class="metadata-item">
+          <span class="metadata-icon">📅</span>
+          <span class="metadata-label">Created:</span>
+          <span class="metadata-value">${formatDate(caseData.created_at || caseData.createdAt)}</span>
+        </div>
+        <div class="metadata-item">
+          <span class="metadata-icon">🕐</span>
+          <span class="metadata-label">Last Updated:</span>
+          <span class="metadata-value">${formatTimeAgo(caseData.updated_at || caseData.lastUpdated || caseData.created_at)}</span>
+        </div>
+        ${caseData.user_id ? `
+          <div class="metadata-item">
+            <span class="metadata-icon">👤</span>
+            <span class="metadata-label">Owner:</span>
+            <span class="metadata-value">User ID: ${caseData.user_id}</span>
+          </div>
+        ` : ''}
+      `;
+
+      // Context section
+      if (caseData.context || caseData.description) {
+        const contextSection = document.getElementById('contextSection');
+        contextSection.style.display = 'block';
+        document.getElementById('contextContent').textContent = caseData.context || caseData.description || '';
+      }
+
+      // Search strategy section
+      if (caseData.search_strategy || caseData.companies || caseData.countries) {
+        const strategySection = document.getElementById('strategySection');
+        strategySection.style.display = 'block';
+        
+        const strategy = caseData.search_strategy || {};
+        const companies = caseData.companies || strategy.companies || [];
+        const countries = caseData.countries || strategy.countries || [];
+        const terms = caseData.terms || strategy.terms || [];
+        
+        let strategyHTML = '';
+        
+        if (companies.length > 0) {
+          strategyHTML += `
+            <div style="margin-bottom: 16px;">
+              <div class="info-card-label" style="margin-bottom: 8px;">Target Companies (${companies.length})</div>
+              <div class="tags-container">
+                ${companies.map(c => `<span class="tag">${escapeHtml(c)}</span>`).join('')}
+              </div>
+            </div>
+          `;
+        }
+        
+        if (countries.length > 0) {
+          strategyHTML += `
+            <div style="margin-bottom: 16px;">
+              <div class="info-card-label" style="margin-bottom: 8px;">Countries (${countries.length})</div>
+              <div class="tags-container">
+                ${countries.map(c => `<span class="tag">${escapeHtml(c)}</span>`).join('')}
+              </div>
+            </div>
+          `;
+        }
+        
+        if (terms.length > 0) {
+          strategyHTML += `
+            <div>
+              <div class="info-card-label" style="margin-bottom: 8px;">Search Terms (${terms.length})</div>
+              <div class="tags-container">
+                ${terms.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
+              </div>
+            </div>
+          `;
+        }
+        
+        document.getElementById('strategyContent').innerHTML = strategyHTML || '<p style="color: var(--muted-foreground);">No search strategy configured.</p>';
+      }
+
+      // Matches section (if complete and has matches)
+      if (status === 'complete' && (caseData.matches || caseData.matchCount > 0)) {
+        const matchesSection = document.getElementById('matchesSection');
+        matchesSection.style.display = 'block';
+        
+        const matches = caseData.matches || [];
+        const matchCount = matches.length || caseData.matchCount || 0;
+        
+        document.getElementById('matchCountBadge').textContent = `${matchCount} ${matchCount === 1 ? 'match' : 'matches'}`;
+        
+        if (matches.length > 0) {
+          const matchesGrid = document.getElementById('matchesGrid');
+          matchesGrid.innerHTML = matches.map(match => {
+            const riskLevel = match.riskLevel || match.risk_level || 'low';
+            const overlapScore = match.overlapScore || match.overlap_score || 0;
+            
+            return `
+              <div class="match-card" onclick="viewMatchDetails('${match.id || match.patent}')">
+                <div class="match-card-header">
+                  <div>
+                    <div class="match-card-title">${escapeHtml(match.title || match.patent_title || 'Untitled')}</div>
+                    <div class="match-card-patent">${escapeHtml(match.patent || match.patent_number || 'N/A')}</div>
+                  </div>
+                  <span class="risk-badge risk-${riskLevel}">
+                    ${riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1)}
+                  </span>
+                </div>
+                ${match.company ? `<div style="font-size: 12px; color: var(--muted-foreground); margin-bottom: 12px;">Company: ${escapeHtml(match.company)}</div>` : ''}
+                <div class="match-score">
+                  <div class="score-label">Overlap Score</div>
+                  <div class="score-bar">
+                    <div class="score-fill ${riskLevel}" style="width: ${overlapScore}%"></div>
+                  </div>
+                  <div class="score-value">${overlapScore}%</div>
+                  ${match.matchedClaims ? `<div style="font-size: 12px; color: var(--muted-foreground); margin-top: 8px;">Matched Claims: ${match.matchedClaims.join(', ')}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          document.getElementById('matchesGrid').innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">✅</div>
+              <p>No potential infringement matches found.</p>
+            </div>
+          `;
+        }
+        
+        // Show view results button
+        if (caseData.result_id || caseData.resultId) {
+          document.getElementById('viewResultsBtn').style.display = 'inline-flex';
+        }
+      }
+    }
+
+    function showError(message) {
+      const container = document.querySelector('.container');
+      container.innerHTML = `
+        <div class="error-message">
+          <strong>Error:</strong> ${escapeHtml(message)}
+          <button class="btn btn-outline" onclick="location.reload()" style="margin-top: 8px;">
+            Retry
+          </button>
+        </div>
+      `;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function formatDate(dateString) {
+      if (!dateString) return 'Unknown';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    function formatTimeAgo(dateString) {
+      if (!dateString) return 'Unknown';
+      
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInSeconds = Math.floor((now - date) / 1000);
+      
+      if (diffInSeconds < 60) return 'Just now';
+      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+      if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+      return `${Math.floor(diffInSeconds / 604800)} weeks ago`;
+    }
+
+    function getUserId() {
+      try {
+        const sessionData = JSON.parse(localStorage.getItem('session') || '{}');
+        return sessionData?.user_id || sessionData?.user?.id || null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function viewResults() {
+      const caseId = getCaseId();
+      // Navigate to results page if result ID is available
+      window.location.href = `results.html?case_id=${caseId}`;
+    }
+
+    function viewMatchDetails(matchId) {
+      const caseId = getCaseId();
+      window.location.href = `comparison.html?case_id=${caseId}&match_id=${matchId}`;
+    }
+
+    async function exportCase() {
+      const caseId = getCaseId();
+      alert(`Export functionality for case ${caseId}`);
+      // Implement export logic
+    }
+
+    async function deleteCase() {
+      const caseId = getCaseId();
+      if (confirm('Are you sure you want to delete this case? This action cannot be undone.')) {
+        try {
+          const userId = getUserId();
+          const response = await fetch(`${API_BASE_URL}/api/cases/${caseId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+          });
+          
+          if (response.ok) {
+            alert('Case deleted successfully');
+            window.location.href = 'dashboard.html';
+          } else {
+            throw new Error('Failed to delete case');
+          }
+        } catch (error) {
+          alert(`Error: ${error.message}`);
+        }
+      }
+    }
+
+    // Load case details on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+      const caseData = await fetchCaseDetails();
+      if (caseData) {
+        renderCaseDetails(caseData);
+      }
+    });
+  </script>
+</body>
+</html>

@@ -15,6 +15,7 @@ from llm_processor import *
 from datetime import datetime
 from sources.USPTO import *
 from sources.Gemini import *
+from sources.OpenAlex import *
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -34,24 +35,22 @@ swagger = initialize_swagger(app)
 # Routes for serving HTML pages
 @app.route('/')
 def index():
-
-    connectionString = connect_to_database()
-    print('TEST: Connect to database: ', connectionString)
-
-
     """Serve the home page"""
-    print('Collections: ', getCollectionsFromDatabase(connect_to_database()))
-    if not checkCollectionExists(connect_to_database(), getCaseDatabaseName()):
-        print('\nCreating cases collection: ', createCollection(connect_to_database(), getCaseDatabaseName()))
-    if not checkCollectionExists(connect_to_database(), 'patents'):
-        print('\nCreating patents collection: ', createCollection(connect_to_database(), 'patents'))
-    if not checkCollectionExists(connect_to_database(), getUserDatabaseName()):
-        print('\nCreating users collection: ', createCollection(connect_to_database(), getUserDatabaseName()))
-    if not checkCollectionExists(connect_to_database(), getAlertDatabaseName()):
-        print('\nCreating alerts collection: ', createCollection(connect_to_database(), getAlertDatabaseName()))
-    if not checkCollectionExists(connect_to_database(), getDemoDatabaseName()):
-        print('\nCreating demo_requests collection: ', createCollection(connect_to_database(), getDemoDatabaseName()))
-    return render_template('index.html')
+    # try:
+    #   print('Collections: ', getCollectionsFromDatabase(connect_to_database()))
+    #   if not checkCollectionExists(connect_to_database(), getCaseDatabaseName()):
+    #       print('\nCreating cases collection: ', createCollection(connect_to_database(), getCaseDatabaseName()))
+    #   if not checkCollectionExists(connect_to_database(), 'patents'):
+    #       print('\nCreating patents collection: ', createCollection(connect_to_database(), 'patents'))
+    #   if not checkCollectionExists(connect_to_database(), getUserDatabaseName()):
+    #       print('\nCreating users collection: ', createCollection(connect_to_database(), getUserDatabaseName()))
+    #   if not checkCollectionExists(connect_to_database(), getAlertDatabaseName()):
+    #       print('\nCreating alerts collection: ', createCollection(connect_to_database(), getAlertDatabaseName()))
+    #   if not checkCollectionExists(connect_to_database(), getDemoDatabaseName()):
+    #       print('\nCreating demo_requests collection: ', createCollection(connect_to_database(), getDemoDatabaseName()))
+    # except Exception as e:
+    #   print('\nERROR: Error creating collections: ', str(e))
+    return render_template('index-new.html')
 
 @app.route('/favicon.ico')
 def favicon():
@@ -64,10 +63,12 @@ def serve_image(imageName):
     """Serve images from the Assets directory"""
     return app.send_static_file(f'{imageName}')
 
+## Front End Pages
+
 @app.route('/login')
 def login_page():
     """Serve the login page"""
-    return render_template('login.html')
+    return render_template('login-new.html')
 
 @app.route('/home')
 def home_page():
@@ -75,6 +76,7 @@ def home_page():
     if 'user_id' not in session:
         return redirect(url_for('login_page'))
     userData = get_user_profile(session['user_id'])
+    return render_template('home-new.html')
     if userData and userData.get('role') == 'client':
         return render_template('home-client.html')
     return render_template('home.html')
@@ -84,6 +86,7 @@ def case_details_page():
     """Serve the case details page"""
     if 'user_id' not in session:
         return redirect(url_for('login_page'))
+    return render_template('case-details-new.html')
     return render_template('case-details.html')
 
 @app.route('/change-password')
@@ -103,8 +106,13 @@ def add_patent_page():
 @app.route('/request-demo')
 def request_demo_page():
     """Serve the request demo page"""
+    return render_template('request-demo-new.html')
     return render_template('request-demo.html')
 
+@app.route('/show-demo')
+def show_demo_page():
+  """Serve the show demo page"""
+  return render_template('show-demo.html')
 
 # API Endpoints
 @app.route('/api/create-demo-request', methods=['POST'])
@@ -1367,11 +1375,6 @@ def api_import_patent_from_uspto():
       schema:
         $ref: '#/definitions/ErrorResponse'
   """
-  if 'user_id' not in session:
-    print('\nUser ID is not in session')
-    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-  user_id = session['user_id']
-  print(f'LOG: {session["user_id"]} Import Patent from USPTO')
   data = request.get_json()
   if data is None:
     print('\nNo Data provided')
@@ -1387,9 +1390,14 @@ def api_import_patent_from_uspto():
   try:
     uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
     uspto_data = uspto_instance.get_complete_patent_info(patent_id)
-    uspto_data['created_by'] = user_id
     uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-    # TODO: Get Keywords from USPTO Data
+    infringements = get_openalex_entities({
+      'entity_name': 'topics',
+      'page': 1,
+      'per_page': 100,
+      'search': '',
+      'timeout': 30
+      })
     print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
     if uspto_data is None:
       return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
@@ -1398,12 +1406,11 @@ def api_import_patent_from_uspto():
       'success': True, 
       'message': 'Patent data imported successfully', 
       'case_id': f"uspto_{patent_id}",
-      'keywords': uspto_data['keywords']
+      'keywords': uspto_data['keywords'],
+      'case_data': uspto_data
       }), 200
   except Exception as e:
     print(f'\nError getting patent data from USPTO: {str(e)}')
-    if 'Rate limit exceeded' in str(e):
-      populateDummyData(patent_id, user_id)
     return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
 
 @app.route('/api/create-patent', methods=['POST'])
@@ -1503,40 +1510,42 @@ def fetch_patent_from_uspto():
             example: "Error normalizing patent data: [error details]"
   """
   if 'user_id' not in session:
+    print('\nUser ID is not in session')
     return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-  print(f'LOG: {session["user_id"]} Fetch Patent from USPTO')
+  user_id = session['user_id']
+  print(f'LOG: {session["user_id"]} Import Patent from USPTO')
   data = request.get_json()
   if data is None:
+    print('\nNo Data provided')
     return jsonify({'success': False, 'message': 'No data provided'}), 400
-  if 'patentId' not in data:
-    return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
+  if 'patentId' not in data.keys():
+    print('\nPatent ID is not Provided')
+    return jsonify({'success': False, 'message': 'Patent ID is not provided'}), 400
+  patent_id = data.get('patentId')
+  if patent_id is None or patent_id == '':
+    print('\nPatent ID is not valid')
+    return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
   
-  patentId = data.get('patentId')
-  print('Patent ID: ', patentId)
-  if patentId is None or patentId.trim() == '':
-    return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
-
-  try: 
-    uspto_api = USPTOPatentAPI(api_key=getEnvKey('uspto'))
-    patentData = uspto_api.get_complete_patent_info(patentId)     # Document data already included. Only references are missing.
-    if (patentData is None) or ('_id' not in str(patentData)) or (patentData['_id'] is None) or (patentData['_id'] == ''):
-      print('Patent Data is None or _id is not in keys or _id is None or _id is empty')
+  try:
+    uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
+    uspto_data = uspto_instance.get_complete_patent_info(patent_id)
+    uspto_data['created_by'] = user_id
+    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
+    # TODO: Get Keywords from USPTO Data
+    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
+    if uspto_data is None:
       return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
-
-    creationResult = create_case(patentData)
-    if 'case_id' not in creationResult:
-      return jsonify({'success': False, 'message': 'Failed to create case. Please check the patent data and try again.'}), 400
-      
+    # creationResult = create_case(uspto_data)
     return jsonify({
       'success': True, 
-      'message': 'Patent has been fetched successfully. This case is now being monitored for similarity.', 
-      'case_id': creationResult['case_id'],
-      'keywords': patentData['keywords']
+      'message': 'Patent data imported successfully', 
+      'case_id': f"uspto_{patent_id}",
+      'keywords': uspto_data['keywords'],
+      'case_data': uspto_data
       }), 200
-
   except Exception as e:
-    print(f'Error normalizing patent data: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error normalizing patent data: {str(e)}'}), 500
+    print(f'\nError getting patent data from USPTO: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
 
 @app.route('/api/similarity-analysis-gemini', methods=['POST'])
 def similarity_analysis_gemini():

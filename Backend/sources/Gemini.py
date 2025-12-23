@@ -69,7 +69,7 @@ def get_model_client():
     This function is used to get the model client for the given model name.
     It will return the model client if it is valid, otherwise it will return None.
     """
-    genai.configure(api_key='AIzaSyBeNle5Nq_0k-yHraLAS0FvN0S7PaJZQ2E')
+    genai.configure(api_key='AIzaSyAI1IpRaiz9CvrxS9plKQLfluJRIXsJCCw')
     return genai.GenerativeModel(model_name)
 
 def get_claims(document_contents: str):
@@ -153,7 +153,7 @@ def get_similar_infringements(claims: list[str]):
         return infringements_list
 
     except Exception as e:
-        print('\ERROR: Error in get_similar_infringements: ', e)
+        print('\nERROR: Error in get_similar_infringements: ', e)
         return []
 
 def check_infringement_results(infringements: list):

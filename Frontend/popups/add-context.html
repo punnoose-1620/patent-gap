@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Context - Step 2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --background: hsl(210, 20%, 98%);
+      --foreground: hsl(222, 47%, 11%);
+      --card: hsl(0, 0%, 100%);
+      --primary: hsl(170, 70%, 8%);
+      --primary-foreground: hsl(0, 0%, 100%);
+      --muted: hsl(210, 40%, 96%);
+      --muted-foreground: hsl(215, 16%, 47%);
+      --warning: hsl(38, 92%, 50%);
+      --border: hsl(214, 32%, 91%);
+      --radius: 0.5rem;
+      --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -4px hsl(0 0% 0% / 0.1);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+
+    .modal-content {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 672px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .modal-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius);
+      background: hsl(170, 70%, 8%, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      font-size: 20px;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .modal-subtitle {
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+
+    .close-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted-foreground);
+      transition: background 0.2s;
+    }
+
+    .close-btn:hover {
+      background: var(--muted);
+    }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .context-banner {
+      background: linear-gradient(to bottom right, 
+        hsl(170, 70%, 8%, 0.1), 
+        hsl(170, 70%, 8%, 0.05));
+      border: 1px solid hsl(170, 70%, 8%, 0.2);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .context-banner-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .context-icon {
+      color: var(--primary);
+      font-size: 24px;
+      margin-top: 2px;
+    }
+
+    .context-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .context-description {
+      font-size: 14px;
+      color: var(--muted-foreground);
+      line-height: 1.6;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--muted);
+      color: var(--foreground);
+    }
+
+    .form-textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--background);
+      resize: vertical;
+      min-height: 120px;
+      line-height: 1.6;
+      transition: all 0.2s;
+    }
+
+    .form-textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px hsl(170, 70%, 8%, 0.1);
+    }
+
+    .form-hint {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-top: 8px;
+    }
+
+    .ai-questions {
+      background: hsl(38, 92%, 50%, 0.1);
+      border: 1px solid hsl(38, 92%, 50%, 0.2);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-top: 24px;
+    }
+
+    .ai-questions-title {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+
+    .ai-question {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+
+    .ai-question:last-child {
+      margin-bottom: 0;
+    }
+
+    .ai-question-label {
+      font-weight: 500;
+    }
+
+    .modal-footer {
+      padding: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .btn {
+      padding: 8px 24px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-family: inherit;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--foreground);
+    }
+
+    .btn-secondary:hover {
+      background: var(--muted);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+
+    .btn-primary:hover {
+      background: hsl(170, 70%, 8%, 0.9);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .loading {
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .loading.active {
+      display: flex;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--primary-foreground);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-icon">📄</div>
+          <div>
+            <h2 class="modal-title">New Patent Analysis</h2>
+            <p class="modal-subtitle">Step 2: Add Context</p>
+          </div>
+        </div>
+        <button class="close-btn" onclick="closeModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="context-banner">
+          <div class="context-banner-header">
+            <div class="context-icon">💬</div>
+            <div>
+              <h3 class="context-title">Put the Armor on the Warrior</h3>
+              <p class="context-description">
+                Help our AI understand your patent better. Provide context about the core novelty,
+                defensive goals, or specific technical elements you want to focus on.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" id="patentLabel">Patent Number</label>
+          <div class="form-input" id="patentDisplay">
+            <span id="patentValue"></span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Context Description</label>
+          <textarea
+            id="contextDescription"
+            class="form-textarea"
+            placeholder="Example: Focus on the specific hinge mechanism for foldable displays. The novelty lies in the dual-axis rotation system with friction reduction coating. We should look for material overlaps in competing devices, particularly in the smartphone and tablet markets."
+            oninput="validateForm()"
+          ></textarea>
+          <p class="form-hint">
+            Be specific about technical details, target markets, and key differentiators
+          </p>
+        </div>
+
+        <div class="ai-questions">
+          <div class="ai-questions-title">AI Refinement Questions</div>
+          <div class="ai-question">
+            <span class="ai-question-label">Q:</span>
+            <span>Should we also analyze specific material compositions?</span>
+          </div>
+          <div class="ai-question">
+            <span class="ai-question-label">Q:</span>
+            <span>Are there particular jurisdictions you're concerned about?</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="goBack()">Back</button>
+        <button class="btn btn-primary" id="startAnalysisBtn" onclick="handleStartAnalysis()">
+          <span id="btnText">Start Analysis</span>
+          <span class="loading" id="loadingSpinner">
+            <span class="spinner"></span>
+            Processing...
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'http://localhost:5000/api';
+
+    // Load data from Step 1
+    let step1Data = null;
+
+    function loadStep1Data() {
+      const data = sessionStorage.getItem('patentUploadStep1');
+      if (!data) {
+        alert('No data found. Please start from Step 1.');
+        window.location.href = 'patent-upload-step1.html';
+        return;
+      }
+      
+      step1Data = JSON.parse(data);
+      
+      // Display patent info
+      const patentLabel = document.getElementById('patentLabel');
+      const patentValue = document.getElementById('patentValue');
+      
+      if (step1Data.activeTab === 'patentId') {
+        patentLabel.textContent = 'Patent Number';
+        patentValue.textContent = step1Data.patentNumber;
+        patentValue.style.fontFamily = 'monospace';
+      } else {
+        patentLabel.textContent = 'Uploaded File';
+        patentValue.innerHTML = `<span style="color: var(--primary);">📄</span> ${step1Data.fileName}`;
+      }
+    }
+
+    function validateForm() {
+      const context = document.getElementById('contextDescription').value.trim();
+      const btn = document.getElementById('startAnalysisBtn');
+      // Context is optional, so button is always enabled
+      btn.disabled = false;
+    }
+
+    async function handleStartAnalysis() {
+      const context = document.getElementById('contextDescription').value.trim();
+      const btn = document.getElementById('startAnalysisBtn');
+      const btnText = document.getElementById('btnText');
+      const loadingSpinner = document.getElementById('loadingSpinner');
+      
+      // Show loading
+      btn.disabled = true;
+      btnText.style.display = 'none';
+      loadingSpinner.classList.add('active');
+      
+      try {
+        // Prepare data for API
+        const userId = getUserId();
+        const formData = new FormData();
+        
+        formData.append('project_name', step1Data.projectName);
+        formData.append('context', context);
+        formData.append('user_id', userId);
+        
+        if (step1Data.activeTab === 'patentId') {
+          formData.append('patent_id', step1Data.patentNumber);
+          formData.append('upload_type', 'patent_id');
+        } else {
+          // For file upload, you'd need to handle the file
+          // This is a simplified version
+          formData.append('upload_type', 'file');
+          formData.append('file_name', step1Data.fileName);
+        }
+        
+        // Submit to API
+        const response = await fetch(`${API_BASE_URL}/create-case`, {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to create case: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        // Store case ID for next page
+        sessionStorage.setItem('currentCaseId', result.case_id || result.id);
+        sessionStorage.setItem('projectName', step1Data.projectName);
+        sessionStorage.setItem('patentInfo', step1Data.activeTab === 'patentId' 
+          ? step1Data.patentNumber 
+          : step1Data.fileName);
+        
+        // Clear Step 1 data
+        sessionStorage.removeItem('patentUploadStep1');
+        
+        // Navigate to Analysis page
+        const patentParam = step1Data.activeTab === 'patentId' 
+          ? step1Data.patentNumber 
+          : step1Data.fileName;
+        window.location.href = `analysis.html?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
+        
+      } catch (error) {
+        console.error('Error starting analysis:', error);
+        alert(`Error: ${error.message}. Please try again.`);
+        
+        // Reset button
+        btn.disabled = false;
+        btnText.style.display = 'inline';
+        loadingSpinner.classList.remove('active');
+      }
+    }
+
+    function getUserId() {
+      try {
+        const sessionData = JSON.parse(localStorage.getItem('session') || '{}');
+        return sessionData?.user_id || sessionData?.user?.id || null;
+      } catch (error) {
+        console.error('Error parsing session data:', error);
+        return null;
+      }
+    }
+
+    function goBack() {
+      window.location.href = 'patent-upload-step1.html';
+    }
+
+    function closeModal() {
+      if (confirm('Are you sure you want to cancel? Your progress will be lost.')) {
+        sessionStorage.removeItem('patentUploadStep1');
+        window.location.href = 'dashboard.html';
+      }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      loadStep1Data();
+      validateForm();
+    });
+  </script>
+</body>
+</html>

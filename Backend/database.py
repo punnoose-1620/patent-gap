@@ -32,6 +32,7 @@ def connect_to_database():
     # Get MongoDB connection string from environment
     connection_string = getDatabaseConnectionString()
     # print('\nConnection String: ', connection_string)
+    db_name = 'patent-gap'  # Default, or extract from connection string
     
     if not connection_string:
         raise ValueError("MONGODB_CONNECTION_STRING must be set in .env file.")
@@ -45,11 +46,11 @@ def connect_to_database():
 
             # Get the database (database name is typically in the connection string)
             # Extract database name from connection string or use default
-            db_name = 'patent-gap'  # Default, or extract from connection string
             _mongodb_db = _mongodb_client[db_name]
             # print('\nDatabase: ', _mongodb_db)
         except Exception as e:
-            raise ConnectionError(f"Failed to connect to MongoDB/Firestore: {e}")
+            print(f'\nERROR: Failed to connect to MongoDB/Firestore for database {db_name}: ', str(e))
+            raise ConnectionError(f"Failed to connect to MongoDB/Firestore for database {db_name}: {e}")
     
     return _mongodb_db
 
@@ -79,7 +80,11 @@ def checkCollectionExists(db, collectionName):
         db: MongoDB database instance (from connect_to_database())
         collectionName (str): The name of the collection to check.
     """
-    return collectionName in getCollectionsFromDatabase(db)
+    try:
+        return collectionName in getCollectionsFromDatabase(db)
+    except Exception as e:
+        print(f'\nERROR: Unable to check collection {collectionName} in database: ', str(e))
+    return None
 
 def createCollection(db, collectionName):
     """
@@ -93,7 +98,7 @@ def createCollection(db, collectionName):
         collection = db.create_collection(collectionName)
         return collection
     except Exception as e:
-        print(f"Error creating collection {collectionName}: {e}")
+        print(f"\nERROR: Error creating collection {collectionName}: {e}")
         return None
 
 def getAllData(db, collectionName):

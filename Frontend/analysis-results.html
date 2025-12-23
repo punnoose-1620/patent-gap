@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analysis Results</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --background: hsl(210, 20%, 98%);
+      --foreground: hsl(222, 47%, 11%);
+      --card: hsl(0, 0%, 100%);
+      --primary: hsl(170, 70%, 8%);
+      --muted: hsl(210, 40%, 96%);
+      --muted-foreground: hsl(215, 16%, 47%);
+      --success: hsl(142, 71%, 45%);
+      --warning: hsl(38, 92%, 50%);
+      --destructive: hsl(0, 72%, 51%);
+      --border: hsl(214, 32%, 91%);
+      --radius: 0.5rem;
+      --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+      --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -2px hsl(0 0% 0% / 0.1);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    .header {
+      margin-bottom: 24px;
+    }
+
+    .header h2 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      color: var(--muted-foreground);
+    }
+
+    .patent-info {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--muted);
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      margin-top: 16px;
+    }
+
+    .patent-info-label {
+      color: var(--muted-foreground);
+    }
+
+    .patent-info-value {
+      font-family: 'Courier New', monospace;
+      font-weight: 600;
+    }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .result-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.2s;
+      cursor: pointer;
+    }
+
+    .result-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .result-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .result-card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .result-card-patent {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+
+    .risk-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .risk-high {
+      background: hsl(0, 72%, 51%, 0.1);
+      color: var(--destructive);
+      border: 1px solid hsl(0, 72%, 51%, 0.2);
+    }
+
+    .risk-medium {
+      background: hsl(38, 92%, 50%, 0.1);
+      color: var(--warning);
+      border: 1px solid hsl(38, 92%, 50%, 0.2);
+    }
+
+    .risk-low {
+      background: hsl(142, 71%, 45%, 0.1);
+      color: var(--success);
+      border: 1px solid hsl(142, 71%, 45%, 0.2);
+    }
+
+    .result-card-company {
+      font-size: 14px;
+      color: var(--muted-foreground);
+      margin-bottom: 12px;
+    }
+
+    .score-section {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .score-label {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+    }
+
+    .score-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--muted);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+
+    .score-fill {
+      height: 100%;
+      background: var(--primary);
+      transition: width 0.3s;
+    }
+
+    .score-fill.high {
+      background: var(--destructive);
+    }
+
+    .score-fill.medium {
+      background: var(--warning);
+    }
+
+    .score-fill.low {
+      background: var(--success);
+    }
+
+    .score-value {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .matched-claims {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-top: 8px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted-foreground);
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--muted);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-message {
+      background: hsl(0, 72%, 51%, 0.1);
+      border: 1px solid hsl(0, 72%, 51%, 0.2);
+      color: var(--destructive);
+      padding: 16px;
+      border-radius: var(--radius);
+      text-align: center;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted-foreground);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .stats-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>Analysis Results</h2>
+      <p>Potential infringement matches for your patent</p>
+      <div class="patent-info">
+        <span class="patent-info-label">Patent:</span>
+        <span class="patent-info-value" id="patentName">Loading...</span>
+      </div>
+    </div>
+
+    <div id="statsSummary" class="stats-summary" style="display: none;">
+      <!-- Stats will be populated dynamically -->
+    </div>
+
+    <div id="resultsContainer">
+      <div class="loading">
+        <div class="loading-spinner"></div>
+        <p>Loading results...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'http://localhost:5000/api';
+
+    // Get result ID from URL
+    function getResultId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('id');
+    }
+
+    // Fetch results from API
+    async function fetchResults() {
+      const resultId = getResultId();
+      const userId = getUserId();
+      
+      if (!resultId) {
+        showError('No result ID provided');
+        return null;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/results/${resultId}?user_id=${userId}`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            // Results might still be processing
+            return { status: 'processing' };
+          }
+          throw new Error(`Failed to fetch results: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('Error fetching results:', error);
+        showError(`Error loading results: ${error.message}`);
+        return null;
+      }
+    }
+
+    function renderResults(data) {
+      const container = document.getElementById('resultsContainer');
+      const patentName = sessionStorage.getItem('patentInfo') || 'Unknown Patent';
+      
+      document.getElementById('patentName').textContent = patentName;
+
+      if (!data || data.status === 'processing') {
+        container.innerHTML = `
+          <div class="loading">
+            <div class="loading-spinner"></div>
+            <p>Analysis is still processing. Results will appear here when ready.</p>
+            <button class="btn btn-primary" onclick="location.reload()" style="margin-top: 16px; padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: var(--radius); cursor: pointer;">
+              Refresh
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      const matches = data.matches || data.results || [];
+      
+      if (matches.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">✅</div>
+            <p>No potential infringement matches found.</p>
+            <p style="margin-top: 8px;">Your patent appears to be clear!</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Calculate stats
+      const stats = {
+        total: matches.length,
+        high: matches.filter(m => m.riskLevel === 'high' || m.risk_level === 'high').length,
+        medium: matches.filter(m => m.riskLevel === 'medium' || m.risk_level === 'medium').length,
+        low: matches.filter(m => m.riskLevel === 'low' || m.risk_level === 'low').length
+      };
+
+      // Render stats
+      const statsContainer = document.getElementById('statsSummary');
+      statsContainer.style.display = 'grid';
+      statsContainer.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-value">${stats.total}</div>
+          <div class="stat-label">Total Matches</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--destructive);">${stats.high}</div>
+          <div class="stat-label">High Risk</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--warning);">${stats.medium}</div>
+          <div class="stat-label">Medium Risk</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--success);">${stats.low}</div>
+          <div class="stat-label">Low Risk</div>
+        </div>
+      `;
+
+      // Render matches
+      container.innerHTML = `
+        <div class="results-grid">
+          ${matches.map(match => {
+            const riskLevel = match.riskLevel || match.risk_level || 'low';
+            const overlapScore = match.overlapScore || match.overlap_score || 0;
+            const patent = match.patent || match.patent_number || 'N/A';
+            const company = match.company || match.company_name || 'Unknown';
+            const title = match.title || match.patent_title || 'Untitled';
+            const matchedClaims = match.matchedClaims || match.matched_claims || [];
+
+            return `
+              <div class="result-card" onclick="viewMatchDetails('${match.id || patent}')">
+                <div class="result-card-header">
+                  <div>
+                    <div class="result-card-title">${escapeHtml(title)}</div>
+                    <div class="result-card-patent">${escapeHtml(patent)}</div>
+                  </div>
+                  <span class="risk-badge risk-${riskLevel}">
+                    ${riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1)} Risk
+                  </span>
+                </div>
+                <div class="result-card-company">Company: ${escapeHtml(company)}</div>
+                <div class="score-section">
+                  <div class="score-label">Overlap Score</div>
+                  <div class="score-bar">
+                    <div class="score-fill ${riskLevel}" style="width: ${overlapScore}%"></div>
+                  </div>
+                  <div class="score-value">${overlapScore}%</div>
+                  ${matchedClaims.length > 0 ? `
+                    <div class="matched-claims">
+                      Matched Claims: ${matchedClaims.join(', ')}
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function showError(message) {
+      const container = document.getElementById('resultsContainer');
+      container.innerHTML = `
+        <div class="error-message">
+          <strong>Error:</strong> ${escapeHtml(message)}
+          <button onclick="location.reload()" style="margin-top: 8px; padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: var(--radius); cursor: pointer;">
+            Retry
+          </button>
+        </div>
+      `;
+    }
+
+    function viewMatchDetails(matchId) {
+      // Navigate to detailed comparison page
+      window.location.href = `comparison.html?match=${matchId}&result=${getResultId()}`;
+    }
+
+    function getUserId() {
+      try {
+        const sessionData = JSON.parse(localStorage.getItem('session') || '{}');
+        return sessionData?.user_id || sessionData?.user?.id || null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    // Poll for results if processing
+    async function loadResults() {
+      const data = await fetchResults();
+      
+      if (data && data.status === 'processing') {
+        // Poll every 5 seconds
+        setTimeout(loadResults, 5000);
+      } else if (data) {
+        renderResults(data);
+      }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      loadResults();
+    });
+  </script>
+</body>
+</html>

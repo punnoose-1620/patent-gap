@@ -1,0 +1,1634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Patent Gap AI - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --background: hsl(210, 20%, 98%);
+      --foreground: hsl(222, 47%, 11%);
+      --card: hsl(0, 0%, 100%);
+      --primary: hsl(170, 70%, 8%);
+      --primary-foreground: hsl(0, 0%, 100%);
+      --secondary: hsl(210, 40%, 96%);
+      --muted: hsl(210, 40%, 96%);
+      --muted-foreground: hsl(215, 16%, 47%);
+      --success: hsl(142, 71%, 45%);
+      --warning: hsl(38, 92%, 50%);
+      --destructive: hsl(0, 72%, 51%);
+      --border: hsl(214, 32%, 91%);
+      --radius: 0.5rem;
+      --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+      --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -2px hsl(0 0% 0% / 0.1);
+      --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -4px hsl(0 0% 0% / 0.1);
+      
+      /* Sidebar colors */
+      --sidebar-background: hsl(170, 70%, 8%);
+      --sidebar-foreground: hsl(0, 0%, 100%);
+      --sidebar-primary: hsl(170, 70%, 15%);
+      --sidebar-accent: hsl(170, 60%, 12%);
+      --sidebar-border: hsl(170, 50%, 10%);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: var(--background);
+      color: var(--foreground);
+      line-height: 1.6;
+      padding: 0;
+      margin: 0;
+      display: flex;
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 100vh;
+      width: 256px;
+      background: var(--sidebar-background);
+      color: var(--sidebar-foreground);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+
+    .sidebar.open {
+      transform: translateX(0);
+    }
+
+    @media (min-width: 1024px) {
+      .sidebar {
+        transform: translateX(0);
+        position: relative;
+      }
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--sidebar-border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-direction: row;
+    }
+
+    .sidebar-header img {
+      margin-right: 4px;
+      padding: 0rem !important;
+      height: 2.5rem;
+      width: 2.5rem;
+    }
+
+    .sidebar-header h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--sidebar-foreground);
+    }
+
+    .sidebar-content {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .sidebar-group {
+      margin-bottom: 24px;
+    }
+
+    .sidebar-group-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--sidebar-foreground);
+      opacity: 0.6;
+      margin-bottom: 8px;
+      padding: 0 12px;
+    }
+
+    .sidebar-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      padding-left: 12px;
+      border-radius: var(--radius);
+      color: var(--sidebar-foreground);
+      opacity: 0.8;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-nav-item:hover {
+      background: var(--sidebar-accent);
+      color: var(--sidebar-foreground);
+      opacity: 1;
+    }
+
+    .sidebar-nav-item.active {
+      background: var(--sidebar-primary);
+      color: var(--sidebar-foreground);
+      opacity: 1;
+    }
+
+    .sidebar-nav-item-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid var(--sidebar-border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sidebar-footer a {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      padding-left: 12px;
+    }
+
+    .sidebar-footer p {
+      font-size: 12px;
+      color: var(--sidebar-foreground);
+      opacity: 0.6;
+    }
+
+    /* Hamburger Menu Button */
+    .hamburger-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 1001;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      transition: all 0.2s;
+    }
+
+    .hamburger-btn:hover {
+      background: var(--muted);
+    }
+
+    @media (min-width: 1024px) {
+      .hamburger-btn {
+        display: none;
+      }
+    }
+
+    .hamburger-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+    }
+
+    .hamburger-icon span {
+      width: 100%;
+      height: 2px;
+      background: var(--foreground);
+      border-radius: 2px;
+      transition: all 0.3s;
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(1) {
+      transform: rotate(45deg) translate(5px, 5px);
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(3) {
+      transform: rotate(-45deg) translate(7px, -6px);
+    }
+
+    /* Overlay for mobile */
+    .sidebar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+    }
+
+    .sidebar-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      margin-left: 0;
+      transition: margin-left 0.3s ease;
+    }
+
+    @media (min-width: 1024px) {
+      .main-content {
+        margin-left: 256px;
+      }
+    }
+
+    .dashboard-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    @media (min-width: 1024px) {
+      .dashboard-container {
+        padding: 32px;
+      }
+    }
+
+    /* Header Section */
+    .dashboard-header {
+      margin-bottom: 32px;
+    }
+
+    .dashboard-header h1 {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .dashboard-header p {
+      color: var(--muted-foreground);
+      margin-top: 4px;
+    }
+
+    /* New Analysis Card */
+    .new-analysis-card {
+      background: linear-gradient(to bottom right, 
+        hsl(170, 70%, 8%, 0.1), 
+        hsl(170, 70%, 8%, 0.05), 
+        transparent);
+      border: 1px solid hsl(170, 70%, 8%, 0.2);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 32px;
+      transition: border-color 0.2s;
+    }
+
+    .new-analysis-card:hover {
+      border-color: hsl(170, 70%, 8%, 0.4);
+    }
+
+    .new-analysis-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .new-analysis-icon-wrapper {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .new-analysis-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: hsl(170, 70%, 8%, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: var(--primary);
+    }
+
+    .new-analysis-content h3 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .new-analysis-content p {
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+
+    .new-analysis-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+
+    .btn-primary:hover {
+      background: hsl(170, 70%, 8%, 0.9);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--foreground);
+      border: 1px solid var(--border);
+    }
+
+    .btn-outline:hover {
+      background: var(--muted);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    @media (min-width: 768px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    .stats-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .stats-card-content {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .stats-card-info p {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+    }
+
+    .stats-card-info .value {
+      font-size: 30px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    .stats-card-info .subtitle {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-top: 4px;
+    }
+
+    .stats-card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius);
+      background: hsl(170, 70%, 8%, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      font-size: 20px;
+    }
+
+    .stats-card-icon.warning {
+      color: var(--warning);
+      background: hsl(38, 92%, 50%, 0.1);
+    }
+
+    .stats-card-icon.success {
+      color: var(--success);
+      background: hsl(142, 71%, 45%, 0.1);
+    }
+
+    /* Projects Section */
+    .projects-section {
+      margin-bottom: 24px;
+    }
+
+    .projects-section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .projects-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    @media (min-width: 768px) {
+      .projects-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .projects-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    .project-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      cursor: pointer;
+      transition: box-shadow 0.2s;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .project-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .project-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .project-card-title-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .project-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius);
+      background: hsl(170, 70%, 8%, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      font-size: 20px;
+    }
+
+    .project-card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .project-card-patent-id {
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      color: var(--muted-foreground);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid;
+    }
+
+    .badge-complete {
+      background: hsl(142, 71%, 45%, 0.1);
+      color: var(--success);
+      border-color: hsl(142, 71%, 45%, 0.2);
+    }
+
+    .badge-processing {
+      background: hsl(38, 92%, 50%, 0.1);
+      color: var(--warning);
+      border-color: hsl(38, 92%, 50%, 0.2);
+    }
+
+    .badge-draft {
+      background: var(--muted);
+      color: var(--muted-foreground);
+      border-color: var(--border);
+    }
+
+    .progress-bar-container {
+      margin-bottom: 12px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: var(--muted);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--warning);
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-top: 4px;
+    }
+
+    .project-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .project-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+
+    .project-card-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Weekly Results */
+    .weekly-results {
+      margin-top: 48px;
+    }
+
+    .weekly-results h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .weekly-results-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+
+    .weekly-results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .weekly-results-title {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .weekly-results-date {
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+
+    .weekly-results-badge {
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 14px;
+      font-weight: 500;
+      background: hsl(142, 71%, 45%, 0.1);
+      color: var(--success);
+      border: 1px solid hsl(142, 71%, 45%, 0.2);
+    }
+
+    .weekly-results-description {
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+
+    /* Loading States */
+    .loading {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted-foreground);
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--muted);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-message {
+      background: hsl(0, 72%, 51%, 0.1);
+      border: 1px solid hsl(0, 72%, 51%, 0.2);
+      color: var(--destructive);
+      padding: 16px;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted-foreground);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    /* Popup Overlay Styles */
+    .popup-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      padding: 16px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .popup-overlay .modal-content {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 672px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .popup-loading {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1999;
+      color: white;
+    }
+
+    .popup-loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar Overlay (Mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Hamburger Menu Button -->
+  <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()">
+    <div class="hamburger-icon">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  </button>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <img src="images/logo-white-nobg.png" alt="Patent Gap Logo">
+      <h2>Patent Gap AI</h2>
+    </div>
+    <div class="sidebar-content">
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">Main</div>
+        <a href="#dashboard" class="sidebar-nav-item active" onclick="handleNavClick('dashboard', event)">
+          <div class="sidebar-nav-item-icon">📊</div>
+          <span>Dashboard</span>
+        </a>
+        <a href="#new-project" class="sidebar-nav-item" onclick="handleNavClick('new-project', event)">
+          <div class="sidebar-nav-item-icon">📁</div>
+          <span>New Project</span>
+        </a>
+        <a href="#history" class="sidebar-nav-item" onclick="handleNavClick('history', event)">
+          <div class="sidebar-nav-item-icon">🕐</div>
+          <span>History</span>
+        </a>
+        <a href="#settings" class="sidebar-nav-item" onclick="handleNavClick('settings', event)">
+          <div class="sidebar-nav-item-icon">⚙️</div>
+          <span>Settings</span>
+        </a>
+        <a href="#help" class="sidebar-nav-item" onclick="handleNavClick('help', event)">
+          <div class="sidebar-nav-item-icon">❓</div>
+          <span>Help</span>
+        </a>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+        <a href="#login" class="sidebar-nav-item" onclick="handleNavClick('logout', event)">
+            <div class="sidebar-nav-item-icon">
+              <!-- Power icon SVG -->
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v9m6.364-3.364a9 9 0 11-12.728 0"/>
+              </svg>
+            </div>
+            <span>Logout</span>
+        </a>
+        <p>© 2025 Patent Gap AI</p>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="dashboard-container">
+      <!-- Header -->
+      <div class="dashboard-header">
+        <h1>Dashboard</h1>
+        <p>Manage your patent analysis projects and view recent activity</p>
+      </div>
+
+      <!-- New Analysis Card -->
+      <div class="new-analysis-card">
+        <div class="new-analysis-header">
+          <div class="new-analysis-icon-wrapper">
+            <div class="new-analysis-icon">+</div>
+          </div>
+          <div class="new-analysis-content">
+            <h3>Start New Analysis</h3>
+            <p>Upload a patent or portfolio to begin infringement analysis</p>
+          </div>
+        </div>
+        <div class="new-analysis-buttons">
+          <button class="btn btn-primary" onclick="handleNewPatent()">
+            <span>+</span>
+            New Single Patent
+          </button>
+          <button class="btn btn-outline" onclick="handleUploadPortfolio()">
+            <span>📄</span>
+            Upload Portfolio
+          </button>
+          <button class="btn btn-outline" onclick="handleSearchPatent()">
+            <span>🔍</span>
+            Search by Patent ID
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="stats-grid" id="statsGrid">
+        <!-- Stats will be populated dynamically -->
+      </div>
+
+      <!-- Projects Section -->
+      <div class="projects-section">
+        <h2>Recent Projects</h2>
+        <div id="projectsContainer">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+            <p>Loading projects...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weekly Results -->
+      <div class="weekly-results">
+        <h2>Weekly Search Results</h2>
+        <div class="weekly-results-card">
+          <div class="weekly-results-header">
+            <div>
+              <p class="weekly-results-title">Automated VGR Monitoring</p>
+              <p class="weekly-results-date" id="lastScanDate">Last scan: Loading...</p>
+            </div>
+            <span class="weekly-results-badge" id="newResultsBadge">0 new results</span>
+          </div>
+          <p class="weekly-results-description">
+            Weekly automated scans monitor competitor filings and industry changes relevant to your portfolio.
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // API Configuration
+    const API_BASE_URL = 'http://localhost:5000';
+
+    // ==================== POPUP MANAGEMENT ====================
+    
+    /**
+     * Fetch and display a popup from Flask endpoint
+     */
+    async function showPopup(popupName, options = {}) {
+      const {
+        onClose = null,
+        onComplete = null,
+        data = null
+      } = options;
+
+      try {
+        // Show loading state
+        showPopupLoading();
+
+        // Fetch popup HTML from Flask
+        const response = await fetch(`${API_BASE_URL}/popups/${popupName}`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Accept': 'text/html',
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load popup: ${response.statusText}`);
+        }
+
+        const html = await response.text();
+
+        // Create modal overlay
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'popup-overlay';
+        modalOverlay.id = `popup-${popupName}`;
+        
+        // Wrap the HTML in a modal container
+        modalOverlay.innerHTML = `<div class="modal-content">${html}</div>`;
+
+        // Add close handler for overlay click
+        modalOverlay.addEventListener('click', (e) => {
+          if (e.target === modalOverlay) {
+            closePopup(popupName, onClose);
+          }
+        });
+
+        // Inject into body
+        document.body.appendChild(modalOverlay);
+
+        // Initialize popup-specific functionality
+        initializePopupScripts(popupName, { onClose, onComplete, data });
+
+        // Add escape key handler
+        const escapeHandler = (e) => {
+          if (e.key === 'Escape') {
+            closePopup(popupName, onClose);
+            document.removeEventListener('keydown', escapeHandler);
+          }
+        };
+        document.addEventListener('keydown', escapeHandler);
+
+      } catch (error) {
+        console.error('Error loading popup:', error);
+        alert(`Failed to load popup: ${error.message}`);
+        hidePopupLoading();
+      }
+    }
+
+    /**
+     * Close a popup
+     */
+    function closePopup(popupName, onCloseCallback = null) {
+      const popup = document.getElementById(`popup-${popupName}`);
+      if (popup) {
+        popup.remove();
+        
+        if (onCloseCallback) {
+          onCloseCallback();
+        }
+      }
+    }
+
+    /**
+     * Show loading state while fetching popup
+     */
+    function showPopupLoading() {
+      const loading = document.createElement('div');
+      loading.className = 'popup-loading';
+      loading.id = 'popup-loading';
+      loading.innerHTML = `
+        <div class="popup-loading-spinner"></div>
+        <p>Loading...</p>
+      `;
+      document.body.appendChild(loading);
+    }
+
+    /**
+     * Hide loading state
+     */
+    function hidePopupLoading() {
+      const loading = document.getElementById('popup-loading');
+      if (loading) {
+        loading.remove();
+      }
+    }
+
+    /**
+     * Initialize popup-specific scripts and event handlers
+     */
+    function initializePopupScripts(popupName, options) {
+      const { onClose, onComplete, data } = options;
+      
+      // Hide loading
+      hidePopupLoading();
+
+      // Initialize based on popup name
+      if (popupName === 'upload-patent') {
+        initUploadPatentPopup(data, onComplete);
+      } else if (popupName === 'add-context') {
+        initAddContextPopup(data, onComplete);
+      }
+
+      // Generic close button handler
+      const closeBtn = document.querySelector(`#popup-${popupName} .close-btn`);
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          closePopup(popupName, onClose);
+        });
+      }
+    }
+
+    /**
+     * Initialize Upload Patent (Step 1) popup
+     */
+    function initUploadPatentPopup(data, onComplete) {
+      const continueBtn = document.querySelector('#popup-upload-patent #continueBtn, #popup-upload-patent button[onclick*="continue"], #popup-upload-patent .btn-primary');
+      const tabTriggers = document.querySelectorAll('#popup-upload-patent .tab-trigger');
+      const fileInput = document.querySelector('#popup-upload-patent input[type="file"]');
+      const projectNameInput = document.querySelector('#popup-upload-patent #projectName, #popup-upload-patent input[placeholder*="Project Name"]');
+      const patentNumberInput = document.querySelector('#popup-upload-patent #patentNumber, #popup-upload-patent input[placeholder*="Patent"]');
+      
+      let activeTab = 'upload';
+      let selectedFile = null;
+
+      // Tab switching
+      if (tabTriggers.length > 0) {
+        tabTriggers.forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            tabTriggers.forEach(t => t.classList.remove('active'));
+            trigger.classList.add('active');
+            
+            const tabContent = document.querySelectorAll('#popup-upload-patent .tab-content');
+            tabContent.forEach(content => content.classList.remove('active'));
+            
+            if (trigger.textContent.includes('Upload')) {
+              activeTab = 'upload';
+              tabContent[0]?.classList.add('active');
+            } else {
+              activeTab = 'patentId';
+              tabContent[1]?.classList.add('active');
+            }
+            
+            validateStep1Form();
+          });
+        });
+      }
+
+      // File input handler
+      if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+          selectedFile = e.target.files[0];
+          validateStep1Form();
+        });
+      }
+
+      // Form validation
+      function validateStep1Form() {
+        const projectName = projectNameInput?.value.trim();
+        const patentNumber = patentNumberInput?.value.trim();
+        
+        let isValid = false;
+        
+        if (projectName) {
+          if (activeTab === 'upload' && selectedFile) {
+            isValid = true;
+          } else if (activeTab === 'patentId' && patentNumber) {
+            isValid = true;
+          }
+        }
+        
+        if (continueBtn) {
+          continueBtn.disabled = !isValid;
+        }
+      }
+
+      // Input validation listeners
+      if (projectNameInput) {
+        projectNameInput.addEventListener('input', validateStep1Form);
+      }
+      if (patentNumberInput) {
+        patentNumberInput.addEventListener('input', validateStep1Form);
+      }
+
+      // Continue button handler
+      if (continueBtn) {
+        continueBtn.addEventListener('click', () => {
+          const projectName = projectNameInput?.value.trim();
+          const patentNumber = patentNumberInput?.value.trim();
+          
+          const formData = {
+            projectName,
+            activeTab,
+            patentNumber: activeTab === 'patentId' ? patentNumber : null,
+            fileName: activeTab === 'upload' && selectedFile ? selectedFile.name : null,
+            fileSize: activeTab === 'upload' && selectedFile ? selectedFile.size : null
+          };
+          
+          // Store data for Step 2
+          sessionStorage.setItem('patentUploadStep1', JSON.stringify(formData));
+          
+          // Close Step 1 and open Step 2
+          closePopup('upload-patent');
+          showPopup('add-context', {
+            data: formData,
+            onComplete: onComplete
+          });
+        });
+      }
+    }
+
+    /**
+     * Initialize Add Context (Step 2) popup
+     */
+    function initAddContextPopup(data, onComplete) {
+      const startBtn = document.querySelector('#popup-add-context #startAnalysisBtn, #popup-add-context button[onclick*="Start"], #popup-add-context .btn-primary');
+      const backBtn = document.querySelector('#popup-add-context .btn-secondary');
+      const contextTextarea = document.querySelector('#popup-add-context #contextDescription, #popup-add-context textarea');
+      const patentDisplay = document.querySelector('#popup-add-context #patentValue, #popup-add-context .form-input');
+      const patentLabel = document.querySelector('#popup-add-context #patentLabel, #popup-add-context label');
+
+      // Load Step 1 data
+      let step1Data = data;
+      if (!step1Data) {
+        const stored = sessionStorage.getItem('patentUploadStep1');
+        if (stored) {
+          step1Data = JSON.parse(stored);
+        }
+      }
+
+      if (step1Data && patentDisplay && patentLabel) {
+        if (step1Data.activeTab === 'patentId') {
+          patentLabel.textContent = 'Patent Number';
+          patentDisplay.textContent = step1Data.patentNumber;
+          patentDisplay.style.fontFamily = 'monospace';
+        } else {
+          patentLabel.textContent = 'Uploaded File';
+          patentDisplay.innerHTML = `<span style="color: var(--primary);">📄</span> ${step1Data.fileName}`;
+        }
+      }
+
+      // Back button handler
+      if (backBtn && backBtn.textContent.includes('Back')) {
+        backBtn.addEventListener('click', () => {
+          closePopup('add-context');
+          showPopup('upload-patent', { onComplete: onComplete });
+        });
+      }
+
+      // Start Analysis button handler
+      if (startBtn) {
+        startBtn.addEventListener('click', async () => {
+          const context = contextTextarea?.value.trim() || '';
+          
+          // Show loading
+          startBtn.disabled = true;
+          const originalText = startBtn.innerHTML;
+          startBtn.innerHTML = '<span class="loading-spinner" style="width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; margin-right: 8px;"></span> Processing...';
+          
+          try {
+            // Submit to API
+            const userId = getUserId();
+            const formData = new FormData();
+            
+            formData.append('project_name', step1Data.projectName);
+            formData.append('context', context);
+            formData.append('user_id', userId);
+            
+            if (step1Data.activeTab === 'patentId') {
+              formData.append('patent_id', step1Data.patentNumber);
+              formData.append('upload_type', 'patent_id');
+            } else {
+              formData.append('upload_type', 'file');
+              formData.append('file_name', step1Data.fileName);
+            }
+            
+            const response = await fetch(`${API_BASE_URL}/api/create-case`, {
+              method: 'POST',
+              credentials: 'include',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Failed to create case: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            // Store case data
+            sessionStorage.setItem('currentCaseId', result.case_id || result.id);
+            sessionStorage.setItem('projectName', step1Data.projectName);
+            sessionStorage.setItem('patentInfo', step1Data.activeTab === 'patentId' 
+              ? step1Data.patentNumber 
+              : step1Data.fileName);
+            
+            // Clear Step 1 data
+            sessionStorage.removeItem('patentUploadStep1');
+            
+            // Close popup
+            closePopup('add-context');
+            
+            // Navigate to Analysis page
+            const patentParam = step1Data.activeTab === 'patentId' 
+              ? step1Data.patentNumber 
+              : step1Data.fileName;
+            window.location.href = `analysis.html?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
+            
+          } catch (error) {
+            console.error('Error starting analysis:', error);
+            alert(`Error: ${error.message}. Please try again.`);
+            startBtn.disabled = false;
+            startBtn.innerHTML = originalText;
+          }
+        });
+      }
+    }
+
+    // ==================== DASHBOARD FUNCTIONALITY ====================
+
+    // Sidebar Toggle Functionality
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+      const hamburger = document.getElementById('hamburgerBtn');
+      
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+      hamburger.classList.toggle('open');
+    }
+
+    // Navigation Handler
+    function handleNavClick(page, event) {
+      event.preventDefault();
+      
+      document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      event.currentTarget.classList.add('active');
+      
+      if (window.innerWidth < 1024) {
+        toggleSidebar();
+      }
+      
+      switch(page) {
+        case 'dashboard':
+          break;
+        case 'new-project':
+          handleNewPatent();
+          break;
+        case 'history':
+          alert('Navigate to History page');
+          break;
+        case 'settings':
+          alert('Navigate to Settings page');
+          break;
+        case 'help':
+          alert('Navigate to Help page');
+          break;
+        case 'logout':
+            handleLogout();
+            break;
+      }
+    }
+
+    // Event Handlers
+    function handleLogout() {
+        fetch('/api/logout', { method: 'POST', credentials: 'same-origin' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+            window.location.href = data.redirect || '/';
+            } else {
+            alert(data.message || 'Logout failed');
+            }
+        })
+        .catch(() => {
+            alert('Logout request failed.');
+        });
+    }
+
+    function handleNewPatent() {
+      showPopup('upload-patent', {
+        onComplete: (result) => {
+          console.log('Analysis started:', result);
+        },
+        onClose: () => {
+          console.log('Popup closed');
+        }
+      });
+    }
+
+    function handleUploadPortfolio() {
+      alert('Upload Portfolio functionality - implement file upload');
+    }
+
+    function handleSearchPatent() {
+      const patentId = prompt('Enter Patent ID:');
+      if (patentId) {
+        alert(`Searching for patent: ${patentId}`);
+      }
+    }
+
+    // Close sidebar when clicking outside on mobile
+    document.getElementById('sidebarOverlay').addEventListener('click', () => {
+      if (window.innerWidth < 1024) {
+        toggleSidebar();
+      }
+    });
+
+    // ==================== UTILITY FUNCTIONS ====================
+
+    function getUserId() {
+      try {
+        const sessionData = JSON.parse(localStorage.getItem('session') || '{}');
+        return sessionData?.user_id || sessionData?.user?.id || null;
+      } catch (error) {
+        console.error('Error parsing session data:', error);
+        return null;
+      }
+    }
+
+    function formatTimeAgo(dateString) {
+      if (!dateString) return 'Unknown';
+      
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInSeconds = Math.floor((now - date) / 1000);
+      
+      if (diffInSeconds < 60) return 'Just now';
+      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+      if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+      return `${Math.floor(diffInSeconds / 604800)} weeks ago`;
+    }
+
+    function formatDate(dateString) {
+      if (!dateString) return 'Unknown';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    }
+
+    // ==================== API FUNCTIONS ====================
+
+    async function fetchCases() {
+      const userId = getUserId();
+      
+      if (!userId) {
+        showError('User not authenticated. Please log in.');
+        return [];
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/my-cases`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            showError('Session expired. Please log in again.');
+            return [];
+          }
+          throw new Error(`Failed to fetch cases: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return Array.isArray(data['cases']) ? data['cases'] : [];
+      } catch (error) {
+        console.error('Error fetching cases:', error);
+        showError(`Error loading cases: ${error.message}`);
+        return [];
+      }
+    }
+
+    async function fetchStats() {
+      const userId = getUserId();
+      
+      if (!userId) {
+        return null;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/stats?user_id=${userId}`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          return null;
+        }
+
+        return await response.json();
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+        return null;
+      }
+    }
+
+    function renderStats(stats) {
+      const statsGrid = document.getElementById('statsGrid');
+      
+      const defaultStats = {
+        activeScans: 0,
+        patentsAnalyzed: 0,
+        highRiskMatches: 0,
+        clearedPatents: 0
+      };
+
+      const statsData = stats || defaultStats;
+      const cases = window.currentCases || [];
+      const calculatedStats = {
+        activeScans: statsData.activeScans || cases.filter(c => c.status === 'processing').length,
+        patentsAnalyzed: statsData.patentsAnalyzed || cases.length,
+        highRiskMatches: statsData.highRiskMatches || cases.reduce((sum, c) => sum + (c.highRiskMatches || 0), 0),
+        clearedPatents: statsData.clearedPatents || cases.filter(c => c.status === 'complete' && !c.matchCount).length
+      };
+
+      statsGrid.innerHTML = `
+        <div class="stats-card">
+          <div class="stats-card-content">
+            <div class="stats-card-info">
+              <p>Active Scans</p>
+              <div class="value">${calculatedStats.activeScans}</div>
+              <p class="subtitle">This week</p>
+            </div>
+            <div class="stats-card-icon">🔍</div>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-content">
+            <div class="stats-card-info">
+              <p>Patents Analyzed</p>
+              <div class="value">${calculatedStats.patentsAnalyzed}</div>
+              <p class="subtitle">Total</p>
+            </div>
+            <div class="stats-card-icon">📄</div>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-content">
+            <div class="stats-card-info">
+              <p>High Risk Matches</p>
+              <div class="value">${calculatedStats.highRiskMatches}</div>
+              <p class="subtitle">Requires attention</p>
+            </div>
+            <div class="stats-card-icon warning">⚠️</div>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-content">
+            <div class="stats-card-info">
+              <p>Cleared Patents</p>
+              <div class="value">${calculatedStats.clearedPatents}</div>
+              <p class="subtitle">No infringement</p>
+            </div>
+            <div class="stats-card-icon success">✓</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderProjects(cases) {
+      const container = document.getElementById('projectsContainer');
+      
+      if (!cases || cases.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <p>No projects found. Start a new analysis to get started!</p>
+          </div>
+        `;
+        return;
+      }
+
+      const projectsHTML = cases.map(caseItem => {
+        const status = caseItem.status || 'draft';
+        const badgeClass = `badge-${status}`;
+        const progress = caseItem.progress || 0;
+        const lastUpdated = formatTimeAgo(caseItem.lastUpdated || caseItem.updated_at || caseItem.created_at);
+        const matchCount = caseItem.matchCount || caseItem.match_count || 0;
+        const title = caseItem.title || caseItem.name || 'Untitled Project';
+        const patentId = caseItem.patentId || caseItem.patent_id || 'N/A';
+
+        return `
+          <div class="project-card" onclick="handleProjectClick('${caseItem.id}')">
+            <div class="project-card-header">
+              <div class="project-card-title-section">
+                <div class="project-card-icon">📄</div>
+                <div>
+                  <div class="project-card-title">${escapeHtml(title)}</div>
+                  <div class="project-card-patent-id">${escapeHtml(patentId)}</div>
+                </div>
+              </div>
+              <span class="badge ${badgeClass}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+            </div>
+            ${status === 'processing' && progress > 0 ? `
+              <div class="progress-bar-container">
+                <div class="progress-bar">
+                  <div class="progress-bar-fill" style="width: ${progress}%"></div>
+                </div>
+                <p class="progress-text">${progress}% complete</p>
+              </div>
+            ` : ''}
+            <div class="project-card-footer">
+              <div class="project-card-meta">
+                <div class="project-card-meta-item">
+                  <span>🕐</span>
+                  <span>${lastUpdated}</span>
+                </div>
+                ${matchCount > 0 ? `<span>${matchCount} potential ${matchCount === 1 ? 'match' : 'matches'}</span>` : ''}
+              </div>
+              <span>→</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = `<div class="projects-grid">${projectsHTML}</div>`;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function showError(message) {
+      const container = document.getElementById('projectsContainer');
+      container.innerHTML = `
+        <div class="error-message">
+          <strong>Error:</strong> ${escapeHtml(message)}
+          <button class="btn btn-outline" onclick="loadDashboard()" style="margin-top: 8px;">
+            Retry
+          </button>
+        </div>
+      `;
+    }
+
+    async function loadDashboard() {
+      const container = document.getElementById('projectsContainer');
+      
+      container.innerHTML = `
+        <div class="loading">
+          <div class="loading-spinner"></div>
+          <p>Loading projects...</p>
+        </div>
+      `;
+
+      try {
+        const [cases, stats] = await Promise.all([
+          fetchCases(),
+          fetchStats()
+        ]);
+
+        window.currentCases = cases;
+
+        renderProjects(cases);
+        renderStats(stats);
+
+        updateWeeklyResults(stats);
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+        showError(`Failed to load dashboard: ${error.message}`);
+      }
+    }
+
+    function updateWeeklyResults(stats) {
+      if (stats && stats.lastScanDate) {
+        document.getElementById('lastScanDate').textContent = 
+          `Last scan: ${formatDate(stats.lastScanDate)}`;
+      }
+      
+      if (stats && stats.newResults !== undefined) {
+        const badge = document.getElementById('newResultsBadge');
+        badge.textContent = `${stats.newResults} new result${stats.newResults !== 1 ? 's' : ''}`;
+        if (stats.newResults === 0) {
+          badge.style.display = 'none';
+        }
+      }
+    }
+
+    function handleProjectClick(caseId) {
+      console.log('Project clicked:', caseId);
+      window.location.href = `case-details.html`;
+      alert(`Opening project: ${caseId}`);
+    }
+
+    // Initialize Dashboard on Load
+    document.addEventListener('DOMContentLoaded', () => {
+      loadDashboard();
+    });
+  </script>
+</body>
+</html>

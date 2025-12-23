@@ -1010,6 +1010,7 @@
                 }
 
                 const data = await response.json();
+                console.log('Case Details Response : ')
                 
                 if (data.success) {
                     caseData = data.case;
@@ -1087,7 +1088,7 @@
 
             try {
                 // Simulate API call - replace with actual endpoint
-                const response = await fetch(`/api/cases/${caseId}/patents`);
+                const response = await fetch(`/api/cases/${caseId}`);
                 
                 if (!response.ok) {
                     throw new Error('Failed to load related patents');

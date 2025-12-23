@@ -17,5 +17,5 @@ env
 
 # Logs
 *.log
-Backend/.env
 logs/
+Backend/.env
