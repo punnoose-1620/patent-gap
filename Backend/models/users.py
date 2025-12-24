@@ -2,6 +2,7 @@ mock_users = [
     {
         "full_name": "Alice Johnson",
         "id": "user_001",
+        "_id": "user_001",
         "title": "Ms.",
         "role": "client",
         "cases": ["case_001"],
@@ -14,6 +15,7 @@ mock_users = [
     {
         "full_name": "Bob Smith",
         "id": "user_002",
+        "_id": "user_002",
         "title": "Mr.",
         "role": "attorney",
         "cases": ["case_001", "case_002"],
@@ -22,102 +24,6 @@ mock_users = [
         "deleted_on": None,
         "email": "bob.smith@example.com",
         "password": "bobpass"
-    },
-    {
-        "full_name": "Carol Lee",
-        "id": "user_003",
-        "title": "Dr.",
-        "role": "client",
-        "cases": ["case_002"],
-        "patents": ["patent_004"],
-        "created_on": "2024-01-10",
-        "deleted_on": None,
-        "email": "carol.lee@example.com",
-        "password": "carolpass"
-    },
-    {
-        "full_name": "David Kim",
-        "id": "user_004",
-        "title": "Mr.",
-        "role": "attorney",
-        "cases": ["case_003"],
-        "patents": ["patent_005"],
-        "created_on": "2023-10-20",
-        "deleted_on": None,
-        "email": "david.kim@example.com",
-        "password": "davidpass"
-    },
-    {
-        "full_name": "Eva Green",
-        "id": "user_005",
-        "title": "Ms.",
-        "role": "client",
-        "cases": ["case_001", "case_003"],
-        "patents": ["patent_006", "patent_007"],
-        "created_on": "2024-02-05",
-        "deleted_on": None,
-        "email": "eva.green@example.com",
-        "password": "evapass"
-    },
-    {
-        "full_name": "Frank Miller",
-        "id": "user_006",
-        "title": "Mr.",
-        "role": "attorney",
-        "cases": ["case_002", "case_003"],
-        "patents": ["patent_008"],
-        "created_on": "2023-09-30",
-        "deleted_on": None,
-        "email": "frank.miller@example.com",
-        "password": "frankpass"
-    },
-    {
-        "full_name": "Grace Chen",
-        "id": "user_007",
-        "title": "Dr.",
-        "role": "client",
-        "cases": [],
-        "patents": [],
-        "created_on": "2024-03-01",
-        "deleted_on": None,
-        "email": "grace.chen@example.com",
-        "password": "gracepass"
-    },
-    {
-        "full_name": "Henry Brown",
-        "id": "user_008",
-        "title": "Mr.",
-        "role": "attorney",
-        "cases": ["case_001"],
-        "patents": ["patent_009"],
-        "created_on": "2023-08-12",
-        "deleted_on": None,
-        "email": "henry.brown@example.com",
-        "password": "henrypass"
-    },
-    {
-        "full_name": "Ivy Wilson",
-        "id": "user_009",
-        "title": "Ms.",
-        "role": "client",
-        "cases": ["case_003"],
-        "patents": ["patent_010"],
-        "created_on": "2024-01-22",
-        "deleted_on": None,
-        "email": "ivy.wilson@example.com",
-        "password": "ivypass"
-    },
-    {
-        "full_name": "Jack Davis",
-        "id": "user_010",
-        "title": "Mr.",
-        "role": "attorney",
-        "cases": [],
-        "patents": [],
-        "created_on": "2023-07-05",
-        "deleted_on": None,
-        "email": "jack.davis@example.com",
-        "password": "jackpass"
     }
 ]
 

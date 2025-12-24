@@ -438,6 +438,64 @@
     let selectedFile = null;
     let activeTab = 'upload';
 
+    function populateCircularProgressIndicator(size, message, elementId) {
+      element = document.getElementById(elementId);
+      if (element) {
+        elementContent = element.outerHTML;
+        element.innerHTML = `
+        <div class="circular-progress-indicator" style="display: flex; align-items: center; justify-content: center; width: ${size}px; height: ${size}px;">
+          <div class="circular-progress-indicator-inner" style="display: flex; align-items: center; justify-content: center; width: ${size}px; height: ${size}px;">
+            <div class="circular-progress-indicator-text" style="font-size: 14px; font-weight: 500;">${message}</div>
+          </div>
+        </div>`;
+      }
+      else {
+        elementContent = '';
+        console.log('ERROR: Unable to find element with id: ', elementId);
+      }
+      return elementContent;
+    }
+
+    function removeCircularProgressIndicator(elementId, content) {
+      element = document.getElementById(elementId);
+      if (element) {
+        element.innerHTML = content.outerHTML;
+      }
+      else {
+        console.log('ERROR: Unable to find element with id: ', elementId);
+      }
+    }
+
+    async function fetchUsptoCaseDetails() {
+      const patentNumber = document.getElementById('patentNumber').value.trim();
+      if (patentNumber !== '' && patentNumber !== null && patentNumber !== undefined) {
+        const buttonContent = populateCircularProgressIndicator(48, 'Fetching Patent from USPTO...', 'continueBtn');
+        try {
+          const response = await fetch(`${API_BASE_URL}/fetch-patent-from-uspto`, {
+            method: 'POST',
+            body: JSON.stringify({ 'patentId':patentNumber }),
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          const data = await response.json();
+          if(buttonContent !== '') {
+            removeCircularProgressIndicator('continueBtn', buttonContent);
+          }
+          if (data.success) {
+            console.log('USPTO case details fetched successfully:', data);
+          } else {
+            console.error('Error fetching USPTO case details:', data.message);
+            return {}
+          }
+        } catch (error) {
+          console.error('Error fetching USPTO case details:', error);
+          return {}
+        }
+      }
+    }
+
     function switchTab(tab) {
       activeTab = tab;
       
@@ -483,7 +541,7 @@
       continueBtn.disabled = !isValid;
     }
 
-    function handleContinue() {
+    async function handleContinue() {
       const projectName = document.getElementById('projectName').value.trim();
       const patentNumber = document.getElementById('patentNumber').value.trim();
       
@@ -495,11 +553,19 @@
         fileName: activeTab === 'upload' && selectedFile ? selectedFile.name : null,
         fileSize: activeTab === 'upload' && selectedFile ? selectedFile.size : null
       };
-      
-      sessionStorage.setItem('patentUploadStep1', JSON.stringify(formData));
-      
-      // Navigate to Step 2
-      window.location.href = 'patent-upload-step2.html';
+
+      case_details = await fetchUsptoCaseDetails();
+      console.log('Case details:', case_details);
+      if (case_details) {
+        sessionStorage.setItem('patentUploadStep1', JSON.stringify(formData));
+        sessionStorage.setItem('patentUploadStep1_data', JSON.stringify(case_details));
+        
+        // Navigate to Step 2
+        window.location.href = 'patent-upload-step2';
+      }
+      else {
+        console.error('Error fetching USPTO case details');
+      }
     }
 
     function closeModal() {

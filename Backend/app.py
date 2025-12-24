@@ -114,6 +114,11 @@ def show_demo_page():
   """Serve the show demo page"""
   return render_template('show-demo.html')
 
+@app.route('/popups/<popupName>')
+def show_popup(popupName):
+  """Serve the popup page"""
+  return render_template(f'popups/{popupName}.html')
+
 # API Endpoints
 @app.route('/api/create-demo-request', methods=['POST'])
 def create_demo_request():
