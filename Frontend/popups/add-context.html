@@ -375,6 +375,19 @@
 
     // Load data from Step 1
     let step1Data = null;
+    let step1AdditionalData = null;
+
+    function loadStep1AdditionalData() {
+      const data = sessionStorage.getItem('patentUploadStep1_data');
+      if (!data) {
+        alert('No data found. Please start from Step 1.');
+        window.location.href = 'patent-upload-step1.html';
+        return;
+      }
+      
+      step1Data = JSON.parse(data);
+      console.log('Step 1 additional data:', step1Data);
+    }
 
     function loadStep1Data() {
       const data = sessionStorage.getItem('patentUploadStep1');
@@ -385,6 +398,7 @@
       }
       
       step1Data = JSON.parse(data);
+      console.log('Step 1 data:', step1Data);
       
       // Display patent info
       const patentLabel = document.getElementById('patentLabel');
@@ -498,10 +512,15 @@
       }
     }
 
+    function handleContinue() {
+      conosole.log('Step 1 continue additional data:', step1AdditionalData);
+    }
+
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
       loadStep1Data();
-      validateForm();
+      loadStep1AdditionalData()
+      // validateForm();
     });
   </script>
 </body>

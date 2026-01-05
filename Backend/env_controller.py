@@ -19,6 +19,10 @@ def getEnvKey(key):
     else:
         return None
 
+def getBaseUrl():
+    load_dotenv()
+    return os.environ.get('BASE_URL')
+
 def getDatabaseConnectionString():
     # Load environment variables
     load_dotenv()

@@ -69,7 +69,7 @@ def get_model_client():
     This function is used to get the model client for the given model name.
     It will return the model client if it is valid, otherwise it will return None.
     """
-    genai.configure(api_key='AIzaSyAI1IpRaiz9CvrxS9plKQLfluJRIXsJCCw')
+    genai.configure(api_key=getEnvKey('gemini'))
     return genai.GenerativeModel(model_name)
 
 def get_claims(document_contents: str):
@@ -88,7 +88,16 @@ def get_claims(document_contents: str):
         return claims_lists
     except Exception as e:
         print('Error in get_claims: ', e)
-        return []
+        if '429' in str(e):
+            return ['Rate Exceeded Error']
+        elif '403' in str(e):
+            return ['Access Forbidden Error']
+        elif '401' in str(e):
+            return ['Authentication Error']
+        elif '400' in str(e):
+            return ['Bad Request Error']
+        else:
+            return []
 
 def check_infringement_keys(entry):
     """
@@ -182,6 +191,8 @@ def get_complete_infringements(document_contents: str):
     claims = get_claims(document_contents)
     if (len(claims) == 0) or (claims is None):
         return []
+    if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
+        return claims
     attempts = 0
     similar_infringements = get_similar_infringements(claims)
     if not check_infringement_results(similar_infringements):

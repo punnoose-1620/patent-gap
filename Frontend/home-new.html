@@ -27,6 +27,7 @@
       --warning: hsl(38, 92%, 50%);
       --destructive: hsl(0, 72%, 51%);
       --border: hsl(214, 32%, 91%);
+      --input: hsl(214, 32%, 91%);
       --radius: 0.5rem;
       --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
       --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -2px hsl(0 0% 0% / 0.1);
@@ -776,6 +777,347 @@
       animation: spin 0.8s linear infinite;
       margin-bottom: 16px;
     }
+
+    /* Popup Modal Styles - Scoped to avoid conflicts */
+    .popup-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .popup-modal-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .popup-modal-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius);
+      background: hsl(170, 70%, 8%, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      font-size: 20px;
+    }
+
+    .popup-modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .popup-modal-subtitle {
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+
+    .popup-close-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted-foreground);
+      transition: background 0.2s;
+    }
+
+    .popup-close-btn:hover {
+      background: var(--muted);
+    }
+
+    .popup-modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .popup-info-banner {
+      background: hsl(170, 70%, 8%, 0.05);
+      border: 1px solid hsl(170, 70%, 8%, 0.2);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .popup-info-icon {
+      color: var(--primary);
+      font-size: 20px;
+      margin-top: 2px;
+    }
+
+    .popup-info-content h4 {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .popup-info-content p {
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+
+    .popup-form-group {
+      margin-bottom: 24px;
+    }
+
+    .popup-form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .popup-form-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--input);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--background);
+      transition: all 0.2s;
+    }
+
+    .popup-form-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px hsl(170, 70%, 8%, 0.1);
+    }
+
+    .popup-tabs-container {
+      margin-top: 24px;
+    }
+
+    .popup-tabs-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 24px;
+      background: var(--muted);
+      padding: 4px;
+      border-radius: var(--radius);
+    }
+
+    .popup-tab-trigger {
+      padding: 8px 16px;
+      border: none;
+      background: transparent;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      color: var(--muted-foreground);
+    }
+
+    .popup-tab-trigger.active {
+      background: var(--card);
+      color: var(--foreground);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .popup-tab-content {
+      display: none;
+    }
+
+    .popup-tab-content.active {
+      display: block;
+    }
+
+    .popup-file-upload-area {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 48px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .popup-file-upload-area:hover {
+      border-color: var(--primary);
+      background: hsl(170, 70%, 8%, 0.05);
+    }
+
+    .popup-file-upload-icon {
+      font-size: 64px;
+      color: var(--muted-foreground);
+      margin-bottom: 16px;
+    }
+
+    .popup-file-upload-text {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .popup-file-upload-hint {
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+
+    .popup-file-input {
+      display: none;
+    }
+
+    .popup-file-selected {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: var(--muted);
+      border-radius: var(--radius);
+      margin-top: 16px;
+    }
+
+    .popup-patent-id-input {
+      font-family: 'Courier New', monospace;
+      font-size: 18px;
+    }
+
+    .popup-patent-formats {
+      background: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .popup-patent-formats-title {
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .popup-patent-formats-list {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      line-height: 1.8;
+    }
+
+    .popup-modal-footer {
+      padding: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .popup-btn-secondary {
+      background: transparent;
+      color: var(--foreground);
+    }
+
+    .popup-btn-secondary:hover {
+      background: var(--muted);
+    }
+
+    .popup-context-banner {
+      background: linear-gradient(to bottom right, 
+        hsl(170, 70%, 8%, 0.1), 
+        hsl(170, 70%, 8%, 0.05));
+      border: 1px solid hsl(170, 70%, 8%, 0.2);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .popup-context-banner-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .popup-context-icon {
+      color: var(--primary);
+      font-size: 24px;
+      margin-top: 2px;
+    }
+
+    .popup-context-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .popup-context-description {
+      font-size: 14px;
+      color: var(--muted-foreground);
+      line-height: 1.6;
+    }
+
+    .popup-form-textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--background);
+      resize: vertical;
+      min-height: 120px;
+      line-height: 1.6;
+      transition: all 0.2s;
+    }
+
+    .popup-form-textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px hsl(170, 70%, 8%, 0.1);
+    }
+
+    .popup-form-hint {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-top: 8px;
+    }
+
+    .popup-ai-questions {
+      background: hsl(38, 92%, 50%, 0.1);
+      border: 1px solid hsl(38, 92%, 50%, 0.2);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-top: 24px;
+    }
+
+    .popup-ai-questions-title {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+
+    .popup-ai-question {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+
+    .popup-ai-question:last-child {
+      margin-bottom: 0;
+    }
+
+    .popup-ai-question-label {
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -879,7 +1221,20 @@
 
       <!-- Projects Section -->
       <div class="projects-section">
-        <h2>Recent Projects</h2>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+          <h2 style="margin: 0;">Recent Projects</h2>
+          <button 
+            onclick="refreshDashboard()" 
+            title="Refresh projects" 
+            aria-label="Refresh"
+            style="background: none; border: none; padding: 0.25rem; cursor: pointer; display: flex; align-items: start;"
+          >
+            <svg width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.7">
+              <path d="M4.93 7.05A7 7 0 1 1 11 18a7 7 0 0 1-6.07-10.95" />
+              <polyline points="1 4 5 4 5 8" />
+            </svg>
+          </button>
+        </div>
         <div id="projectsContainer">
           <div class="loading">
             <div class="loading-spinner"></div>
@@ -910,73 +1265,245 @@
   <script>
     // API Configuration
     const API_BASE_URL = 'http://localhost:5000';
+    const STEP_1_KEY = 'patentUploadStep1';
+    const STEP_1_DATA_KEY = 'patentUploadStep1_data';
+    const MY_CASES_KEY = 'myCasesLocal'
+    let caseDetails = {};
+    let caseData = {};
+    let analysisLoading = false;
+    let analysisResult = {};
 
     // ==================== POPUP MANAGEMENT ====================
     
     /**
-     * Fetch and display a popup from Flask endpoint
+     * Generate HTML for Upload Patent (Step 1) popup
      */
-    async function showPopup(popupName, options = {}) {
+    function generateUploadPatentPopupHTML() {
+      return `
+        <div class="popup-modal-header">
+          <div class="popup-modal-header-left">
+            <div class="popup-modal-icon">📄</div>
+            <div>
+              <h2 class="popup-modal-title">New Patent Analysis</h2>
+              <p class="popup-modal-subtitle">Step 1: Upload Patent</p>
+            </div>
+          </div>
+          <button class="popup-close-btn" type="button">✕</button>
+        </div>
+
+        <div class="popup-modal-body">
+          <div class="popup-info-banner">
+            <div class="popup-info-icon">🛡️</div>
+            <div class="popup-info-content">
+              <h4>Secure Upload</h4>
+              <p>ISO/SOC2 Compliant. Your data is encrypted and secure.</p>
+            </div>
+          </div>
+
+          <div class="popup-form-group">
+            <label class="popup-form-label">Project Name</label>
+            <input
+              type="text"
+              id="popup-projectName"
+              class="popup-form-input"
+              placeholder="e.g., Foldable Display Hinge Analysis"
+            />
+          </div>
+
+          <div class="popup-tabs-container">
+            <div class="popup-tabs-list">
+              <button class="popup-tab-trigger active" data-tab="upload">
+                <span>📤</span>
+                Upload File
+              </button>
+              <button class="popup-tab-trigger" data-tab="patentId">
+                <span>📄</span>
+                Patent ID
+              </button>
+            </div>
+
+            <div id="popup-uploadTab" class="popup-tab-content active">
+              <label for="popup-fileInput" class="popup-file-upload-area">
+                <div class="popup-file-upload-icon">📤</div>
+                <div class="popup-file-upload-text">Click to upload or drag and drop</div>
+                <div class="popup-file-upload-hint">PDF or Patent Portfolio (Max 50MB)</div>
+                <input
+                  type="file"
+                  id="popup-fileInput"
+                  class="popup-file-input"
+                  accept=".pdf"
+                />
+              </label>
+              <div id="popup-fileSelected" class="popup-file-selected" style="display: none;">
+                <span>📄</span>
+                <div>
+                  <div id="popup-fileName" style="font-weight: 500;"></div>
+                  <div id="popup-fileSize" style="font-size: 12px; color: var(--muted-foreground);"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="popup-patentIdTab" class="popup-tab-content">
+              <div class="popup-form-group">
+                <label class="popup-form-label">Enter Patent Number</label>
+                <input
+                  type="text"
+                  id="popup-patentNumber"
+                  class="popup-form-input popup-patent-id-input"
+                  placeholder="e.g., US10203040"
+                />
+                <p style="font-size: 12px; color: var(--muted-foreground); margin-top: 8px;">
+                  We'll automatically fetch patent details from USPTO
+                </p>
+              </div>
+
+              <div class="popup-patent-formats">
+                <div class="popup-patent-formats-title">Supported Formats:</div>
+                <div class="popup-patent-formats-list">
+                  <div>• US Patents: US10203040, US-10203040-B2</div>
+                  <div>• EP Patents: EP1234567, EP-1234567-A1</div>
+                  <div>• WO Patents: WO2023123456, WO-2023/123456</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="popup-modal-footer">
+          <button class="btn popup-btn-secondary" type="button">Cancel</button>
+          <button class="btn btn-primary" id="popup-continueBtn" type="button" disabled>
+            Continue
+          </button>
+        </div>
+      `;
+    }
+
+    /**
+     * Generate HTML for Add Context (Step 2) popup
+     */
+    function generateAddContextPopupHTML() {
+      return `
+        <div class="popup-modal-header">
+          <div class="popup-modal-header-left">
+            <div class="popup-modal-icon" id="popup-patentIcon">📄</div>
+            <div>
+              <h2 class="popup-modal-title">New Patent Analysis</h2>
+              <p class="popup-modal-subtitle">Step 2: Add Context</p>
+            </div>
+          </div>
+          <button class="popup-close-btn" type="button">✕</button>
+        </div>
+
+        <div class="popup-modal-body">
+          <div class="popup-context-banner">
+            <div class="popup-context-banner-header">
+              <div class="popup-context-icon">💬</div>
+              <div>
+                <h3 class="popup-context-title">Put the Armor on the Warrior</h3>
+                <p class="popup-context-description">
+                  Help our AI understand your patent better. Provide context about the core novelty,
+                  defensive goals, or specific technical elements you want to focus on.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="popup-form-group">
+            <label class="popup-form-label" id="popup-patentLabel">Patent Number</label>
+            <div class="popup-form-input" id="popup-patentDisplay">
+              <span id="popup-patentValue"></span>
+            </div>
+          </div>
+
+          <div class="popup-form-group">
+            <label class="popup-form-label">Context Description</label>
+            <textarea
+              id="popup-contextDescription"
+              class="popup-form-textarea"
+              placeholder="Example: Focus on the specific hinge mechanism for foldable displays. The novelty lies in the dual-axis rotation system with friction reduction coating. We should look for material overlaps in competing devices, particularly in the smartphone and tablet markets."
+            ></textarea>
+            <p class="popup-form-hint">
+              Be specific about technical details, target markets, and key differentiators
+            </p>
+          </div>
+
+          <div class="popup-ai-questions">
+            <div class="popup-ai-questions-title">AI Refinement Questions</div>
+            <div class="popup-ai-question">
+              <span class="popup-ai-question-label">Q:</span>
+              <span>Should we also analyze specific material compositions?</span>
+            </div>
+            <div class="popup-ai-question">
+              <span class="popup-ai-question-label">Q:</span>
+              <span>Are there particular jurisdictions you're concerned about?</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="popup-modal-footer">
+          <button class="btn popup-btn-secondary" type="button">Back</button>
+          <button class="btn btn-primary" id="popup-startAnalysisBtn" type="button">
+            <span id="popup-btnText">Start Analysis</span>
+            <span class="loading" id="popup-loadingSpinner" style="display: none;">
+              <span class="spinner" style="width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; margin-right: 8px;"></span>
+              Processing...
+            </span>
+          </button>
+        </div>
+      `;
+    }
+
+    /**
+     * Display a popup by name
+     */
+    function showPopup(popupName, options = {}) {
       const {
         onClose = null,
         onComplete = null,
         data = null
       } = options;
 
-      try {
-        // Show loading state
-        showPopupLoading();
-
-        // Fetch popup HTML from Flask
-        const response = await fetch(`${API_BASE_URL}/popups/${popupName}`, {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Accept': 'text/html',
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to load popup: ${response.statusText}`);
-        }
-
-        const html = await response.text();
-
-        // Create modal overlay
-        const modalOverlay = document.createElement('div');
-        modalOverlay.className = 'popup-overlay';
-        modalOverlay.id = `popup-${popupName}`;
-        
-        // Wrap the HTML in a modal container
-        modalOverlay.innerHTML = `<div class="modal-content">${html}</div>`;
-
-        // Add close handler for overlay click
-        modalOverlay.addEventListener('click', (e) => {
-          if (e.target === modalOverlay) {
-            closePopup(popupName, onClose);
-          }
-        });
-
-        // Inject into body
-        document.body.appendChild(modalOverlay);
-
-        // Initialize popup-specific functionality
-        initializePopupScripts(popupName, { onClose, onComplete, data });
-
-        // Add escape key handler
-        const escapeHandler = (e) => {
-          if (e.key === 'Escape') {
-            closePopup(popupName, onClose);
-            document.removeEventListener('keydown', escapeHandler);
-          }
-        };
-        document.addEventListener('keydown', escapeHandler);
-
-      } catch (error) {
-        console.error('Error loading popup:', error);
-        alert(`Failed to load popup: ${error.message}`);
-        hidePopupLoading();
+      let html = '';
+      
+      // Generate HTML based on popup name
+      if (popupName === 'upload-patent') {
+        html = generateUploadPatentPopupHTML();
+      } else if (popupName === 'add-context') {
+        html = generateAddContextPopupHTML();
+      } else {
+        console.error(`Unknown popup: ${popupName}`);
+        return;
       }
+
+      // Create modal overlay
+      const modalOverlay = document.createElement('div');
+      modalOverlay.className = 'popup-overlay';
+      modalOverlay.id = `popup-${popupName}`;
+      
+      // Wrap the HTML in a modal container
+      modalOverlay.innerHTML = `<div class="modal-content">${html}</div>`;
+
+      // Add close handler for overlay click
+      modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) {
+          closePopup(popupName, onClose);
+        }
+      });
+
+      // Inject into body
+      document.body.appendChild(modalOverlay);
+
+      // Initialize popup-specific functionality
+      initializePopupScripts(popupName, { onClose, onComplete, data });
+
+      // Add escape key handler
+      const escapeHandler = (e) => {
+        if (e.key === 'Escape') {
+          closePopup(popupName, onClose);
+          document.removeEventListener('keydown', escapeHandler);
+        }
+      };
+      document.addEventListener('keydown', escapeHandler);
     }
 
     /**
@@ -994,50 +1521,31 @@
     }
 
     /**
-     * Show loading state while fetching popup
-     */
-    function showPopupLoading() {
-      const loading = document.createElement('div');
-      loading.className = 'popup-loading';
-      loading.id = 'popup-loading';
-      loading.innerHTML = `
-        <div class="popup-loading-spinner"></div>
-        <p>Loading...</p>
-      `;
-      document.body.appendChild(loading);
-    }
-
-    /**
-     * Hide loading state
-     */
-    function hidePopupLoading() {
-      const loading = document.getElementById('popup-loading');
-      if (loading) {
-        loading.remove();
-      }
-    }
-
-    /**
      * Initialize popup-specific scripts and event handlers
      */
     function initializePopupScripts(popupName, options) {
       const { onClose, onComplete, data } = options;
-      
-      // Hide loading
-      hidePopupLoading();
 
       // Initialize based on popup name
       if (popupName === 'upload-patent') {
-        initUploadPatentPopup(data, onComplete);
+        initUploadPatentPopup(data, onComplete, onClose);
       } else if (popupName === 'add-context') {
-        initAddContextPopup(data, onComplete);
+        initAddContextPopup(data, onComplete, onClose);
       }
 
       // Generic close button handler
-      const closeBtn = document.querySelector(`#popup-${popupName} .close-btn`);
+      const closeBtn = document.querySelector(`#popup-${popupName} .popup-close-btn`);
       if (closeBtn) {
         closeBtn.addEventListener('click', () => {
-          closePopup(popupName, onClose);
+          if (popupName === 'upload-patent' || popupName === 'add-context') {
+            if (confirm('Are you sure you want to cancel? Your progress will be lost.')) {
+              sessionStorage.removeItem(STEP_1_KEY);
+              sessionStorage.removeItem(STEP_1_DATA_KEY);
+              closePopup(popupName, onClose);
+            }
+          } else {
+            closePopup(popupName, onClose);
+          }
         });
       }
     }
@@ -1045,43 +1553,57 @@
     /**
      * Initialize Upload Patent (Step 1) popup
      */
-    function initUploadPatentPopup(data, onComplete) {
-      const continueBtn = document.querySelector('#popup-upload-patent #continueBtn, #popup-upload-patent button[onclick*="continue"], #popup-upload-patent .btn-primary');
-      const tabTriggers = document.querySelectorAll('#popup-upload-patent .tab-trigger');
-      const fileInput = document.querySelector('#popup-upload-patent input[type="file"]');
-      const projectNameInput = document.querySelector('#popup-upload-patent #projectName, #popup-upload-patent input[placeholder*="Project Name"]');
-      const patentNumberInput = document.querySelector('#popup-upload-patent #patentNumber, #popup-upload-patent input[placeholder*="Patent"]');
+    function initUploadPatentPopup(data, onComplete, onClose) {
+      const popupId = 'popup-upload-patent';
+      const continueBtn = document.querySelector(`#${popupId} #popup-continueBtn`);
+      const tabTriggers = document.querySelectorAll(`#${popupId} .popup-tab-trigger`);
+      const fileInput = document.querySelector(`#${popupId} #popup-fileInput`);
+      const projectNameInput = document.querySelector(`#${popupId} #popup-projectName`);
+      const patentNumberInput = document.querySelector(`#${popupId} #popup-patentNumber`);
+      const fileSelected = document.querySelector(`#${popupId} #popup-fileSelected`);
+      const fileName = document.querySelector(`#${popupId} #popup-fileName`);
+      const fileSize = document.querySelector(`#${popupId} #popup-fileSize`);
+      const cancelBtn = document.querySelector(`#${popupId} .popup-btn-secondary`);
       
       let activeTab = 'upload';
       let selectedFile = null;
 
       // Tab switching
-      if (tabTriggers.length > 0) {
-        tabTriggers.forEach(trigger => {
-          trigger.addEventListener('click', (e) => {
-            tabTriggers.forEach(t => t.classList.remove('active'));
-            trigger.classList.add('active');
-            
-            const tabContent = document.querySelectorAll('#popup-upload-patent .tab-content');
-            tabContent.forEach(content => content.classList.remove('active'));
-            
-            if (trigger.textContent.includes('Upload')) {
-              activeTab = 'upload';
-              tabContent[0]?.classList.add('active');
-            } else {
-              activeTab = 'patentId';
-              tabContent[1]?.classList.add('active');
-            }
-            
-            validateStep1Form();
-          });
+      tabTriggers.forEach(trigger => {
+        trigger.addEventListener('click', (e) => {
+          e.preventDefault();
+          const tabName = trigger.getAttribute('data-tab');
+          activeTab = tabName;
+          
+          // Update tab triggers
+          tabTriggers.forEach(t => t.classList.remove('active'));
+          trigger.classList.add('active');
+          
+          // Update tab content
+          const uploadTab = document.querySelector(`#${popupId} #popup-uploadTab`);
+          const patentIdTab = document.querySelector(`#${popupId} #popup-patentIdTab`);
+          
+          if (tabName === 'upload') {
+            uploadTab?.classList.add('active');
+            patentIdTab?.classList.remove('active');
+          } else {
+            uploadTab?.classList.remove('active');
+            patentIdTab?.classList.add('active');
+          }
+          
+          validateStep1Form();
         });
-      }
+      });
 
       // File input handler
       if (fileInput) {
         fileInput.addEventListener('change', (e) => {
           selectedFile = e.target.files[0];
+          if (selectedFile) {
+            if (fileName) fileName.textContent = selectedFile.name;
+            if (fileSize) fileSize.textContent = (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB';
+            if (fileSelected) fileSelected.style.display = 'flex';
+          }
           validateStep1Form();
         });
       }
@@ -1114,11 +1636,57 @@
         patentNumberInput.addEventListener('input', validateStep1Form);
       }
 
+      // Cancel button handler
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+          if (confirm('Are you sure you want to cancel? Your progress will be lost.')) {
+            sessionStorage.removeItem(STEP_1_KEY);
+            sessionStorage.removeItem(STEP_1_DATA_KEY);
+            closePopup('upload-patent', onClose);
+          }
+        });
+      }
+
       // Continue button handler
       if (continueBtn) {
-        continueBtn.addEventListener('click', () => {
+        continueBtn.addEventListener('click', async () => {
           const projectName = projectNameInput?.value.trim();
           const patentNumber = patentNumberInput?.value.trim();
+          
+          // Fetch USPTO case details if patent ID is provided
+          if (activeTab === 'patentId' && patentNumber) {
+            continueBtn.disabled = true;
+            continueBtn.textContent = 'Fetching Patent from USPTO...';
+            
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/fetch-patent-from-uspto`, {
+                method: 'POST',
+                body: JSON.stringify({ 'patentId': patentNumber }),
+                credentials: 'same-origin',
+                headers: {
+                  'Content-Type': 'application/json'
+                }
+              });
+              const data = await response.json();
+              if (data.success) {
+                caseDetails = data;
+                console.log('USPTO case details fetched successfully:', data);
+              } 
+              else {
+                console.error('Error fetching USPTO case details:', data.message);
+                alert('Failed to fetch patent details from USPTO. Please try again.');
+                continueBtn.disabled = false;
+                continueBtn.textContent = 'Continue';
+                return;
+              }
+            } catch (error) {
+              console.error('Error fetching USPTO case details:', error);
+              alert('Failed to fetch patent details from USPTO. Please try again.');
+              continueBtn.disabled = false;
+              continueBtn.textContent = 'Continue';
+              return;
+            }
+          }
           
           const formData = {
             projectName,
@@ -1129,7 +1697,10 @@
           };
           
           // Store data for Step 2
-          sessionStorage.setItem('patentUploadStep1', JSON.stringify(formData));
+          sessionStorage.setItem(STEP_1_KEY, JSON.stringify(formData));
+          if (Object.keys(caseDetails).length > 0) {
+            sessionStorage.setItem(STEP_1_DATA_KEY, JSON.stringify(caseDetails));
+          }
           
           // Close Step 1 and open Step 2
           closePopup('upload-patent');
@@ -1139,43 +1710,48 @@
           });
         });
       }
+
+      // Initial validation
+      validateStep1Form();
     }
 
     /**
      * Initialize Add Context (Step 2) popup
      */
-    function initAddContextPopup(data, onComplete) {
-      const startBtn = document.querySelector('#popup-add-context #startAnalysisBtn, #popup-add-context button[onclick*="Start"], #popup-add-context .btn-primary');
-      const backBtn = document.querySelector('#popup-add-context .btn-secondary');
-      const contextTextarea = document.querySelector('#popup-add-context #contextDescription, #popup-add-context textarea');
-      const patentDisplay = document.querySelector('#popup-add-context #patentValue, #popup-add-context .form-input');
-      const patentLabel = document.querySelector('#popup-add-context #patentLabel, #popup-add-context label');
+    function initAddContextPopup(data, onComplete, onClose) {
+      const popupId = 'popup-add-context';
+      const patentIcon = document.querySelector(`#${popupId} #popup-patentIcon`);
+      const startBtn = document.querySelector(`#${popupId} #popup-startAnalysisBtn`);
+      const backBtn = document.querySelector(`#${popupId} .popup-btn-secondary`);
+      const contextTextarea = document.querySelector(`#${popupId} #popup-contextDescription`);
+      const patentDisplay = document.querySelector(`#${popupId} #popup-patentDisplay`);
+      const patentValue = document.querySelector(`#${popupId} #popup-patentValue`);
+      const patentLabel = document.querySelector(`#${popupId} #popup-patentLabel`);
+      const btnText = document.querySelector(`#${popupId} #popup-btnText`);
+      const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
 
       // Load Step 1 data
       let step1Data = data;
-      if (!step1Data) {
-        const stored = sessionStorage.getItem('patentUploadStep1');
-        if (stored) {
-          step1Data = JSON.parse(stored);
+      if (caseDetails) {
+        caseData = caseDetails.case_data;
+        contextTextarea.value = caseData.description;
+        if (typeof caseData._id === 'string' && caseData._id.includes('uspto')) {
+          // Do something if '_id' contains 'uspto'
+          patentIcon.style.backgroundColor = '#003661';
+          patentIcon.innerHTML = `<img src="${API_BASE_URL}/images/uspto.jpg" alt="USPTO" style="width:32px; height:32px; border-radius:4px;">`;
         }
-      }
-
-      if (step1Data && patentDisplay && patentLabel) {
-        if (step1Data.activeTab === 'patentId') {
-          patentLabel.textContent = 'Patent Number';
-          patentDisplay.textContent = step1Data.patentNumber;
-          patentDisplay.style.fontFamily = 'monospace';
-        } else {
-          patentLabel.textContent = 'Uploaded File';
-          patentDisplay.innerHTML = `<span style="color: var(--primary);">📄</span> ${step1Data.fileName}`;
-        }
+        console.log('Step 1 case data:', caseData);
       }
 
       // Back button handler
-      if (backBtn && backBtn.textContent.includes('Back')) {
+      if (backBtn) {
         backBtn.addEventListener('click', () => {
           closePopup('add-context');
-          showPopup('upload-patent', { onComplete: onComplete });
+          showPopup('upload-patent', { 
+            data: step1Data,
+            onComplete: onComplete,
+            onClose: onClose
+          });
         });
       }
 
@@ -1183,65 +1759,80 @@
       if (startBtn) {
         startBtn.addEventListener('click', async () => {
           const context = contextTextarea?.value.trim() || '';
+
+          let documents = caseData.documents.map(doc => doc.url);
+          let keywords = caseData.keywords;
           
           // Show loading
           startBtn.disabled = true;
-          const originalText = startBtn.innerHTML;
-          startBtn.innerHTML = '<span class="loading-spinner" style="width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; margin-right: 8px;"></span> Processing...';
+          if (btnText) btnText.style.display = 'none';
+          if (loadingSpinner) loadingSpinner.style.display = 'inline';
           
           try {
             // Submit to API
             const userId = getUserId();
             const formData = new FormData();
-            
-            formData.append('project_name', step1Data.projectName);
-            formData.append('context', context);
-            formData.append('user_id', userId);
-            
-            if (step1Data.activeTab === 'patentId') {
-              formData.append('patent_id', step1Data.patentNumber);
-              formData.append('upload_type', 'patent_id');
-            } else {
-              formData.append('upload_type', 'file');
-              formData.append('file_name', step1Data.fileName);
+
+            for (const key in caseDetails) {
+              if (caseDetails.hasOwnProperty(key)) {
+                formData.append(key, caseDetails[key]);
+              }
             }
+            console.log('Form data for Create Case:', formData);
             
-            const response = await fetch(`${API_BASE_URL}/api/create-case`, {
+            // if (step1Data.activeTab === 'patentId') {
+            //   formData.append('patent_id', step1Data.patentNumber);
+            //   formData.append('upload_type', 'patent_id');
+            // } 
+            // else {
+            //   formData.append('upload_type', 'file');
+            //   formData.append('file_name', step1Data.fileName);
+            // }
+            
+            const response = await fetch(`${API_BASE_URL}/api/create-patent`, {
               method: 'POST',
               credentials: 'include',
-              body: formData
+              body: JSON.stringify(caseDetails),
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            }).then(response => response.json())
+            .then(data => {
+              if (data && 'case_id' in data) {
+                console.log('Case created:', data);
+                caseData = data.case_data;
+                // Store case data
+                sessionStorage.setItem('currentCaseId', data.case_id || caseData._id);
+                sessionStorage.setItem('projectName', caseDetails.title);
+                sessionStorage.setItem('patentInfo', step1Data.activeTab === 'patentId' 
+                ? step1Data.patentNumber 
+                : step1Data.fileName);
+
+                // Clear Step 1 data
+                sessionStorage.removeItem(STEP_1_KEY);
+                sessionStorage.removeItem(STEP_1_DATA_KEY);
+
+                updateCasesSession()
+                beginSimilarityAnalysis(documents, keywords);
+                
+                // Navigate to Analysis page
+                const patentParam = step1Data.activeTab === 'patentId' 
+                  ? step1Data.patentNumber 
+                  : step1Data.fileName;
+              }
+              else {
+                throw new Error(`Failed to create case: ${data}`);
+              }
+            }).catch(error => {
+              console.error('Error creating case:', error);
             });
-            
-            if (!response.ok) {
-              throw new Error(`Failed to create case: ${response.statusText}`);
-            }
-            
-            const result = await response.json();
-            
-            // Store case data
-            sessionStorage.setItem('currentCaseId', result.case_id || result.id);
-            sessionStorage.setItem('projectName', step1Data.projectName);
-            sessionStorage.setItem('patentInfo', step1Data.activeTab === 'patentId' 
-              ? step1Data.patentNumber 
-              : step1Data.fileName);
-            
-            // Clear Step 1 data
-            sessionStorage.removeItem('patentUploadStep1');
-            
-            // Close popup
-            closePopup('add-context');
-            
-            // Navigate to Analysis page
-            const patentParam = step1Data.activeTab === 'patentId' 
-              ? step1Data.patentNumber 
-              : step1Data.fileName;
-            window.location.href = `analysis.html?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
             
           } catch (error) {
             console.error('Error starting analysis:', error);
             alert(`Error: ${error.message}. Please try again.`);
             startBtn.disabled = false;
-            startBtn.innerHTML = originalText;
+            if (btnText) btnText.style.display = 'inline';
+            if (loadingSpinner) loadingSpinner.style.display = 'none';
           }
         });
       }
@@ -1314,6 +1905,10 @@
       showPopup('upload-patent', {
         onComplete: (result) => {
           console.log('Analysis started:', result);
+          const data = sessionStorage.getItem(STEP_1_KEY);
+          const data_additional = sessionStorage.getItem(STEP_1_DATA_KEY);
+          console.log('Step 1 data:', data);
+          console.log('Step 1 data:', data);
         },
         onClose: () => {
           console.log('Popup closed');
@@ -1340,6 +1935,76 @@
     });
 
     // ==================== UTILITY FUNCTIONS ====================
+
+    function getCasesSession() {
+      // Retrieve array of cases stored in sessionStorage under MY_CASES_KEY
+      let cases = [];
+      try {
+        const stored = sessionStorage.getItem(MY_CASES_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            cases = parsed;
+          }
+        }
+      } catch (e) {
+        cases = [];
+      }
+      return cases;
+    }
+
+    function updateCasesSession() {
+      // Get the current 'myCasesLocal' from sessionStorage
+      try {
+        let myCasesLocal = sessionStorage.getItem(MY_CASES_KEY);
+        console.log('TEST: Updating cases session:', myCasesLocal);
+        if (!myCasesLocal) {
+          // No value exists, create new array with current caseData
+          let casesArr = [];
+          if (caseData && typeof caseData === 'object') {
+            casesArr.push(caseData);
+          }
+          console.log('TEST: Updating cases session (no value exists):', casesArr);
+          sessionStorage.setItem(MY_CASES_KEY, JSON.stringify(casesArr));
+        } 
+        else {
+          // Value exists, parse array, append caseData, and update
+          try {
+            let casesArr = JSON.parse(myCasesLocal);
+            if (!Array.isArray(casesArr)) {
+              casesArr = [];
+            }
+            if (caseData && typeof caseData === 'object') {
+              casesArr.push(caseData);
+            }
+            sessionStorage.setItem(MY_CASES_KEY, JSON.stringify(casesArr));
+          } 
+          catch (e) {
+            // If parsing fails, reset to array with current caseData
+            let casesArr = [];
+            if (caseData && typeof caseData === 'object') {
+              // Check if an entry with matching '_id' already exists
+              if (caseData && typeof caseData === 'object' && caseData._id) {
+                const idx = casesArr.findIndex(entry => entry && entry._id === caseData._id);
+                if (idx !== -1) {
+                  // Update the existing entry
+                  casesArr[idx] = caseData;
+                } else {
+                  // Add new entry
+                  casesArr.push(caseData);
+                }
+              } else if (caseData && typeof caseData === 'object') {
+                casesArr.push(caseData);
+              }
+            }
+            console.log('TEST: Updating cases session (value exists):', casesArr);
+            sessionStorage.setItem(MY_CASES_KEY, JSON.stringify(casesArr));
+          }
+        }
+      } catch (e) {
+        console.log('TEST: Updating cases session (error):', e);
+      }
+    }
 
     function getUserId() {
       try {
@@ -1377,6 +2042,90 @@
 
     // ==================== API FUNCTIONS ====================
 
+    async function beginSimilarityAnalysis(urls, keywords) {
+      analysisLoading = true;
+      const popupId = 'popup-add-context';
+      const startBtn = document.querySelector(`#${popupId} #popup-startAnalysisBtn`);
+      const btnText = document.querySelector(`#${popupId} #popup-btnText`);
+      const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
+
+      const infringementAnalysisUrl = `${API_BASE_URL}/api/similarity-analysis-gemini`;
+      let body = {
+        keywords: keywords,
+        document_urls: urls
+      };
+      let headers = {
+        'Content-Type': 'application/json'
+      };
+      console.log('Infringement Analysis Body:', body);
+      fetch(infringementAnalysisUrl, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: headers,
+        credentials: 'include',
+        keepalive: true
+      }).then(response => response.json())
+      .then(data => {
+        console.log('TEST: Infringement Analysis Data:', data);
+        if (Object.keys(data).includes('similar_infringements')) {
+          let analysisResult = data['similar_infringements'];
+          console.log('TEST: Infringement Analysis Result:', analysisResult);
+          if (Array.isArray(analysisResult) && analysisResult.length > 0) {
+            console.log('TEST: Infringement Data:', analysisResult);
+            if (caseData && typeof caseData === 'object') {
+              caseData['similar_infringements'] = analysisResult;
+            } else {
+              caseData = {
+                'similar_infringements': analysisResult
+              };
+            }
+            updateCasesSession();
+            console.log('TEST: Updated Case Data:', caseData);
+            renderProjects(getCasesSession())
+            console.log('TEST: Projects rendered:', getCasesSession());
+            // Store similarity analysis result in session storage
+            try {
+              // Close popup
+              closePopup('add-context');
+
+              sessionStorage.setItem('similar_infringements', JSON.stringify(analysisResult));
+              console.log('TEST: Redirecting to analysis page');
+              window.location.href = `analysis-page?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
+            } catch (e) {
+              console.warn('Failed to store similarity analysis in session storage:', e);
+            }
+          }
+        } else {
+          console.error('No infringement analysis result found');
+        }
+      }).catch(error => {
+        console.error('Error starting infringement analysis:', error);
+        if (startBtn && btnText && loadingSpinner) {
+          // Hide loading spinner
+          loadingSpinner.style.display = 'none';
+          // Show button text
+          btnText.style.display = 'inline';
+          // Re-enable button
+          startBtn.disabled = false;
+          // Optionally update button text to show error
+          btnText.textContent = 'Start Analysis (Retry)';
+        }
+      }).finally(() => {
+        console.log('Infringement Analysis Completed.');
+        analysisLoading = false;
+        if (startBtn && btnText && loadingSpinner) {
+          // Hide loading spinner
+          loadingSpinner.style.display = 'none';
+          // Show button text
+          btnText.style.display = 'inline';
+          // Re-enable button
+          startBtn.disabled = false;
+          // Optionally update button text to show error
+          btnText.textContent = 'Start Analysis Again';
+        }
+      });
+    }
+
     async function fetchCases() {
       const userId = getUserId();
       
@@ -1392,7 +2141,7 @@
             'Content-Type': 'application/json',
           }
         });
-
+        console.log('TEST: Cases fetched in fetchCases:', response);
         if (!response.ok) {
           if (response.status === 401) {
             showError('Session expired. Please log in again.');
@@ -1402,7 +2151,11 @@
         }
 
         const data = await response.json();
-        return Array.isArray(data['cases']) ? data['cases'] : [];
+        if (Array.isArray(data['cases'])) {
+          console.log('TEST: Cases fetched:', data['cases']);
+          return data['cases'];
+        }
+        return [];
       } catch (error) {
         console.error('Error fetching cases:', error);
         showError(`Error loading cases: ${error.message}`);
@@ -1512,6 +2265,7 @@
         return;
       }
 
+      console.log('TEST: Rendering projects:', cases);
       const projectsHTML = cases.map(caseItem => {
         const status = caseItem.status || 'draft';
         const badgeClass = `badge-${status}`;
@@ -1591,6 +2345,8 @@
           fetchCases(),
           fetchStats()
         ]);
+        console.log('TEST: Cases fetched:', cases);
+        console.log('TEST: Stats fetched:', stats);
 
         window.currentCases = cases;
 
@@ -1625,9 +2381,18 @@
       alert(`Opening project: ${caseId}`);
     }
 
+    async function refreshDashboard() {}
+
     // Initialize Dashboard on Load
     document.addEventListener('DOMContentLoaded', () => {
       loadDashboard();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        fetchCases();
+        loadDashboard();
+      }
     });
   </script>
 </body>

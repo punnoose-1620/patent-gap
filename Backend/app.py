@@ -119,6 +119,11 @@ def show_popup(popupName):
   """Serve the popup page"""
   return render_template(f'popups/{popupName}.html')
 
+@app.route('/analysis-page')
+def analysis_page():
+  """Serve the analysis page"""
+  return render_template('analysis-page.html');
+
 # API Endpoints
 @app.route('/api/create-demo-request', methods=['POST'])
 def create_demo_request():
@@ -328,7 +333,8 @@ def my_cases():
           $ref: '#/definitions/ErrorResponse'
     """
     if 'user_id' not in session:
-        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+      print('TEST: My Cases - Not authenticated')
+      return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     user_id = session['user_id']
     print(f'LOG: {user_id} Get My Cases')
     try:
@@ -1532,6 +1538,7 @@ def fetch_patent_from_uspto():
     return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
   
   try:
+    print(f'Fetching patent of ID {patent_id} from USPTO: {json.dumps(data, indent=4)}')
     uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
     uspto_data = uspto_instance.get_complete_patent_info(patent_id)
     uspto_data['created_by'] = user_id
@@ -1554,6 +1561,39 @@ def fetch_patent_from_uspto():
 
 @app.route('/api/similarity-analysis-gemini', methods=['POST'])
 def similarity_analysis_gemini():
+  """
+  Endpoint to perform similarity analysis on a set of document URLs using the Gemini analysis engine.
+
+  This endpoint receives a POST request containing a JSON payload with a list of document URLs.
+  It retrieves the content from each URL, concatenates them, and then performs a similarity/infringement analysis
+  using a specialized function. The analysis results are returned in the response.
+
+  Request JSON Example:
+    {
+      "document_urls": [
+        "https://example.com/document1.txt",
+        "https://example.com/document2.txt"
+      ]
+    }
+
+  Responses:
+    200 OK:
+      {
+        "success": true,
+        "message": "Similarity analysis completed",
+        "similar_infringements": [...]
+      }
+    400 Bad Request:
+      {
+        "success": false,
+        "message": "No data provided" | "Document URLs are required" | "No viable document contents provided"
+      }
+    500 Internal Server Error:
+      {
+        "success": false,
+        "message": "Error details"
+      }
+  """
   data = request.get_json()
   if data is None:
     return jsonify({'success': False, 'message': 'No data provided'}), 400
@@ -1575,6 +1615,10 @@ def similarity_analysis_gemini():
     return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
   
   similar_infringements = get_complete_infringements(complete_document_contents)
+  if (similar_infringements is None) or (len(similar_infringements) == 0):
+    return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
+  if (similar_infringements[0] == 'Rate Exceeded Error') or (similar_infringements[0] == 'Access Forbidden Error') or (similar_infringements[0] == 'Authentication Error') or (similar_infringements[0] == 'Bad Request Error'):
+    return jsonify({'success': False, 'message': similar_infringements[0]}), 400
   # if (similar_infringements is None) or (len(similar_infringements) == 0):
   #   return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
   # print('TEST: similar_infringements: ', json.dumps(similar_infringements, indent=4))
@@ -1584,6 +1628,7 @@ def similarity_analysis_gemini():
     'message': 'Similarity analysis completed', 
     'similar_infringements': similar_infringements
     }), 200
+
 if __name__ == '__main__':
     port = app.config['PORT']
     debug = app.config['DEBUG']

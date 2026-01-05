@@ -883,7 +883,7 @@
                                 <div class="results-filing-date" style="font-size:12px; margin-bottom:0.5rem;">Filing Date: ${filingDate}</div>
                                 <hr style="margin: 1em 0;">
                             `;
-                            resultsContainer.appendChild(createCircularProgressIndicator(48, 'Triggering Similarity Analysis...'));
+                            resultsContainer.appendChild(createCircularProgressIndicator(48, 'Triggering Infringement Analysis...'));
                             triggerSimilarityAnalysis(caseDataNew, data['keywords'])
                         }
                     });
@@ -893,7 +893,7 @@
         }
         
         async function triggerSimilarityAnalysis(case_data, keywords) {
-            console.log('Triggering similarity analysis');
+            console.log('Triggering infringement analysis');
             documents = case_data['documents']
             urls = documents.map(doc => doc.url);
             let body = {
@@ -912,7 +912,13 @@
                     keepalive: true
                 }).then(response => response.json())
                 .then(data => {
-                    console.log('Similarity Analysis Data:', data);
+                    console.log('Infringement Analysis Data:', data);
+                    if (data && 'success' in data) {
+                        if (data[success]==false) {
+                            alert(data['message']);
+                            return;
+                        }
+                    }
                     if (data && 'similar_infringements' in data) {
                         let resultsContainer = document.getElementById('resultDisplayContainer');
                         const titleElement = document.createElement('div');
@@ -921,7 +927,7 @@
                         resultsContainer.removeChild(circularProgressIndicator);
 
                         titleElement.className = 'results-title';
-                        titleElement.textContent = 'Results of Similarity Analysis';
+                        titleElement.textContent = 'Results of Infringement Analysis';
                         dividerElement.style.marginBottom = '1em';
                         resultsContainer.appendChild(titleElement);
                         resultsContainer.appendChild(dividerElement);
@@ -964,7 +970,7 @@
                 // Populate resultDisplayContainer Div
             }
             catch(error) {
-                console.error('Similarity Analysis Error:', error)
+                console.error('Infringement Analysis Error:', error)
             }
         }
 
