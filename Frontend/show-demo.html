@@ -914,56 +914,66 @@
                 .then(data => {
                     console.log('Infringement Analysis Data:', data);
                     if (data && 'success' in data) {
-                        if (data[success]==false) {
+                        if (data['success']==false) {
                             alert(data['message']);
                             return;
                         }
                     }
                     if (data && 'similar_infringements' in data) {
-                        let resultsContainer = document.getElementById('resultDisplayContainer');
-                        const titleElement = document.createElement('div');
-                        const dividerElement = document.createElement('hr');
-                        const circularProgressIndicator = document.getElementById('circularProgressIndicator');
-                        resultsContainer.removeChild(circularProgressIndicator);
+                        if (data['success']==false) {
+                            let resultsContainer = document.getElementById('resultDisplayContainer');
+                            const titleElement = document.createElement('div');
+                            const dividerElement = document.createElement('hr');
+                            const circularProgressIndicator = document.getElementById('circularProgressIndicator');
+                            resultsContainer.removeChild(circularProgressIndicator);
+                            titleElement.textContent = data['message'];
+                        }
+                        else {
+                            let resultsContainer = document.getElementById('resultDisplayContainer');
+                            const titleElement = document.createElement('div');
+                            const dividerElement = document.createElement('hr');
+                            const circularProgressIndicator = document.getElementById('circularProgressIndicator');
+                            resultsContainer.removeChild(circularProgressIndicator);
 
-                        titleElement.className = 'results-title';
-                        titleElement.textContent = 'Results of Infringement Analysis';
-                        dividerElement.style.marginBottom = '1em';
-                        resultsContainer.appendChild(titleElement);
-                        resultsContainer.appendChild(dividerElement);
+                            titleElement.className = 'results-title';
+                            titleElement.textContent = 'Results of Infringement Analysis';
+                            dividerElement.style.marginBottom = '1em';
+                            resultsContainer.appendChild(titleElement);
+                            resultsContainer.appendChild(dividerElement);
 
-                        similarInfringementsList = data['similar_infringements'];
-                        if(similarInfringementsList) {
-                            similarInfringementsList.forEach(infringement => {
-                                infringementId = infringement['entry_id'];
-                                ingringementSource = infringement['source'];
-                                claimsInfringed = infringement['similar_claims'];
-                                claimCardContainer = document.createElement('div');
-                                claimCardContainer.style.marginBottom = '1rem';
-                                claimCardContainer.innerHTML = `
-                                    <div class="claim-card-container-title">Patent number ${infringementId} from ${ingringementSource} as a source</div>
-                                    <hr style="margin: 1em 0;">
-                                `;
-                                claimCardContainer.className = 'claim-card-container';
-                                claimsInfringed.forEach(claim => {
-                                    claimTitle = claim['claim'];
-                                    claimSimilarityScore = claim['similarity_score'];
-                                    claimUrl = claim['url_to_claim'];
-                                    claimCard = document.createElement('div');
-                                    claimCard.className = 'claim-card';
-                                    claimCard.onclick = function() {
-                                        if(claimUrl) {
-                                            window.open(claimUrl, '_blank');
-                                        }
-                                    };
-                                    claimCard.innerHTML = `
-                                        <div class="claim-title">${claimTitle}</div>
-                                        <div class="claim-similarity-score">${claimSimilarityScore}</div>
+                            similarInfringementsList = data['similar_infringements'];
+                            if(similarInfringementsList) {
+                                similarInfringementsList.forEach(infringement => {
+                                    infringementId = infringement['entry_id'];
+                                    ingringementSource = infringement['source'];
+                                    claimsInfringed = infringement['similar_claims'];
+                                    claimCardContainer = document.createElement('div');
+                                    claimCardContainer.style.marginBottom = '1rem';
+                                    claimCardContainer.innerHTML = `
+                                        <div class="claim-card-container-title">Patent number ${infringementId} from ${ingringementSource} as a source</div>
+                                        <hr style="margin: 1em 0;">
                                     `;
-                                    claimCardContainer.appendChild(claimCard);
+                                    claimCardContainer.className = 'claim-card-container';
+                                    claimsInfringed.forEach(claim => {
+                                        claimTitle = claim['claim'];
+                                        claimSimilarityScore = claim['similarity_score'];
+                                        claimUrl = claim['url_to_claim'];
+                                        claimCard = document.createElement('div');
+                                        claimCard.className = 'claim-card';
+                                        claimCard.onclick = function() {
+                                            if(claimUrl) {
+                                                window.open(claimUrl, '_blank');
+                                            }
+                                        };
+                                        claimCard.innerHTML = `
+                                            <div class="claim-title">${claimTitle}</div>
+                                            <div class="claim-similarity-score">${claimSimilarityScore}</div>
+                                        `;
+                                        claimCardContainer.appendChild(claimCard);
+                                    });
+                                    resultsContainer.appendChild(claimCardContainer);
                                 });
-                                resultsContainer.appendChild(claimCardContainer);
-                            });
+                            }
                         }
                     }
                 });
