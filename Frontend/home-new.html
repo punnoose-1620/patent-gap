@@ -2393,6 +2393,15 @@
 
     // Initialize Dashboard on Load
     document.addEventListener('DOMContentLoaded', () => {
+      // Check if user_id exists in localStorage session, else redirect to /login
+      try {
+        const session = JSON.parse(localStorage.getItem('session') || '{}');
+        if (!session.user_id && !(session.user && session.user.id)) {
+          window.location.href = '/login';
+        }
+      } catch (e) {
+        window.location.href = '/login';
+      }
       loadDashboard();
     });
   </script>
