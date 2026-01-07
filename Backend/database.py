@@ -28,11 +28,10 @@ def connect_to_database():
     """
     global _mongodb_client, _mongodb_db
 
-    
     # Get MongoDB connection string from environment
     connection_string = getDatabaseConnectionString()
     # print('\nConnection String: ', connection_string)
-    db_name = 'patent-gap'  # Default, or extract from connection string
+    db_name = 'patent_gap'  # Default, or extract from connection string
     
     if not connection_string:
         raise ValueError("MONGODB_CONNECTION_STRING must be set in .env file.")

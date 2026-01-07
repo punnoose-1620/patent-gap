@@ -716,7 +716,7 @@
     <div class="sidebar-content">
       <div class="sidebar-group">
         <div class="sidebar-group-title">Main</div>
-        <a href="dashboard.html" class="sidebar-nav-item" onclick="handleNavClick('dashboard', event)">
+        <a href="home" class="sidebar-nav-item" onclick="handleNavClick('dashboard', event)">
           <div class="sidebar-nav-item-icon">📊</div>
           <span>Dashboard</span>
         </a>
@@ -749,7 +749,7 @@
       <!-- Page Header -->
       <div class="page-header">
         <div class="page-header-left">
-          <a href="dashboard.html" class="back-button">
+          <a href="home" class="back-button">
             <span>←</span>
             Back to Dashboard
           </a>
@@ -906,6 +906,7 @@
             'Content-Type': 'application/json',
           }
         });
+        console.log('LOG: Case Response Data: ', response)
 
         if (!response.ok) {
           if (response.status === 404) {
@@ -915,7 +916,8 @@
         }
 
         const data = await response.json();
-        return data;
+        console.log('LOG: Case Data: ', data['case'])
+        return data['case'];
       } catch (error) {
         console.error('Error fetching case details:', error);
         showError(`Error loading case: ${error.message}`);
@@ -929,7 +931,7 @@
 
       // Header
       document.getElementById('caseTitle').textContent = caseData.title || caseData.name || 'Untitled Case';
-      document.getElementById('casePatentId').textContent = caseData.patentId || caseData.patent_id || 'N/A';
+      document.getElementById('casePatentId').textContent = caseData.patentId || caseData.patent_id || caseData._id || 'N/A';
 
       // Status badge
       const status = caseData.status || 'draft';
@@ -942,7 +944,7 @@
       infoGrid.innerHTML = `
         <div class="info-card">
           <div class="info-card-label">Patent ID</div>
-          <div class="info-card-value mono">${escapeHtml(caseData.patentId || caseData.patent_id || 'N/A')}</div>
+          <div class="info-card-value mono">${escapeHtml(caseData._id || 'N/A')}</div>
         </div>
         <div class="info-card">
           <div class="info-card-label">Status</div>
@@ -954,7 +956,7 @@
         </div>
         <div class="info-card">
           <div class="info-card-label">Last Updated</div>
-          <div class="info-card-value">${formatDate(caseData.lastUpdated || caseData.updated_at || caseData.created_at)}</div>
+          <div class="info-card-value">${formatDate(caseData.created_date || caseData.updated_date)}</div>
         </div>
       `;
 
@@ -972,12 +974,12 @@
         <div class="metadata-item">
           <span class="metadata-icon">📅</span>
           <span class="metadata-label">Created:</span>
-          <span class="metadata-value">${formatDate(caseData.created_at || caseData.createdAt)}</span>
+          <span class="metadata-value">${formatDate(caseData.created_date || caseData.createdAt)}</span>
         </div>
         <div class="metadata-item">
           <span class="metadata-icon">🕐</span>
           <span class="metadata-label">Last Updated:</span>
-          <span class="metadata-value">${formatTimeAgo(caseData.updated_at || caseData.lastUpdated || caseData.created_at)}</span>
+          <span class="metadata-value">${formatTimeAgo(caseData.updated_date || caseData.created_date)}</span>
         </div>
         ${caseData.user_id ? `
           <div class="metadata-item">
@@ -1180,7 +1182,7 @@
           
           if (response.ok) {
             alert('Case deleted successfully');
-            window.location.href = 'dashboard.html';
+            window.location.href = 'home';
           } else {
             throw new Error('Failed to delete case');
           }

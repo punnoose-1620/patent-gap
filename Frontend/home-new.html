@@ -2011,7 +2011,7 @@
         const sessionData = JSON.parse(localStorage.getItem('session') || '{}');
         return sessionData?.user_id || sessionData?.user?.id || null;
       } catch (error) {
-        console.error('Error parsing session data:', error);
+        console.error('ERROR: Error parsing session data:', error);
         return null;
       }
     }
@@ -2130,12 +2130,14 @@
       const userId = getUserId();
       
       if (!userId) {
+        console.log('ERROR: User not authenticated in fetchCases');
         showError('User not authenticated. Please log in.');
         return [];
       }
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/my-cases`, {
+        console.log('TEST: Starting case fetching in fetchCases');
+        const response = await fetch(`${API_BASE_URL}/api/all-cases`, {
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
@@ -2143,6 +2145,7 @@
         });
         console.log('TEST: Cases fetched in fetchCases:', response);
         if (!response.ok) {
+          console.error('TEST: Cases fetched in fetchCases:', response);
           if (response.status === 401) {
             showError('Session expired. Please log in again.');
             return [];
@@ -2270,13 +2273,14 @@
         const status = caseItem.status || 'draft';
         const badgeClass = `badge-${status}`;
         const progress = caseItem.progress || 0;
-        const lastUpdated = formatTimeAgo(caseItem.lastUpdated || caseItem.updated_at || caseItem.created_at);
+        const lastUpdated = formatTimeAgo(caseItem.lastUpdated || caseItem.updated_date || caseItem.created_date);
         const matchCount = caseItem.matchCount || caseItem.match_count || 0;
         const title = caseItem.title || caseItem.name || 'Untitled Project';
         const patentId = caseItem.patentId || caseItem.patent_id || 'N/A';
+        console.log('TEST: Case item:', caseItem);
 
         return `
-          <div class="project-card" onclick="handleProjectClick('${caseItem.id}')">
+          <div class="project-card" onclick="handleProjectClick('${caseItem._id}')">
             <div class="project-card-header">
               <div class="project-card-title-section">
                 <div class="project-card-icon">📄</div>
@@ -2341,19 +2345,23 @@
       `;
 
       try {
-        const [cases, stats] = await Promise.all([
-          fetchCases(),
-          fetchStats()
-        ]);
-        console.log('TEST: Cases fetched:', cases);
-        console.log('TEST: Stats fetched:', stats);
+        fetchCases().then(cases => {
+          console.log('TEST: Cases fetched in loadDashboard:', cases);
+          window.currentCases = cases;
+          renderProjects(cases);
+        }).catch(error => {
+          console.error('Error fetching cases:', error);
+          showError(`Failed to load cases: ${error.message}`);
+        });
 
-        window.currentCases = cases;
-
-        renderProjects(cases);
-        renderStats(stats);
-
-        updateWeeklyResults(stats);
+        fetchStats().then(stats => {
+          console.log('TEST: Stats fetched:', stats);
+          renderStats(stats);
+          updateWeeklyResults(stats);
+        }).catch(error => {
+          console.error('Error fetching stats:', error);
+          showError(`Failed to load stats: ${error.message}`);
+        });
       } catch (error) {
         console.error('Error loading dashboard:', error);
         showError(`Failed to load dashboard: ${error.message}`);
@@ -2377,22 +2385,13 @@
 
     function handleProjectClick(caseId) {
       console.log('Project clicked:', caseId);
-      window.location.href = `case-details.html`;
+      window.location.href = `case-details?id=${caseId}`;
       alert(`Opening project: ${caseId}`);
     }
-
-    async function refreshDashboard() {}
 
     // Initialize Dashboard on Load
     document.addEventListener('DOMContentLoaded', () => {
       loadDashboard();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        fetchCases();
-        loadDashboard();
-      }
     });
   </script>
 </body>

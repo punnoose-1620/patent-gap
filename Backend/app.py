@@ -122,7 +122,7 @@ def show_popup(popupName):
 @app.route('/analysis-page')
 def analysis_page():
   """Serve the analysis page"""
-  return render_template('analysis-page.html');
+  return render_template('analysis-results.html');
 
 # API Endpoints
 @app.route('/api/create-demo-request', methods=['POST'])
@@ -239,6 +239,7 @@ def login():
         print(f'LOG: Login Request for {email}')
         
         result = login_user(email, password)
+        print('LOG: Login result:', result)
         
         if result['success']:
             session['user_id'] = result['user_id']
@@ -246,7 +247,8 @@ def login():
             return jsonify({
                 'success': True,
                 'message': 'Login successful',
-                'redirect': '/home'
+                'redirect': '/home',
+                'user_id': result['user_id']
             })
         else:
             return jsonify({
@@ -296,6 +298,26 @@ def logout():
         'message': 'Logged out successfully',
         'redirect': '/'
     })
+
+@app.route('/api/all-cases')
+def all_cases():
+    # if 'user_id' not in session:
+    #     print('TEST: My Cases - Not authenticated')
+    #     return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    # user_id = session['user_id']
+    # print(f'LOG: {user_id} Get My Cases')
+    try:
+        cases = get_all_cases()
+        return jsonify({
+            'success': True,
+            'cases': cases
+        })
+    except Exception as e:
+        print('Error fetching cases: ', str(e))
+        return jsonify({
+            'success': False,
+            'message': f'Error fetching cases: {str(e)}'
+        }), 500
 
 @app.route('/api/my-cases')
 def my_cases():
@@ -1547,7 +1569,7 @@ def fetch_patent_from_uspto():
     print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
     if uspto_data is None:
       return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
-    # creationResult = create_case(uspto_data)
+    creationResult = create_case(uspto_data)
     return jsonify({
       'success': True, 
       'message': 'Patent data imported successfully', 

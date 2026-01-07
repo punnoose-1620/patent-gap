@@ -2,7 +2,9 @@ from database import *
 from env_controller import getCaseDatabaseName
 
 def get_all_cases():
-    return getAllData(connect_to_database(), getCaseDatabaseName())
+    all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
+    print('TEST: All cases: ', all_cases)
+    return all_cases
 
 def get_open_cases():
     """
