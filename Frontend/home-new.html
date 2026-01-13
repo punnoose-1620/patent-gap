@@ -541,6 +541,22 @@
       font-size: 16px;
       font-weight: 600;
       margin-bottom: 4px;
+      max-width: 180px;
+      white-space: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
+      display: block;
+      scrollbar-width: thin; /* For Firefox */
+      margin-right: 10px;
+    }
+
+    .project-card-title::-webkit-scrollbar {
+      height: 5px;
+    }
+    
+    .project-card-title::-webkit-scrollbar-thumb {
+      background: var(--muted-foreground);
+      border-radius: 5px;
     }
 
     .project-card-patent-id {
@@ -1265,8 +1281,8 @@
   <script>
     // API Configuration
     const API_BASE_URL = 'https://patent-gap-backend.onrender.com';
-    // Live URL: https://patent-gap-backend.onrender.com
-    // Local URL: http://localhost:5000
+    // const API_BASE_URL = 'http://localhost:5000';
+    
     const STEP_1_KEY = 'patentUploadStep1';
     const STEP_1_DATA_KEY = 'patentUploadStep1_data';
     const MY_CASES_KEY = 'myCasesLocal'
@@ -1274,6 +1290,215 @@
     let caseData = {};
     let analysisLoading = false;
     let analysisResult = {};
+
+    // ==================== API FUNCTIONS ====================
+
+    async function fetchCasefromUspto(patentNumber, onSuccess, onFail, onError) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/fetch-patent-from-uspto`, {
+          method: 'POST',
+          body: JSON.stringify({ 'patentId': patentNumber }),
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        const data = await response.json();
+        if (data.success) {
+          onSuccess(data);
+        } else {
+          onFail(data.message);
+        }
+      } catch (error) {
+        onError(error);
+      }
+    }
+
+    async function updateCaseDatabase(case_id, update_data, onSuccess, onFail, onError) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/${case_id}`, {
+          method: 'POST',
+          body: JSON.stringify(update_data),
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        const data = await response.json();
+        if (data.success) {
+          onSuccess(data);
+        } 
+        else {
+          onFail(data.message);
+        }
+      } catch (error) {
+        onError(error);
+      }
+    }
+
+    async function beginSimilarityAnalysis(urls, keywords) {
+      analysisLoading = true;
+      const popupId = 'popup-add-context';
+      const startBtn = document.querySelector(`#${popupId} #popup-startAnalysisBtn`);
+      const btnText = document.querySelector(`#${popupId} #popup-btnText`);
+      const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
+
+      const infringementAnalysisUrl = `${API_BASE_URL}/api/similarity-analysis-gemini`;
+      let body = {
+        keywords: keywords,
+        document_urls: urls
+      };
+      let headers = {
+        'Content-Type': 'application/json'
+      };
+      console.log('Infringement Analysis Body:', body);
+      fetch(infringementAnalysisUrl, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: headers,
+        credentials: 'include',
+        keepalive: true
+      }).then(response => response.json())
+      .then(data => {
+        console.log('TEST: Infringement Analysis Data:', data);
+        if (Object.keys(data).includes('similar_infringements')) {
+          let analysisResult = data['similar_infringements'];
+          console.log('TEST: Infringement Analysis Result:', analysisResult);
+          if (Array.isArray(analysisResult) && analysisResult.length > 0) {
+            console.log('TEST: Infringement Data:', analysisResult);
+            updateCaseDatabase(
+              caseData && caseData._id ? caseData._id : '',
+              { 'similar_infringements': analysisResult },
+              (data) => {
+                console.log('Infringements update response:', data);
+              },
+              (errorMessage) => {
+                console.error('Error updating infringements:', errorMessage);
+              },
+              (error) => {
+                console.error('Error updating infringements:', error);
+              }
+            );
+            if (caseData && typeof caseData === 'object') {
+              caseData['infringements'] = analysisResult;
+            } else {
+              caseData = {
+                'infringements': analysisResult
+              };
+            }
+            updateCasesSession();
+            console.log('TEST: Updated Case Data:', caseData);
+            renderProjects(getCasesSession())
+            console.log('TEST: Projects rendered:', getCasesSession());
+            // Store similarity analysis result in session storage
+            try {
+              // Close popup
+              closePopup('add-context');
+
+              sessionStorage.setItem('similar_infringements', JSON.stringify(analysisResult));
+              console.log('TEST: Redirecting to analysis page');
+              window.location.href = `analysis-page?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
+            } catch (e) {
+              console.warn('Failed to store similarity analysis in session storage:', e);
+            }
+          }
+        } else {
+          console.error('No infringement analysis result found');
+        }
+      }).catch(error => {
+        console.error('Error starting infringement analysis:', error);
+        if (startBtn && btnText && loadingSpinner) {
+          // Hide loading spinner
+          loadingSpinner.style.display = 'none';
+          // Show button text
+          btnText.style.display = 'inline';
+          // Re-enable button
+          startBtn.disabled = false;
+          // Optionally update button text to show error
+          btnText.textContent = 'Start Analysis (Retry)';
+        }
+      }).finally(() => {
+        console.log('Infringement Analysis Completed.');
+        analysisLoading = false;
+        if (startBtn && btnText && loadingSpinner) {
+          // Hide loading spinner
+          loadingSpinner.style.display = 'none';
+          // Show button text
+          btnText.style.display = 'inline';
+          // Re-enable button
+          startBtn.disabled = false;
+          // Optionally update button text to show error
+          btnText.textContent = 'Start Analysis Again';
+        }
+      });
+    }
+
+    async function fetchCases() {
+      const userId = getUserId();
+      
+      if (!userId) {
+        console.log('ERROR: User not authenticated in fetchCases');
+        showError('User not authenticated. Please log in.');
+        return [];
+      }
+
+      try {
+        console.log('TEST: Starting case fetching in fetchCases');
+        const response = await fetch(`${API_BASE_URL}/api/all-cases`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        console.log('TEST: Cases fetched in fetchCases:', response);
+        if (!response.ok) {
+          console.error('TEST: Cases fetched in fetchCases:', response);
+          if (response.status === 401) {
+            showError('Session expired. Please log in again.');
+            return [];
+          }
+          throw new Error(`Failed to fetch cases: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        if (Array.isArray(data['cases'])) {
+          console.log('TEST: Cases fetched:', data['cases']);
+          return data['cases'];
+        }
+        return [];
+      } catch (error) {
+        console.error('Error fetching cases:', error);
+        showError(`Error loading cases: ${error.message}`);
+        return [];
+      }
+    }
+
+    async function fetchStats() {
+      const userId = getUserId();
+      
+      if (!userId) {
+        return null;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/stats?user_id=${userId}`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          return null;
+        }
+
+        return await response.json();
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+        return null;
+      }
+    }
+
 
     // ==================== POPUP MANAGEMENT ====================
     
@@ -1659,35 +1884,28 @@
           if (activeTab === 'patentId' && patentNumber) {
             continueBtn.disabled = true;
             continueBtn.textContent = 'Fetching Patent from USPTO...';
-            
-            try {
-              const response = await fetch(`${API_BASE_URL}/api/fetch-patent-from-uspto`, {
-                method: 'POST',
-                body: JSON.stringify({ 'patentId': patentNumber }),
-                credentials: 'same-origin',
-                headers: {
-                  'Content-Type': 'application/json'
-                }
-              });
-              const data = await response.json();
-              if (data.success) {
+
+            await fetchCasefromUspto(
+              patentNumber,
+              (data) => {
                 caseDetails = data;
                 console.log('USPTO case details fetched successfully:', data);
-              } 
-              else {
+              },
+              (errorMessage) => {
                 console.error('Error fetching USPTO case details:', data.message);
                 alert('Failed to fetch patent details from USPTO. Please try again.');
                 continueBtn.disabled = false;
                 continueBtn.textContent = 'Continue';
                 return;
+              },
+              (error) => {
+                console.error('Error fetching USPTO case details:', error);
+                alert('Failed to fetch patent details from USPTO. Please try again.');
+                continueBtn.disabled = false;
+                continueBtn.textContent = 'Continue';
+                return;
               }
-            } catch (error) {
-              console.error('Error fetching USPTO case details:', error);
-              alert('Failed to fetch patent details from USPTO. Please try again.');
-              continueBtn.disabled = false;
-              continueBtn.textContent = 'Continue';
-              return;
-            }
+            );
           }
           
           const formData = {
@@ -2042,158 +2260,6 @@
       });
     }
 
-    // ==================== API FUNCTIONS ====================
-
-    async function beginSimilarityAnalysis(urls, keywords) {
-      analysisLoading = true;
-      const popupId = 'popup-add-context';
-      const startBtn = document.querySelector(`#${popupId} #popup-startAnalysisBtn`);
-      const btnText = document.querySelector(`#${popupId} #popup-btnText`);
-      const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
-
-      const infringementAnalysisUrl = `${API_BASE_URL}/api/similarity-analysis-gemini`;
-      let body = {
-        keywords: keywords,
-        document_urls: urls
-      };
-      let headers = {
-        'Content-Type': 'application/json'
-      };
-      console.log('Infringement Analysis Body:', body);
-      fetch(infringementAnalysisUrl, {
-        method: 'POST',
-        body: JSON.stringify(body),
-        headers: headers,
-        credentials: 'include',
-        keepalive: true
-      }).then(response => response.json())
-      .then(data => {
-        console.log('TEST: Infringement Analysis Data:', data);
-        if (Object.keys(data).includes('similar_infringements')) {
-          let analysisResult = data['similar_infringements'];
-          console.log('TEST: Infringement Analysis Result:', analysisResult);
-          if (Array.isArray(analysisResult) && analysisResult.length > 0) {
-            console.log('TEST: Infringement Data:', analysisResult);
-            if (caseData && typeof caseData === 'object') {
-              caseData['similar_infringements'] = analysisResult;
-            } else {
-              caseData = {
-                'similar_infringements': analysisResult
-              };
-            }
-            updateCasesSession();
-            console.log('TEST: Updated Case Data:', caseData);
-            renderProjects(getCasesSession())
-            console.log('TEST: Projects rendered:', getCasesSession());
-            // Store similarity analysis result in session storage
-            try {
-              // Close popup
-              closePopup('add-context');
-
-              sessionStorage.setItem('similar_infringements', JSON.stringify(analysisResult));
-              console.log('TEST: Redirecting to analysis page');
-              window.location.href = `analysis-page?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
-            } catch (e) {
-              console.warn('Failed to store similarity analysis in session storage:', e);
-            }
-          }
-        } else {
-          console.error('No infringement analysis result found');
-        }
-      }).catch(error => {
-        console.error('Error starting infringement analysis:', error);
-        if (startBtn && btnText && loadingSpinner) {
-          // Hide loading spinner
-          loadingSpinner.style.display = 'none';
-          // Show button text
-          btnText.style.display = 'inline';
-          // Re-enable button
-          startBtn.disabled = false;
-          // Optionally update button text to show error
-          btnText.textContent = 'Start Analysis (Retry)';
-        }
-      }).finally(() => {
-        console.log('Infringement Analysis Completed.');
-        analysisLoading = false;
-        if (startBtn && btnText && loadingSpinner) {
-          // Hide loading spinner
-          loadingSpinner.style.display = 'none';
-          // Show button text
-          btnText.style.display = 'inline';
-          // Re-enable button
-          startBtn.disabled = false;
-          // Optionally update button text to show error
-          btnText.textContent = 'Start Analysis Again';
-        }
-      });
-    }
-
-    async function fetchCases() {
-      const userId = getUserId();
-      
-      if (!userId) {
-        console.log('ERROR: User not authenticated in fetchCases');
-        showError('User not authenticated. Please log in.');
-        return [];
-      }
-
-      try {
-        console.log('TEST: Starting case fetching in fetchCases');
-        const response = await fetch(`${API_BASE_URL}/api/all-cases`, {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
-        console.log('TEST: Cases fetched in fetchCases:', response);
-        if (!response.ok) {
-          console.error('TEST: Cases fetched in fetchCases:', response);
-          if (response.status === 401) {
-            showError('Session expired. Please log in again.');
-            return [];
-          }
-          throw new Error(`Failed to fetch cases: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        if (Array.isArray(data['cases'])) {
-          console.log('TEST: Cases fetched:', data['cases']);
-          return data['cases'];
-        }
-        return [];
-      } catch (error) {
-        console.error('Error fetching cases:', error);
-        showError(`Error loading cases: ${error.message}`);
-        return [];
-      }
-    }
-
-    async function fetchStats() {
-      const userId = getUserId();
-      
-      if (!userId) {
-        return null;
-      }
-
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/stats?user_id=${userId}`, {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        });
-
-        if (!response.ok) {
-          return null;
-        }
-
-        return await response.json();
-      } catch (error) {
-        console.error('Error fetching stats:', error);
-        return null;
-      }
-    }
-
     function renderStats(stats) {
       const statsGrid = document.getElementById('statsGrid');
       
@@ -2272,20 +2338,24 @@
 
       console.log('TEST: Rendering projects:', cases);
       const projectsHTML = cases.map(caseItem => {
-        const status = caseItem.status || 'draft';
+        const status = (caseItem.status).split('-')[0] || 'draft';
         const badgeClass = `badge-${status}`;
         const progress = caseItem.progress || 0;
         const lastUpdated = formatTimeAgo(caseItem.lastUpdated || caseItem.updated_date || caseItem.created_date);
         const matchCount = caseItem.matchCount || caseItem.match_count || 0;
         const title = caseItem.title || caseItem.name || 'Untitled Project';
-        const patentId = caseItem.patentId || caseItem.patent_id || 'N/A';
+        const patentId = caseItem.patentId || (caseItem._id).split('_')[1] || 'N/A';
+        let icon = '📄';
+        if (caseItem._id.includes('uspto')) {
+          icon = '<img src="Assets/uspto.jpg" alt="USPTO" style="width:20px;height:20px;vertical-align:middle;border-radius:3px;">';
+        }
         console.log('TEST: Case item:', caseItem);
 
         return `
           <div class="project-card" onclick="handleProjectClick('${caseItem._id}')">
             <div class="project-card-header">
               <div class="project-card-title-section">
-                <div class="project-card-icon">📄</div>
+                <div class="project-card-icon">${icon}</div>
                 <div>
                   <div class="project-card-title">${escapeHtml(title)}</div>
                   <div class="project-card-patent-id">${escapeHtml(patentId)}</div>

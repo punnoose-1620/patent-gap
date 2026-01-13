@@ -1560,7 +1560,7 @@ def fetch_patent_from_uspto():
     return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
   
   try:
-    print(f'Fetching patent of ID {patent_id} from USPTO: {json.dumps(data, indent=4)}')
+    print(f'Fetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
     uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
     uspto_data = uspto_instance.get_complete_patent_info(patent_id)
     uspto_data['created_by'] = user_id
