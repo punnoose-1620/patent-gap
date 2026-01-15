@@ -1560,7 +1560,7 @@ def fetch_patent_from_uspto():
     return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
   
   try:
-    print(f'Fetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
+    print(f'\nFetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
     uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
     uspto_data = uspto_instance.get_complete_patent_info(patent_id)
     uspto_data['created_by'] = user_id
@@ -1626,8 +1626,10 @@ def similarity_analysis_gemini():
   for document in document_urls:
     content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
     document_contents.append(content)
+
   if (len(document_contents) == 0) or (document_contents is None):
     return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+
   complete_document_contents = ""
   for content in document_contents:
     if content.strip() != "":
@@ -1637,6 +1639,7 @@ def similarity_analysis_gemini():
     return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
   
   similar_infringements = get_complete_infringements(complete_document_contents)
+  
   if (similar_infringements is None) or (len(similar_infringements) == 0):
     return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
   if (similar_infringements[0] == 'Rate Exceeded Error') or (similar_infringements[0] == 'Access Forbidden Error') or (similar_infringements[0] == 'Authentication Error') or (similar_infringements[0] == 'Bad Request Error'):

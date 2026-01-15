@@ -227,14 +227,53 @@
     }
 
     .empty-state {
-      text-align: center;
-      padding: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       color: var(--muted-foreground);
     }
 
+    .empty-state-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
     .empty-state-icon {
-      font-size: 48px;
-      margin-bottom: 16px;
+      font-size: 32px;
+    }
+
+    .empty-state-text {
+      font-size: 16px;
+      color: var(--foreground);
+      font-weight: 500;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 20px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: hsl(170, 70%, 8%, 0.9);
     }
 
     .stats-summary {
@@ -332,6 +371,10 @@
       }
     }
 
+    function renderSummary(data) {}
+
+    function renderInfringements(data) {}
+
     function renderResults(data) {
       const container = document.getElementById('resultsContainer');
       const patentName = sessionStorage.getItem('patentInfo') || 'Unknown Patent';
@@ -351,14 +394,18 @@
         return;
       }
 
-      const matches = data.matches || data.results || [];
+      const matches = data.infringements || data.results || [];
       
       if (matches.length === 0) {
         container.innerHTML = `
           <div class="empty-state">
-            <div class="empty-state-icon">✅</div>
-            <p>No potential infringement matches found.</p>
-            <p style="margin-top: 8px;">Your patent appears to be clear!</p>
+            <div class="empty-state-content">
+              <div class="empty-state-icon">✅</div>
+              <div class="empty-state-text">No potential infringement matches found.</div>
+            </div>
+            <button class="btn btn-primary" onclick="startInfringementAnalysis()">
+              Start Infringement Analysis
+            </button>
           </div>
         `;
         return;
@@ -466,6 +513,11 @@
       } catch (error) {
         return null;
       }
+    }
+
+    function startInfringementAnalysis() {
+      // Navigate to home page to start a new analysis
+      window.location.href = '/home-new.html';
     }
 
     // Poll for results if processing

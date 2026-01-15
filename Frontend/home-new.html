@@ -1282,7 +1282,7 @@
     // API Configuration
     const API_BASE_URL = 'https://patent-gap-backend.onrender.com';
     // const API_BASE_URL = 'http://localhost:5000';
-    
+
     const STEP_1_KEY = 'patentUploadStep1';
     const STEP_1_DATA_KEY = 'patentUploadStep1_data';
     const MY_CASES_KEY = 'myCasesLocal'
@@ -1368,7 +1368,7 @@
             console.log('TEST: Infringement Data:', analysisResult);
             updateCaseDatabase(
               caseData && caseData._id ? caseData._id : '',
-              { 'similar_infringements': analysisResult },
+              { 'infringements': analysisResult },
               (data) => {
                 console.log('Infringements update response:', data);
               },
@@ -2156,6 +2156,23 @@
 
     // ==================== UTILITY FUNCTIONS ====================
 
+    function getStatusShorthand(status) {
+      status = String(status);
+      if (status.includes('-')) {
+        status = status.split('-')[0];
+      }
+      if (status.includes('_')) {
+        status = status.split('_')[0];
+      }
+      if (status.includes('Expired')) {
+        return 'Expired';
+      }
+      if (status.includes('Patented')) {
+        return 'Patented';
+      }
+      return status;
+    }
+
     function getCasesSession() {
       // Retrieve array of cases stored in sessionStorage under MY_CASES_KEY
       let cases = [];
@@ -2338,13 +2355,13 @@
 
       console.log('TEST: Rendering projects:', cases);
       const projectsHTML = cases.map(caseItem => {
-        const status = (caseItem.status).split('-')[0] || 'draft';
+        const status = getStatusShorthand(caseItem.status || 'Draft');
         const badgeClass = `badge-${status}`;
         const progress = caseItem.progress || 0;
         const lastUpdated = formatTimeAgo(caseItem.lastUpdated || caseItem.updated_date || caseItem.created_date);
         const matchCount = caseItem.matchCount || caseItem.match_count || 0;
         const title = caseItem.title || caseItem.name || 'Untitled Project';
-        const patentId = caseItem.patentId || (caseItem._id).split('_')[1] || 'N/A';
+        const patentId = caseItem.patentId || String(caseItem._id).split('_')[1] || 'N/A';
         let icon = '📄';
         if (caseItem._id.includes('uspto')) {
           icon = '<img src="Assets/uspto.jpg" alt="USPTO" style="width:20px;height:20px;vertical-align:middle;border-radius:3px;">';
