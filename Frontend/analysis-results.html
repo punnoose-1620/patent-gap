@@ -330,10 +330,153 @@
     const API_BASE_URL = 'https://patent-gap-backend.onrender.com';
     // const API_BASE_URL = 'http://localhost:5000';
 
+    async function updateCaseDatabase(case_id, update_data, onSuccess, onFail, onError) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/${case_id}`, {
+          method: 'POST',
+          body: JSON.stringify(update_data),
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        const data = await response.json();
+        if (data.success) {
+          onSuccess(data);
+        } 
+        else {
+          onFail(data.message);
+        }
+      } catch (error) {
+        onError(error);
+      }
+    }
+
+    async function beginSimilarityAnalysis(urls, keywords) {
+      analysisLoading = true;
+      const popupId = 'popup-add-context';
+      const startBtn = document.querySelector(`#${popupId} #popup-startAnalysisBtn`);
+      const btnText = document.querySelector(`#${popupId} #popup-btnText`);
+      const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
+
+      const infringementAnalysisUrl = `${API_BASE_URL}/api/similarity-analysis-gemini`;
+      let body = {
+        keywords: keywords,
+        document_urls: urls
+      };
+      let headers = {
+        'Content-Type': 'application/json'
+      };
+      console.log('Infringement Analysis Body:', body);
+      fetch(infringementAnalysisUrl, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: headers,
+        credentials: 'include',
+        keepalive: true
+      }).then(response => response.json())
+      .then(data => {
+        console.log('TEST: Infringement Analysis Data:', data);
+        if (Object.keys(data).includes('similar_infringements')) {
+          let analysisResult = data['similar_infringements'];
+          console.log('TEST: Infringement Analysis Result:', analysisResult);
+          if (Array.isArray(analysisResult) && analysisResult.length > 0) {
+            console.log('TEST: Infringement Data:', analysisResult);
+            updateCaseDatabase(
+              caseData && caseData._id ? caseData._id : '',
+              { 'infringements': analysisResult },
+              (data) => {
+                console.log('Infringements update response:', data);
+              },
+              (errorMessage) => {
+                console.error('Error updating infringements:', errorMessage);
+              },
+              (error) => {
+                console.error('Error updating infringements:', error);
+              }
+            );
+            if (caseData && typeof caseData === 'object') {
+              caseData['infringements'] = analysisResult;
+            } else {
+              caseData = {
+                'infringements': analysisResult
+              };
+            }
+            updateCasesSession();
+            console.log('TEST: Updated Case Data:', caseData);
+            renderProjects(getCasesSession())
+            console.log('TEST: Projects rendered:', getCasesSession());
+            // Store similarity analysis result in session storage
+            try {
+              // Close popup
+              closePopup('add-context');
+
+              sessionStorage.setItem('similar_infringements', JSON.stringify(analysisResult));
+              console.log('TEST: Redirecting to analysis page');
+              window.location.href = `analysis-page?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
+            } catch (e) {
+              console.warn('Failed to store similarity analysis in session storage:', e);
+            }
+          }
+        } else {
+          console.error('No infringement analysis result found');
+        }
+      }).catch(error => {
+        console.error('Error starting infringement analysis:', error);
+        if (startBtn && btnText && loadingSpinner) {
+          // Hide loading spinner
+          loadingSpinner.style.display = 'none';
+          // Show button text
+          btnText.style.display = 'inline';
+          // Re-enable button
+          startBtn.disabled = false;
+          // Optionally update button text to show error
+          btnText.textContent = 'Start Analysis (Retry)';
+        }
+      }).finally(() => {
+        console.log('Infringement Analysis Completed.');
+        analysisLoading = false;
+        if (startBtn && btnText && loadingSpinner) {
+          // Hide loading spinner
+          loadingSpinner.style.display = 'none';
+          // Show button text
+          btnText.style.display = 'inline';
+          // Re-enable button
+          startBtn.disabled = false;
+          // Optionally update button text to show error
+          btnText.textContent = 'Start Analysis Again';
+        }
+      });
+    }
+
     // Get result ID from URL
     function getResultId() {
       const params = new URLSearchParams(window.location.search);
       return params.get('id');
+    }
+
+    async function getCaseData() {
+      const caseId = getResultId();
+      const userId = getUserId();
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/${caseId}`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        const data = await response.json();
+        console.log('LOG: Case Data: ', data['case']);
+        if (data.case) {
+          return data.case;
+        }
+        return null;
+      } catch (error) {
+        console.error('ERROR: Error fetching case data:', error);
+        showError(`Error loading case: ${error.message}`);
+        return null;
+      }
     }
 
     // Fetch results from API
@@ -347,7 +490,7 @@
       }
 
       try {
-        const response = await fetch(`${API_BASE_URL}/results/${resultId}?user_id=${userId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/results/${resultId}?user_id=${userId}`, {
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
@@ -368,6 +511,25 @@
         console.error('Error fetching results:', error);
         showError(`Error loading results: ${error.message}`);
         return null;
+      }
+    }
+
+    function calculateOverallRisk(similar_claims) {
+      overallRisk = 0;
+      for (const claim of similar_claims) {
+        claimRisk = claim.similarity_score;
+        overallRisk += claimRisk;
+      }
+      overallRisk = overallRisk / similar_claims.length;
+      
+      if(overallRisk >= 0.9) {
+        return 'high';
+      }
+      else if(overallRisk >= 0.7) {
+        return 'medium';
+      }
+      else {
+        return 'low';
       }
     }
 
@@ -445,12 +607,14 @@
       container.innerHTML = `
         <div class="results-grid">
           ${matches.map(match => {
-            const riskLevel = match.riskLevel || match.risk_level || 'low';
+            const riskLevel = getOverallRisk(match.similar_claims) || 'low';
             const overlapScore = match.overlapScore || match.overlap_score || 0;
-            const patent = match.patent || match.patent_number || 'N/A';
+            const patent = match.patent || match.entry_id || 'N/A';
             const company = match.company || match.company_name || 'Unknown';
             const title = match.title || match.patent_title || 'Untitled';
-            const matchedClaims = match.matchedClaims || match.matched_claims || [];
+            const matchedClaims = Array.isArray(match.similar_claims)
+              ? match.similar_claims.map(item => item.claim)
+              : (match.matchedClaims || match.matched_claims || []);
 
             return `
               <div class="result-card" onclick="viewMatchDetails('${match.id || patent}')">
@@ -501,6 +665,10 @@
       `;
     }
 
+    function goToMatchPage(url) {
+      window.open(url, '_blank');
+    }
+
     function viewMatchDetails(matchId) {
       // Navigate to detailed comparison page
       window.location.href = `comparison.html?match=${matchId}&result=${getResultId()}`;
@@ -517,17 +685,18 @@
 
     function startInfringementAnalysis() {
       // Navigate to home page to start a new analysis
-      window.location.href = '/home-new.html';
+      window.location.href = '/home';
     }
 
     // Poll for results if processing
     async function loadResults() {
-      const data = await fetchResults();
+      const data = await getCaseData();
       
       if (data && data.status === 'processing') {
         // Poll every 5 seconds
         setTimeout(loadResults, 5000);
-      } else if (data) {
+      } 
+      else if (data) {
         renderResults(data);
       }
     }
