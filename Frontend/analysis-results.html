@@ -698,19 +698,23 @@
 
     // Poll for results if processing
     async function loadResults() {
+      console.log('LOG: Loading Results');
       const data = await getCaseData();
-      
+      console.log('LOG: Data: ', data);
       if (data && data.status === 'processing') {
+        console.log('LOG: Processing Results');
         // Poll every 5 seconds
         setTimeout(loadResults, 5000);
       } 
       else if (data) {
+        console.log('LOG: Begin Rendering Results');
         renderResults(data);
       }
     }
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
+      console.log('LOG: Initializing Content Results');
       loadResults();
     });
   </script>
