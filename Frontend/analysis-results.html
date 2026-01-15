@@ -318,6 +318,10 @@
       <!-- Stats will be populated dynamically -->
     </div>
 
+    <div id="matchesEmptyState" class="stats-summary" style="display: none;">
+      <!-- Stats will be populated dynamically -->
+    </div>
+
     <div id="resultsContainer">
       <div class="loading">
         <div class="loading-spinner"></div>
@@ -538,7 +542,7 @@
     function renderInfringements(data) {}
 
     function renderResults(data) {
-      const container = document.getElementById('resultsContainer');
+      const container = document.getElementById('matchesEmptyState');
       const patentName = sessionStorage.getItem('patentInfo') || 'Unknown Patent';
       
       document.getElementById('patentName').textContent = patentName;
@@ -559,6 +563,7 @@
       const matches = data.infringements || data.results || [];
       
       if (matches.length === 0) {
+        console.log('LOG: No matches found');
         container.innerHTML = `
           <div class="empty-state">
             <div class="empty-state-content">
