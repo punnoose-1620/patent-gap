@@ -561,6 +561,7 @@
       }
 
       const matches = data.infringements || data.results || [];
+      console.log('LOG: Matches(', matches.length, '): ', matches);
       
       if (matches.length === 0) {
         console.log('LOG: No matches found');
