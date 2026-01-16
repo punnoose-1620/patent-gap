@@ -848,8 +848,66 @@
 
   <script>
     const API_BASE_URL = 'https://patent-gap-backend.onrender.com';
-    // Local URL: http://localhost:5000
-    // Live URL: https://patent-gap-backend.onrender.com
+    // const API_BASE_URL = 'http://localhost:5000';
+
+    const loaderHTML = `
+      <div class="loading">
+        <div class="loading-spinner"></div>
+        <p>Infringement analysis is in progress. Results will appear here when ready.</p>
+      </div>
+    `;
+    const infringementNotStartedHTML = `
+      <div class="empty-state" style="display: flex; align-items: center; justify-content: space-between; gap: 2rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="empty-state-icon" style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;">✅</div>
+          <p style="margin: 0;">Infringement analysis has not been initiated.</p>
+        </div>
+        <button class="btn btn-primary" style="white-space: nowrap;" onclick="beginSimilarityAnalysis()">
+          Retry Infringement Analysis
+        </button>
+      </div>
+    `;
+    const infringementNoMatchesHTML = `
+      <div class="empty-state" style="display: flex; align-items: center; justify-content: space-between; gap: 2rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="empty-state-icon">✅</div>
+          <p style="margin: 0;">No potential infringement matches found.</p>
+        </div>
+        <button class="btn btn-primary" style="white-space: nowrap;" onclick="beginSimilarityAnalysis()">
+          Start Infringement Analysis
+        </button>
+      </div>
+    `;
+    const infringementRateLimitHTML = `
+      <div class="empty-state" style="display: flex; align-items: center; justify-content: space-between; gap: 2rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="empty-state-icon">❗</div>
+          <p style="margin: 0;">Rate limit for infringement analysis has been reached. Please contact support.</p>
+        </div>
+        <button class="btn btn-primary" style="white-space: nowrap;" onclick="beginSimilarityAnalysis()">
+          Start Infringement Analysis
+        </button>
+      </div>
+    `;
+
+    let caseData = {};
+
+    function getStatusShorthand(status) {
+      status = String(status);
+      if (status.includes('-')) {
+        status = status.split('-')[0];
+      }
+      if (status.includes('_')) {
+        status = status.split('_')[0];
+      }
+      if (status.includes('Expired')) {
+        return 'Expired';
+      }
+      if (status.includes('Patented')) {
+        return 'Patented';
+      }
+      return status;
+    }
 
     // Get case ID from URL
     function getCaseId() {
@@ -866,6 +924,143 @@
       sidebar.classList.toggle('open');
       overlay.classList.toggle('active');
       hamburger.classList.toggle('open');
+    }
+
+    async function updateCaseDatabase(case_id, update_data, onSuccess, onFail, onError) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/cases/${case_id}`, {
+          method: 'POST',
+          body: JSON.stringify(update_data),
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        const data = await response.json();
+        if (data.success) {
+          onSuccess(data);
+        } 
+        else {
+          onFail(data.message);
+        }
+      } catch (error) {
+        onError(error);
+      }
+    }
+
+    async function beginSimilarityAnalysis(urls, keywords) {
+      document.getElementById('matchesGrid').innerHTML = loaderHTML;
+
+      analysisLoading = true;
+      const popupId = 'popup-add-context';
+      const startBtn = document.querySelector(`#${popupId} #popup-startAnalysisBtn`);
+      const btnText = document.querySelector(`#${popupId} #popup-btnText`);
+      const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
+
+      if (!urls || !keywords) {
+        if (caseData && caseData.keywords && caseData.documents) {
+          keywords = caseData.keywords;
+          urls = caseData.documents.map(doc => doc.url);
+        }
+      }
+
+      const infringementAnalysisUrl = `${API_BASE_URL}/api/similarity-analysis-gemini`;
+      let body = {
+        keywords: keywords,
+        document_urls: urls
+      };
+      let headers = {
+        'Content-Type': 'application/json'
+      };
+      console.log('Infringement Analysis Body:', body);
+      fetch(infringementAnalysisUrl, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: headers,
+        credentials: 'include',
+        keepalive: true
+      }).then(response => response.json())
+      .then(data => {
+        console.log('TEST: Infringement Analysis Data:', data);
+        if (Object.keys(data).includes('similar_infringements')) {
+          let analysisResult = data['similar_infringements'];
+          console.log('TEST: Infringement Analysis Result:', analysisResult);
+          if (Array.isArray(analysisResult) && analysisResult.length > 0) {
+            console.log('TEST: Infringement Data:', analysisResult);
+            updateCaseDatabase(
+              caseData && caseData._id ? caseData._id : '',
+              { 'infringements': analysisResult },
+              (data) => {
+                console.log('Infringements update response:', data);
+              },
+              (errorMessage) => {
+                console.error('Error updating infringements:', errorMessage);
+              },
+              (error) => {
+                console.error('Error updating infringements:', error);
+              }
+            );
+            if (caseData && typeof caseData === 'object') {
+              caseData['infringements'] = analysisResult;
+            } 
+            else {
+              caseData = {
+                'infringements': analysisResult
+              };
+            }
+
+            if (analysisResult.length > 0) {
+              const matchesGrid = document.getElementById('matchesGrid');
+              matchesGrid.innerHTML = analysisResult.map(match => renderMatchData(match)).join('');
+              document.getElementById('matchCountBadge').textContent = `${analysisResult.length} ${analysisResult.length === 1 ? 'match' : 'matches'}`;
+            }
+            else {
+              document.getElementById('matchesGrid').innerHTML = infringementNoMatchesHTML;
+            }
+            // Store similarity analysis result in session storage
+            try {
+              // Close popup
+              closePopup('add-context');
+
+              sessionStorage.setItem('similar_infringements', JSON.stringify(analysisResult));
+              console.log('TEST: Redirecting to analysis page');
+              window.location.href = `analysis-page?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
+            } catch (e) {
+              console.warn('Failed to store similarity analysis in session storage:', e);
+            }
+          }
+        } 
+        else {
+          console.error('No infringement analysis result found');
+        }
+      })
+      .catch(error => {
+        console.error('Error starting infringement analysis:', error);
+        document.getElementById('matchesGrid').innerHTML = infringementRateLimitHTML;
+        if (startBtn && btnText && loadingSpinner) {
+          // Hide loading spinner
+          loadingSpinner.style.display = 'none';
+          // Show button text
+          btnText.style.display = 'inline';
+          // Re-enable button
+          startBtn.disabled = false;
+          // Optionally update button text to show error
+          btnText.textContent = 'Start Analysis (Retry)';
+        }
+      }).finally(() => {
+        console.log('Infringement Analysis Completed.');
+        analysisLoading = false;
+        if (startBtn && btnText && loadingSpinner) {
+          // Hide loading spinner
+          loadingSpinner.style.display = 'none';
+          // Show button text
+          btnText.style.display = 'inline';
+          // Re-enable button
+          startBtn.disabled = false;
+          // Optionally update button text to show error
+          btnText.textContent = 'Start Analysis Again';
+        }
+      });
     }
 
     function handleNavClick(page, event) {
@@ -890,6 +1085,40 @@
         toggleSidebar();
       }
     });
+
+    function calculateOverallRisk(similar_claims) {
+      overallRisk = 0;
+      for (const claim of similar_claims) {
+        claimRisk = claim.similarity_score;
+        overallRisk += claimRisk;
+      }
+      overallRisk = overallRisk / similar_claims.length;
+
+      return getRiskTerm(overallRisk);
+    }
+
+    function calculateOverlapScore(similar_claims) {
+      overlapScore = 0;
+      for (const claim of similar_claims) {
+        claimOverlap = claim.similarity_score;
+        overlapScore += claimOverlap;
+      }
+      overlapScore = overlapScore / similar_claims.length;
+      overlapScore = overlapScore * 100;
+      return overlapScore;
+    }
+
+    function getRiskTerm(score) {
+      if (score >= 0.9) {
+        return 'high';
+      }
+      else if (score >= 0.7) {
+        return 'medium';
+      }
+      else {
+        return 'low';
+      }
+    }
 
     // Fetch case details
     async function fetchCaseDetails() {
@@ -919,12 +1148,41 @@
 
         const data = await response.json();
         console.log('LOG: Case Data: ', data['case'])
+        caseData = data['case'];
         return data['case'];
       } catch (error) {
         console.error('Error fetching case details:', error);
         showError(`Error loading case: ${error.message}`);
         return null;
       }
+    }
+
+    function renderMatchData(match) {
+      const riskLevel = calculateOverallRisk(match.similar_claims) || 'low';
+      const overlapScore = calculateOverlapScore(match.similar_claims) || 0;
+      
+      return `
+        <div class="match-card" onclick="viewMatchDetails('${match.id || match.patent}')">
+          <div class="match-card-header">
+            <div>
+              <div class="match-card-title">${escapeHtml(match.title || match.patent_title || 'Untitled')}</div>
+              <div class="match-card-patent">${escapeHtml(match.patent || match.entry_id || 'N/A')}</div>
+            </div>
+            <span class="risk-badge risk-${riskLevel}">
+              ${riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1)}
+            </span>
+          </div>
+          ${match.company ? `<div style="font-size: 12px; color: var(--muted-foreground); margin-bottom: 12px;">Company: ${escapeHtml(match.company)}</div>` : ''}
+          <div class="match-score">
+            <div class="score-label">Overlap Score</div>
+            <div class="score-bar">
+              <div class="score-fill ${riskLevel}" style="width: ${overlapScore}%"></div>
+            </div>
+            <div class="score-value">${overlapScore}%</div>
+            ${match.matchedClaims ? `<div style="font-size: 12px; color: var(--muted-foreground); margin-top: 8px;">Matched Claims: ${match.matchedClaims.join(', ')}</div>` : ''}
+          </div>
+        </div>
+      `;
     }
 
     // Render case details
@@ -939,7 +1197,7 @@
       const status = caseData.status || 'draft';
       const statusBadge = document.getElementById('statusBadge');
       statusBadge.className = `status-badge status-badge-${status}`;
-      statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+      statusBadge.textContent = getStatusShorthand(status).charAt(0).toUpperCase() + getStatusShorthand(status).slice(1);
 
       // Info grid
       const infoGrid = document.getElementById('infoGrid');
@@ -1048,51 +1306,30 @@
       }
 
       // Matches section (if complete and has matches)
-      if (status === 'complete' && (caseData.matches || caseData.matchCount > 0)) {
+      console.log('LOG: Status: ', status);
+      console.log('LOG: Case Data Matches: ', caseData.infringements);
+      if (status !== 'processing') {
         const matchesSection = document.getElementById('matchesSection');
         matchesSection.style.display = 'block';
         
-        const matches = caseData.matches || [];
-        const matchCount = matches.length || caseData.matchCount || 0;
+        const matches = caseData.infringements || [];
+        const matchCount = matches.length || 0;
         
         document.getElementById('matchCountBadge').textContent = `${matchCount} ${matchCount === 1 ? 'match' : 'matches'}`;
         
-        if (matches.length > 0) {
-          const matchesGrid = document.getElementById('matchesGrid');
-          matchesGrid.innerHTML = matches.map(match => {
-            const riskLevel = match.riskLevel || match.risk_level || 'low';
-            const overlapScore = match.overlapScore || match.overlap_score || 0;
-            
-            return `
-              <div class="match-card" onclick="viewMatchDetails('${match.id || match.patent}')">
-                <div class="match-card-header">
-                  <div>
-                    <div class="match-card-title">${escapeHtml(match.title || match.patent_title || 'Untitled')}</div>
-                    <div class="match-card-patent">${escapeHtml(match.patent || match.patent_number || 'N/A')}</div>
-                  </div>
-                  <span class="risk-badge risk-${riskLevel}">
-                    ${riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1)}
-                  </span>
-                </div>
-                ${match.company ? `<div style="font-size: 12px; color: var(--muted-foreground); margin-bottom: 12px;">Company: ${escapeHtml(match.company)}</div>` : ''}
-                <div class="match-score">
-                  <div class="score-label">Overlap Score</div>
-                  <div class="score-bar">
-                    <div class="score-fill ${riskLevel}" style="width: ${overlapScore}%"></div>
-                  </div>
-                  <div class="score-value">${overlapScore}%</div>
-                  ${match.matchedClaims ? `<div style="font-size: 12px; color: var(--muted-foreground); margin-top: 8px;">Matched Claims: ${match.matchedClaims.join(', ')}</div>` : ''}
-                </div>
-              </div>
-            `;
-          }).join('');
-        } else {
-          document.getElementById('matchesGrid').innerHTML = `
-            <div class="empty-state">
-              <div class="empty-state-icon">✅</div>
-              <p>No potential infringement matches found.</p>
-            </div>
-          `;
+        if (matches) {
+          console.log('LOG: Matches found: ', matches);
+          if (matches.length > 0) {
+            const matchesGrid = document.getElementById('matchesGrid');
+            matchesGrid.innerHTML = matches.map(match => renderMatchData(match)).join('');
+          } 
+          else {
+            document.getElementById('matchesGrid').innerHTML = infringementNoMatchesHTML;
+          }
+        }
+        else {
+          console.log('LOG: No matches found');
+          document.getElementById('matchesGrid').innerHTML = infringementNotStartedHTML;
         }
         
         // Show view results button
