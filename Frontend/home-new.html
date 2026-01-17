@@ -1295,12 +1295,14 @@
 
     async function fetchCasefromUspto(patentNumber, onSuccess, onFail, onError) {
       try {
+        const userId = getUserId();
         const response = await fetch(`${API_BASE_URL}/api/fetch-patent-from-uspto`, {
           method: 'POST',
           body: JSON.stringify({ 'patentId': patentNumber }),
           credentials: 'same-origin',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
           }
         });
         const data = await response.json();
@@ -1316,12 +1318,14 @@
 
     async function updateCaseDatabase(case_id, update_data, onSuccess, onFail, onError) {
       try {
+        const userId = getUserId();
         const response = await fetch(`${API_BASE_URL}/api/cases/${case_id}`, {
           method: 'POST',
           body: JSON.stringify(update_data),
           credentials: 'include',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
           }
         });
         const data = await response.json();
@@ -1351,6 +1355,10 @@
       let headers = {
         'Content-Type': 'application/json'
       };
+      const userId = getUserId();
+      if (userId) {
+        headers['X-User-ID'] = userId;
+      }
       console.log('Infringement Analysis Body:', body);
       fetch(infringementAnalysisUrl, {
         method: 'POST',
@@ -1444,10 +1452,12 @@
 
       try {
         console.log('TEST: Starting case fetching in fetchCases');
+        const userId = getUserId();
         const response = await fetch(`${API_BASE_URL}/api/all-cases`, {
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
           }
         });
         console.log('TEST: Cases fetched in fetchCases:', response);
@@ -1485,6 +1495,7 @@
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
           }
         });
 
@@ -2014,7 +2025,8 @@
               credentials: 'include',
               body: JSON.stringify(caseDetails),
               headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-User-ID': userId || ''
               }
             }).then(response => response.json())
             .then(data => {
@@ -2107,7 +2119,15 @@
 
     // Event Handlers
     function handleLogout() {
-        fetch('/api/logout', { method: 'POST', credentials: 'same-origin' })
+        const userId = getUserId();
+        fetch('/api/logout', { 
+          method: 'POST', 
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
+          }
+        })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -2366,7 +2386,7 @@
         if (caseItem._id.includes('uspto')) {
           icon = '<img src="Assets/uspto.jpg" alt="USPTO" style="width:20px;height:20px;vertical-align:middle;border-radius:3px;">';
         }
-        console.log('TEST: Case item:', caseItem);
+        // console.log('TEST: Case item:', caseItem);
 
         return `
           <div class="project-card" onclick="handleProjectClick('${caseItem._id}')">
@@ -2483,10 +2503,13 @@
       // Check if user_id exists in localStorage session, else redirect to /login
       try {
         const session = JSON.parse(localStorage.getItem('session') || '{}');
-        if (!session.user_id && !(session.user && session.user.id)) {
+        console.log('\nLOG: Session data at Home Page:', session);
+        if (!session.user_id) {
+          console.log('\nERROR: User not authenticated, redirecting to login');
           window.location.href = '/login';
         }
       } catch (e) {
+        console.log('\nERROR: Error fetching session data, redirecting to login');
         window.location.href = '/login';
       }
       loadDashboard();

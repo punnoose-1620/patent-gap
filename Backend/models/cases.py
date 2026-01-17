@@ -61,7 +61,8 @@ def update_case(case_id, update_data):
     """
     case = get_case_by_id(case_id, show_password=True)
     case.update(update_data)
-    if case:
+    updated = updateDataById(connect_to_database(), getCaseDatabaseName(), case)
+    if updated:
         return {
             'success': True,
             'message': 'Case updated successfully'

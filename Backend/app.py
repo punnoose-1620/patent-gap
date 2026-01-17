@@ -1,7 +1,8 @@
 import os
+import requests
 from flask_cors import CORS
 from swagger import initialize_swagger
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, Response
 
 from models.demo import *
 from models.cases import *
@@ -31,6 +32,23 @@ app.config['DEBUG'] = os.environ.get('DEBUG', 'True').lower() == 'true'
 
 # Initialize Swagger
 swagger = initialize_swagger(app)
+
+# Helper function to get user_id from header or session
+def get_user_id():
+    """
+    Get user_id from X-User-ID header or session.
+    Returns None if not found.
+    """
+    # First check header
+    user_id = request.headers.get('X-User-ID')
+    if user_id:
+        return user_id
+    
+    # Fallback to session for backward compatibility
+    if 'user_id' in session:
+        return session['user_id']
+    
+    return None
 
 # Routes for serving HTML pages
 @app.route('/')
@@ -68,38 +86,38 @@ def serve_image(imageName):
 @app.route('/login')
 def login_page():
     """Serve the login page"""
+    # if 'user_id' in session:
+    #     return redirect(url_for('home_page'))
     return render_template('login-new.html')
 
 @app.route('/home')
 def home_page():
     """Serve the home page after login"""
-    if 'user_id' not in session:
-        return redirect(url_for('login_page'))
-    userData = get_user_profile(session['user_id'])
+    # if 'user_id' not in session:
+    #     return redirect(url_for('login_page'))
+    # userData = get_user_profile(session['user_id'])
     return render_template('home-new.html')
-    if userData and userData.get('role') == 'client':
-        return render_template('home-client.html')
-    return render_template('home.html')
 
 @app.route('/case-details')
 def case_details_page():
     """Serve the case details page"""
-    if 'user_id' not in session:
-        return redirect(url_for('login_page'))
+    # if 'user_id' not in session:
+    #     return redirect(url_for('login_page'))
     return render_template('case-details-new.html')
-    return render_template('case-details.html')
 
 @app.route('/change-password')
 def change_password_page():
     """Serve the change password page"""
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return redirect(url_for('login_page'))
     return render_template('change_password.html')
 
 @app.route('/add-patent')
 def add_patent_page():
     """Serve the add patent page"""
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return redirect(url_for('login_page'))
     return render_template('add-patent.html')
 
@@ -289,9 +307,10 @@ def logout():
               type: string
               example: "/"
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Logout')
+    print(f'LOG: {user_id} Logout')
     session.clear()
     return jsonify({
         'success': True,
@@ -354,10 +373,10 @@ def my_cases():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
       print('TEST: My Cases - Not authenticated')
       return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    user_id = session['user_id']
     print(f'LOG: {user_id} Get My Cases')
     try:
         print('User ID: ', user_id)
@@ -402,9 +421,10 @@ def open_cases():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Get Open Cases')
+    print(f'LOG: {user_id} Get Open Cases')
     try:
         cases = get_open_cases()
         return jsonify({
@@ -450,9 +470,9 @@ def profile():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    user_id = session['user_id']
     print(f'LOG: {user_id} Get Profile Data')
     try:
         profile_data = get_user_profile(user_id)
@@ -510,10 +530,11 @@ def get_case_details(case_id):
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     
-    print(f'LOG: {session["user_id"]} Get Case Details: {case_id}')
+    print(f'LOG: {user_id} Get Case Details: {case_id}')
     try:
         case_data = get_case_by_id(case_id)
         if case_data:
@@ -591,9 +612,10 @@ def update_case_details(case_id):
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Update Case Details: {case_id}')
+    print(f'LOG: {user_id} Update Case Details: {case_id}')
     try:
         update_data = request.get_json()
         if not update_data:
@@ -603,12 +625,14 @@ def update_case_details(case_id):
         result = update_case(case_id, update_data)
         if result.get('success'):
             updated_case = get_case_by_id(case_id)
+            print('\nLOG: Case updated for update_case(', case_id, '): ', updated_case)
             return jsonify({
                 'success': True,
                 'message': 'Case details updated',
                 'updated_case': updated_case
             })
         else:
+            print('\nERROR: Case not found for update_case: ', case_id)
             return jsonify({'success': False, 'message': 'Case not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error updating case details: {str(e)}'}), 500
@@ -672,9 +696,10 @@ def update_case_status(case_id):
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Update Case Status: {case_id}')
+    print(f'LOG: {user_id} Update Case Status: {case_id}')
     try:
         update_data = request.get_json()
         if not update_data or not isinstance(update_data, dict):
@@ -731,9 +756,10 @@ def get_case_patents(case_id):
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Get Case Patents: {case_id}')
+    print(f'LOG: {user_id} Get Case Patents: {case_id}')
     try:
         patents = get_case_related_patents(case_id)
         return jsonify({
@@ -793,13 +819,13 @@ def api_verify_password():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Verify User Password')
+    print(f'LOG: {user_id} Verify User Password')
     try:
         data = request.get_json()
         entered_password = data.get('password')
-        user_id = session['user_id']
 
         if entered_password is None:
             return jsonify({'success': False, 'message': 'Password is required'}), 400
@@ -849,9 +875,10 @@ def api_change_password():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Change User Password')
+    print(f'LOG: {user_id} Change User Password')
     try:
         data = request.get_json()
         new_password = data.get('new_password')
@@ -859,7 +886,6 @@ def api_change_password():
         if not new_password:
             return jsonify({'success': False, 'message': 'New password is required'}), 400
 
-        user_id = session['user_id']
         result = change_password(user_id, new_password)
         if result.get('success'):
             return jsonify({'success': True, 'message': result.get('message')})
@@ -910,9 +936,10 @@ def add_patent():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Add New Patent: {request.get_json()}')
+    print(f'LOG: {user_id} Add New Patent: {request.get_json()}')
     try:
         data = request.get_json()
         if not data:
@@ -977,9 +1004,10 @@ def upload_file_to_local_storage(case_id):
     from werkzeug.utils import secure_filename
 
     # Check authentication
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Upload File to Local Storage')
+    print(f'LOG: {user_id} Upload File to Local Storage')
     # Check file in request
     if 'file' not in request.files:
         return jsonify({'success': False, 'message': 'No file part in the request'}), 400
@@ -1082,9 +1110,10 @@ def upload_file(case_id):
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Upload File: {case_id}')
+    print(f'LOG: {user_id} Upload File: {case_id}')
 
     data = request.get_json()
     if not data:
@@ -1158,9 +1187,10 @@ def get_all_alerts():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {session["user_id"]} Get All Alerts')
+    print(f'LOG: {user_id} Get All Alerts')
 
     try:
         alerts = get_alerts()
@@ -1200,10 +1230,10 @@ def get_user_alerts():
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-    if 'user_id' not in session:
+    user_id = get_user_id()
+    if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    user_id = session['user_id']
-    print(f'LOG: {session["user_id"]} Get User Alerts')
+    print(f'LOG: {user_id} Get User Alerts')
     try:
         user_alerts = get_alerts_for_user(user_id)
         return jsonify({
@@ -1251,8 +1281,10 @@ def trigger_similarity_analysis():
       schema:
         $ref: '#/definitions/ErrorResponse'
   """
-  user_id = session['user_id']
-  print(f'LOG: {session["user_id"]} Trigger Similarity Analysis')
+  user_id = get_user_id()
+  if not user_id:
+      return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+  print(f'LOG: {user_id} Trigger Similarity Analysis')
   try:
     data = request.get_json()
     print('TEST: trigger_similarity_analysis data: ', json.dumps(data, indent=4))
@@ -1450,11 +1482,9 @@ def api_import_patent_from_uspto():
 def api_create_patent():
   try:
     data = request.get_json()
-    if 'user_id' not in session:
-      return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-    if session['user_id'] is None:
+    user_id = get_user_id()
+    if not user_id:
       return jsonify({'success': False, 'message': 'User ID is required'}), 400
-    user_id = session['user_id']
     print(f'Create Patent Data by {user_id}: {json.dumps(data, indent=4)}')
     # patent_data = data.get('patent_data')
     data['created_by'] = user_id
@@ -1542,11 +1572,11 @@ def fetch_patent_from_uspto():
             type: string
             example: "Error normalizing patent data: [error details]"
   """
-  if 'user_id' not in session:
+  user_id = get_user_id()
+  if not user_id:
     print('\nUser ID is not in session')
     return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-  user_id = session['user_id']
-  print(f'LOG: {session["user_id"]} Import Patent from USPTO')
+  print(f'LOG: {user_id} Import Patent from USPTO')
   data = request.get_json()
   if data is None:
     print('\nNo Data provided')
@@ -1637,8 +1667,15 @@ def similarity_analysis_gemini():
   
   if complete_document_contents.strip() == "":
     return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+
+  claims = get_claims(complete_document_contents)
+  if (len(claims) == 0) or (claims is None):
+      return jsonify({'success': False, 'message': 'Unable to get claims from document contents'}), 400
+  if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
+      return jsonify({'success': False, 'message': claims[0]}), 400
   
-  similar_infringements = get_complete_infringements(complete_document_contents)
+  
+  similar_infringements = get_complete_infringements(claims)
   
   if (similar_infringements is None) or (len(similar_infringements) == 0):
     return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
@@ -1649,10 +1686,34 @@ def similarity_analysis_gemini():
   # print('TEST: similar_infringements: ', json.dumps(similar_infringements, indent=4))
   return jsonify({
     'success': True, 
-    # 'claims': claims,
     'message': 'Similarity analysis completed', 
+    'claims': claims,
     'similar_infringements': similar_infringements
     }), 200
+
+@app.route('/api/proxy-document', methods=['POST'])
+def get_document_content():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'document_url' not in data:
+    return jsonify({'success': False, 'message': 'Document URL is required'}), 400
+  
+  document_url = data.get('document_url', None)
+  headers = {}
+
+  if 'uspto' in document_url.lower():
+    headers = {"X-API-KEY": getEnvKey('uspto')}
+  try:  
+    response = requests.get(document_url, headers=headers, stream=True)
+    print(f'\nLOG: Streaming Document Content from USPTO : {response}')
+    return Response(
+      response.iter_content(chunk_size=8192), 
+      content_type=response.headers.get('Content-Type', 'application/octet-stream')
+      )
+  except Exception as e:
+    print(f'\nERROR: Error fetching document content: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error fetching document content: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = app.config['PORT']

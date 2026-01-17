@@ -349,11 +349,21 @@
             const password = document.getElementById('password').value;
 
             try {
+                // Check if user_id exists in session
+                const sessionData = JSON.parse(localStorage.getItem('session') || '{}');
+                const existingUserId = sessionData?.user_id || sessionData?.user?.id || null;
+                
+                // Build headers conditionally for login
+                const loginHeaders = {
+                    'Content-Type': 'application/json'
+                };
+                if (existingUserId) {
+                    loginHeaders['X-User-ID'] = existingUserId;
+                }
+                
                 const response = await fetch('/api/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: loginHeaders,
                     body: JSON.stringify({
                         email: email,
                         password: password
@@ -361,11 +371,19 @@
                 });
 
                 const data = await response.json();
+                
+                // For profile, use the user_id from the login response if available
+                const profileUserId = data?.user_id || data?.user?.id || existingUserId;
+                const profileHeaders = {
+                    'Content-Type': 'application/json'
+                };
+                if (profileUserId) {
+                    profileHeaders['X-User-ID'] = profileUserId;
+                }
+                
                 const userResponse = await fetch('/api/profile', {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: profileHeaders,
                 });
                 const userData = await userResponse.json();
 

@@ -336,12 +336,14 @@
 
     async function updateCaseDatabase(case_id, update_data, onSuccess, onFail, onError) {
       try {
+        const userId = getUserId();
         const response = await fetch(`${API_BASE_URL}/api/cases/${case_id}`, {
           method: 'POST',
           body: JSON.stringify(update_data),
           credentials: 'include',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
           }
         });
         const data = await response.json();
@@ -371,6 +373,10 @@
       let headers = {
         'Content-Type': 'application/json'
       };
+      const userId = getUserId();
+      if (userId) {
+        headers['X-User-ID'] = userId;
+      }
       console.log('Infringement Analysis Body:', body);
       fetch(infringementAnalysisUrl, {
         method: 'POST',
@@ -468,6 +474,7 @@
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
           }
         });
         const data = await response.json();
@@ -498,6 +505,7 @@
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
           }
         });
 

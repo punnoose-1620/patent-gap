@@ -24,6 +24,8 @@ class SimilarityClaim(TypedDict):
 class InfringementSource(TypedDict):
     source: str
     entry_id: str
+    entry_title: str
+    entry_url: str
     similar_claims: list[SimilarityClaim]
 
 infringement_keys = ['source', 'entry_id', 'similar_claims']
@@ -182,17 +184,12 @@ def check_infringement_results(infringements: list):
                     return False
     return True
 
-def get_complete_infringements(document_contents: str):
+def get_complete_infringements(claims: list[str]):
     """
     This function is used to get the complete infringements from the document contents.
     It will return the infringements if they are valid, otherwise it will return an empty list.
     It will try to get the infringements 3 times if they are not valid.
     """
-    claims = get_claims(document_contents)
-    if (len(claims) == 0) or (claims is None):
-        return []
-    if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
-        return claims
     attempts = 0
     similar_infringements = get_similar_infringements(claims)
     if not check_infringement_results(similar_infringements):
