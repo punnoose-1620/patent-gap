@@ -352,6 +352,9 @@
       border-radius: var(--radius);
       padding: 16px;
       box-shadow: var(--shadow-sm);
+      align-items: flex-start !important;
+      justify-content: flex-start !important;
+      vertical-align: top;
     }
 
     .info-card-label {
@@ -447,6 +450,16 @@
       height: 100%;
       background: var(--warning);
       transition: width 0.3s;
+    }
+
+    /* Documents Section */
+    .documents-grid {
+      display: grid;
+      justify-content: flex-start;
+      align-items: flex-start;
+      column-gap: 5px;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 5px;
     }
 
     /* Matches Section */
@@ -809,7 +822,7 @@
           <h2 class="section-title" style="margin: 0;">Documents</h2>
           <span class="status-badge status-badge-complete" id="documentsCountBadge">0 documents</span>
         </div>
-        <div class="matches-grid" id="documentsGrid">
+        <div class="documents-grid" id="documentsGrid">
           <!-- Will be populated dynamically -->
         </div>
       </div>
@@ -827,7 +840,7 @@
       </div>
 
       <!-- Claims Section -->
-      <div class="content-section">
+      <div class="content-section" id="claimsSection" style="display: none;">
         <h2 class="section-title">Claims for Analysis</h2>
         <div class="card">
           <div class="card-content">
@@ -1241,11 +1254,23 @@
       `;
     }
 
-    function renderClaimData(claim, index) {
+    function renderClaimData(claim) {
+      claimSplit = claim.split('. ');
+      claimIndex = claimSplit[0];
+      claimContent = claimSplit.slice(1).join('. ');
+      if (claimIndex==1) {
+        return `
+          <div class="claim-card">
+            <div class="claim-card-header">
+              <div class="claim-card-title">${escapeHtml(claimContent)}</div>
+            </div>
+          </div>
+        `;
+      }
       return `
         <div class="claim-card">
           <div class="claim-card-header">
-            <div class="claim-card-title">${escapeHtml(claim)}</div>
+            <div class="claim-card-title">${claimIndex-1}. ${escapeHtml(claimContent)}</div>
           </div>
         </div>
       `;
@@ -1349,7 +1374,7 @@
         </div>
         <div class="info-card">
           <div class="info-card-label">Matches Found</div>
-          <div class="info-card-value">${caseData.matchCount || caseData.match_count || 0}</div>
+          <div class="info-card-value" id="matchesCountCard">${caseData.matchCount || caseData.match_count || 0}</div>
         </div>
         <div class="info-card">
           <div class="info-card-label">Last Updated</div>
@@ -1482,12 +1507,15 @@
 
         const documentsGrid = document.getElementById('documentsGrid');
         documentsGrid.innerHTML = caseData.documents.map((document, idx) => renderDocumentData(document, idx)).join('');
-      } else {
+      } 
+      else {
         const documentsSection = document.getElementById('documentsSection');
         documentsSection.style.display = 'none';
       }
 
-      if (caseData.claims) {
+      if (caseData.claims && caseData.claims.length > 0) {
+        const claimsSection = document.getElementById('claimsSection');
+        claimsSection.style.display = 'block';
         const claimsElement = document.getElementById('claimsDataList');
         claimsElement.innerHTML = caseData.claims.map((claim) => renderClaimData(claim)).join('');
       }
@@ -1504,6 +1532,7 @@
         const matchCount = matches.length || 0;
         
         document.getElementById('matchCountBadge').textContent = `${matchCount} ${matchCount === 1 ? 'match' : 'matches'}`;
+        document.getElementById('matchesCountCard').textContent = `${matchCount}`;
         
         if (matches) {
           console.log('LOG: Matches found: ', matches);
