@@ -1487,10 +1487,12 @@ def api_create_patent():
       return jsonify({'success': False, 'message': 'User ID is required'}), 400
     print(f'Create Patent Data by {user_id}: {json.dumps(data, indent=4)}')
     # patent_data = data.get('patent_data')
+
     data['created_by'] = user_id
     data['created_date'] = datetime.now().strftime('%Y-%m-%d')
     created_patent = create_patent(data)
     print('\nCreated Patent: ', created_patent, '\n')
+    
     returnVal = {
       'success': True, 
       'message': 'Patent created successfully', 
@@ -1577,6 +1579,7 @@ def fetch_patent_from_uspto():
     print('\nUser ID is not in session')
     return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
   print(f'LOG: {user_id} Import Patent from USPTO')
+  
   data = request.get_json()
   if data is None:
     print('\nNo Data provided')
@@ -1610,6 +1613,110 @@ def fetch_patent_from_uspto():
   except Exception as e:
     print(f'\nError getting patent data from USPTO: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
+
+@app.route('/api/get-claims/<case_id>', methods=['GET'])
+def get_claims_for_patent(case_id):
+  #TODO: Add function information to swagger
+  user_id = get_user_id()
+  if not user_id:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {user_id} Getting Claims for Case: {case_id}')
+
+  try:
+    case_data = get_case_by_id(case_id)
+    if case_data is None:
+      print(f'\nERROR: Error getting claims: Case not found')
+      return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+    print(f'\nCase Data: {json.dumps(case_data, indent=4)}')
+    existing_claims = case_data.get('claims', [])
+    if (len(existing_claims) > 0) and (existing_claims is not None):
+      print(f'\nERROR: Error getting claims: Claims already exist')
+      return jsonify({'success': True, 'message': 'Claims already exist', 'claims': existing_claims}), 200
+
+    description = case_data.get('description', '')
+    if description.strip() != "":
+      complete_document_contents = f"Description:\n{description}"
+    
+    document_urls = case_data.get('documents', [])
+    document_contents = []
+    for document in document_urls:
+      content  = readDocumentFromUrl(document.get('url'), headers={"X-API-KEY": getEnvKey('uspto')})
+      document_contents.append(content)
+
+    print(f'\nDocument Contents: {json.dumps(document_contents, indent=4)}')
+    if (len(document_contents) == 0) or (document_contents is None):
+      return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+
+    complete_document_contents = ""
+    for content in document_contents:
+      if content.strip() != "":
+        complete_document_contents = f"{complete_document_contents}\n\n{content}"
+    
+    if complete_document_contents.strip() == "":
+      print(f'\nERROR: Error getting claims: No viable document contents provided')
+      return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+
+    claims = get_claims(complete_document_contents)
+    if (len(claims) == 0) or (claims is None):
+      print(f'\nERROR: Error getting claims: No claims found')
+      return jsonify({'success': False, 'message': 'No claims found'}), 400
+    if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
+        print(f'\nERROR: Error getting claims: {claims[0]}')
+        return jsonify({'success': False, 'message': claims[0]}), 400
+
+    # Update Claims in Case Data
+    result = update_case(case_id, {'claims': claims})
+    if result['success']:
+      return jsonify({'success': True, 'message': 'Claims updated successfully', 'claims': claims}), 200
+    else:
+      print(f'\nERROR: Error updating claims: {result["message"]}')
+      return jsonify({'success': False, 'message': result['message']}), 400
+
+  except Exception as e:
+    print(f'\nERROR:Error getting claims data: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error getting claims for patent: {str(e)}'}), 500
+
+@app.route('/api/gemini-infringement-analysis/<case_id>', methods=['GET'])
+def infringement_analysis_gemini(case_id):
+  #TODO: Add function information to swagger
+  user_id = get_user_id()
+  if not user_id:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {user_id} Getting Infringement Analysis for Case: {case_id}')
+  
+  try:
+    case_data = get_case_by_id(case_id)
+    if case_data is None:
+      return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+    existing_claims = case_data.get('claims', [])
+    if (len(existing_claims) == 0) or (existing_claims is None):
+      print(f'\nERROR: Error getting infringement analysis: Claims not available in case data')
+      return jsonify({'success': True, 'message': 'Claims not available in case data'}), 200
+
+    similar_infringements = get_complete_infringements(existing_claims)
+    if (similar_infringements is None) or (len(similar_infringements) == 0):
+      return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
+    if (similar_infringements[0] == 'Rate Exceeded Error') or (similar_infringements[0] == 'Access Forbidden Error') or (similar_infringements[0] == 'Authentication Error') or (similar_infringements[0] == 'Bad Request Error'):
+      return jsonify({'success': False, 'message': similar_infringements[0]}), 400
+    
+    result = update_case(case_id, {'infringements': similar_infringements})
+    returnVal = {
+      'success': True, 
+      'message': 'Similarity analysis completed', 
+      'claims': existing_claims,
+      'similar_infringements': similar_infringements
+      }
+    if (result['success'] is False):
+      returnVal['message'] = 'Similarity analysis completed. Unable to update case data.'
+
+    return jsonify(returnVal), 200
+  except Exception as e:
+    print(f'\nERROR:Error getting infringement analysis data: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error getting infringement analysis for patent: {str(e)}'}), 500
 
 @app.route('/api/similarity-analysis-gemini', methods=['POST'])
 def similarity_analysis_gemini():
@@ -1673,7 +1780,6 @@ def similarity_analysis_gemini():
       return jsonify({'success': False, 'message': 'Unable to get claims from document contents'}), 400
   if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
       return jsonify({'success': False, 'message': claims[0]}), 400
-  
   
   similar_infringements = get_complete_infringements(claims)
   

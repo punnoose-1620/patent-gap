@@ -379,6 +379,12 @@
       background: hsl(170, 70%, 8%, 0.9);
     }
 
+    .btn-primary .loading {
+      text-align: center;
+      padding: 10px;
+      color: var(--muted-foreground);
+    }
+
     .btn-outline {
       background: transparent;
       color: var(--foreground);
@@ -1291,6 +1297,13 @@
     let analysisLoading = false;
     let analysisResult = {};
 
+    const claimsAnalysisLoader = `
+    <span class="spinner" style="width: 10px; height: 10px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; margin-right: 8px;"></span>
+    Isolating Claims...`;
+    const infringementAnalysisLoader = `
+    <span class="spinner" style="width: 10px; height: 10px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; margin-right: 8px;"></span>
+    Finding Infringements...`;
+
     // ==================== API FUNCTIONS ====================
 
     async function fetchCasefromUspto(patentNumber, onSuccess, onFail, onError) {
@@ -1340,18 +1353,18 @@
       }
     }
 
-    async function beginSimilarityAnalysis(urls, keywords) {
-      analysisLoading = true;
+    async function generateClaims(case_id, onSuccess, onFail, onError) {
+      if (!case_id) {
+        console.error('ERROR: Case ID is required to generate claims');
+        onFail('Case ID is required to generate claims');
+        return;
+      }
       const popupId = 'popup-add-context';
-      const startBtn = document.querySelector(`#${popupId} #popup-startAnalysisBtn`);
-      const btnText = document.querySelector(`#${popupId} #popup-btnText`);
       const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
+      loadingSpinner.innerHTML = claimsAnalysisLoader;
 
-      const infringementAnalysisUrl = `${API_BASE_URL}/api/similarity-analysis-gemini`;
-      let body = {
-        keywords: keywords,
-        document_urls: urls
-      };
+      claimsLoading = true;
+      const claimGeneratorUrl = `${API_BASE_URL}/api/get-claims/${case_id}`;
       let headers = {
         'Content-Type': 'application/json'
       };
@@ -1359,62 +1372,76 @@
       if (userId) {
         headers['X-User-ID'] = userId;
       }
-      console.log('Infringement Analysis Body:', body);
-      fetch(infringementAnalysisUrl, {
-        method: 'POST',
-        body: JSON.stringify(body),
+
+      fetch(claimGeneratorUrl, {
+        method: 'GET',
         headers: headers,
         credentials: 'include',
         keepalive: true
-      }).then(response => response.json())
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('TEST: Claims Generation Data:', data);
+        if (Object.keys(data).includes('claims')) {
+          let claims = data['claims'];
+          onSuccess(claims);
+        }
+        else {
+          onFail(data.message);
+        }
+      })
+      .catch(error => {
+        console.error('Error generating claims:', error);
+        onFail(error);
+      })
+      .finally(() => {
+        claimsLoading = false;
+      });
+    }
+
+    async function beginInfringementAnalysis(case_id, onSuccess, onFail, onError) {
+      const popupId = 'popup-add-context';
+      const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
+      loadingSpinner.innerHTML = infringementAnalysisLoader;
+
+      analysisLoading = true;
+      const infringementAnalysisUrl = `${API_BASE_URL}/api/gemini-infringement-analysis/${case_id}`;
+      let headers = {
+        'Content-Type': 'application/json'
+      };
+      const userId = getUserId();
+      if (userId) {
+        headers['X-User-ID'] = userId;
+      }
+
+      fetch(infringementAnalysisUrl, {
+        method: 'GET',
+        headers: headers,
+        credentials: 'include',
+        keepalive: true
+      })
+      .then(response => response.json())
       .then(data => {
         console.log('TEST: Infringement Analysis Data:', data);
-        if (Object.keys(data).includes('similar_infringements')) {
-          let analysisResult = data['similar_infringements'];
-          console.log('TEST: Infringement Analysis Result:', analysisResult);
-          if (Array.isArray(analysisResult) && analysisResult.length > 0) {
-            console.log('TEST: Infringement Data:', analysisResult);
-            updateCaseDatabase(
-              caseData && caseData._id ? caseData._id : '',
-              { 'infringements': analysisResult },
-              (data) => {
-                console.log('Infringements update response:', data);
-              },
-              (errorMessage) => {
-                console.error('Error updating infringements:', errorMessage);
-              },
-              (error) => {
-                console.error('Error updating infringements:', error);
-              }
-            );
-            if (caseData && typeof caseData === 'object') {
-              caseData['infringements'] = analysisResult;
-            } else {
-              caseData = {
-                'infringements': analysisResult
-              };
-            }
-            updateCasesSession();
-            console.log('TEST: Updated Case Data:', caseData);
-            renderProjects(getCasesSession())
-            console.log('TEST: Projects rendered:', getCasesSession());
-            // Store similarity analysis result in session storage
-            try {
-              // Close popup
-              closePopup('add-context');
-
-              sessionStorage.setItem('similar_infringements', JSON.stringify(analysisResult));
-              console.log('TEST: Redirecting to analysis page');
-              window.location.href = `analysis-page?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
-            } catch (e) {
-              console.warn('Failed to store similarity analysis in session storage:', e);
-            }
-          }
-        } else {
-          console.error('No infringement analysis result found');
-        }
-      }).catch(error => {
+        onSuccess(data);
+      })
+      .catch(error => {
         console.error('Error starting infringement analysis:', error);
+        onFail(error);
+      })
+      .finally(() => {
+        analysisLoading = false;
+      });
+    }
+
+    async function beginSimilarityAnalysis(case_id) {
+      analysisLoading = true;
+      const popupId = 'popup-add-context';
+      const startBtn = document.querySelector(`#${popupId} #popup-startAnalysisBtn`);
+      const btnText = document.querySelector(`#${popupId} #popup-btnText`);
+      const loadingSpinner = document.querySelector(`#${popupId} #popup-loadingSpinner`);
+
+      function onFinalError() {
         if (startBtn && btnText && loadingSpinner) {
           // Hide loading spinner
           loadingSpinner.style.display = 'none';
@@ -1425,9 +1452,8 @@
           // Optionally update button text to show error
           btnText.textContent = 'Start Analysis (Retry)';
         }
-      }).finally(() => {
-        console.log('Infringement Analysis Completed.');
-        analysisLoading = false;
+      }
+      function onFinalSuccess() {
         if (startBtn && btnText && loadingSpinner) {
           // Hide loading spinner
           loadingSpinner.style.display = 'none';
@@ -1438,7 +1464,166 @@
           // Optionally update button text to show error
           btnText.textContent = 'Start Analysis Again';
         }
+      }
+
+      if (!case_id) {
+        console.error('ERROR: Case ID is required to perform infringement analysis');
+        onFinalError();
+        return;
+      }
+      await generateClaims(case_id, 
+      (data) => {
+        console.log('LOG: Claims Generation Data:', data);
+        beginInfringementAnalysis(case_id, 
+        (data) => {       //onSuccess
+          console.log('LOG: Infringement Analysis Data:', data);
+          if (Object.keys(data).includes('similar_infringements')) {
+            let analysisResult = data['similar_infringements'];
+            if (Array.isArray(analysisResult) && analysisResult.length > 0) {
+              updateCaseDatabase(
+                (caseData && caseData._id) ? caseData._id : '',
+                { 'infringements': analysisResult },
+                (data) => {
+                  console.log('Infringements update response:', data);
+                },
+                (errorMessage) => {
+                  console.error('Error updating infringements:', errorMessage);
+                },
+                (error) => {
+                  console.error('Error updating infringements:', error);
+                }
+              );
+
+              if (caseData && typeof caseData === 'object') {
+                caseData['infringements'] = analysisResult;
+              } 
+              else {
+                caseData = {
+                  'infringements': analysisResult
+                };
+              }
+
+              closePopup('add-context');
+              onFinalSuccess();
+              window.location.href = `case-details?id=${case_id}`;
+            }
+          }
+        }, 
+        (error) => {       //onFail
+          console.error('ERROR: Error performing infringement analysis:', error);
+          onFinalError();
+        }, 
+        (error) => {       //onError
+          console.error('ERROR: Error performing infringement analysis:', error);
+          onFinalError();
+        });
+      }, 
+      (error) => {
+        console.error('ERROR: Error generating claims:', error);
+        onFinalError();
+      }, 
+      (error) => {
+        console.error('ERROR: Error generating claims:', error);
+        onFinalError();
       });
+
+      loadingSpinner.innerHTML = `<span id="popup-btnText">Start Analysis</span>`;
+
+      // const infringementAnalysisUrl = `${API_BASE_URL}/api/similarity-analysis-gemini`;
+      // let body = {
+      //   keywords: keywords,
+      //   document_urls: urls
+      // };
+      // let headers = {
+      //   'Content-Type': 'application/json'
+      // };
+      // const userId = getUserId();
+      // if (userId) {
+      //   headers['X-User-ID'] = userId;
+      // }
+      // console.log('Infringement Analysis Body:', body);
+      // fetch(infringementAnalysisUrl, {
+      //   method: 'POST',
+      //   body: JSON.stringify(body),
+      //   headers: headers,
+      //   credentials: 'include',
+      //   keepalive: true
+      // })
+      // .then(response => response.json())
+      // .then(data => {
+      //   console.log('TEST: Infringement Analysis Data:', data);
+      //   if (Object.keys(data).includes('similar_infringements')) {
+      //     let analysisResult = data['similar_infringements'];
+      //     console.log('TEST: Infringement Analysis Result:', analysisResult);
+      //     if (Array.isArray(analysisResult) && analysisResult.length > 0) {
+      //       console.log('TEST: Infringement Data:', analysisResult);
+      //       updateCaseDatabase(
+      //         caseData && caseData._id ? caseData._id : '',
+      //         { 'infringements': analysisResult },
+      //         (data) => {
+      //           console.log('Infringements update response:', data);
+      //         },
+      //         (errorMessage) => {
+      //           console.error('Error updating infringements:', errorMessage);
+      //         },
+      //         (error) => {
+      //           console.error('Error updating infringements:', error);
+      //         }
+      //       );
+      //       if (caseData && typeof caseData === 'object') {
+      //         caseData['infringements'] = analysisResult;
+      //       } else {
+      //         caseData = {
+      //           'infringements': analysisResult
+      //         };
+      //       }
+      //       updateCasesSession();
+      //       console.log('TEST: Updated Case Data:', caseData);
+      //       renderProjects(getCasesSession())
+      //       console.log('TEST: Projects rendered:', getCasesSession());
+      //       // Store similarity analysis result in session storage
+      //       try {
+      //         // Close popup
+      //         closePopup('add-context');
+
+      //         sessionStorage.setItem('similar_infringements', JSON.stringify(analysisResult));
+      //         console.log('TEST: Redirecting to analysis page');
+      //         window.location.href = `analysis-page?patent=${encodeURIComponent(patentParam)}&project=${encodeURIComponent(step1Data.projectName)}`;
+      //       } catch (e) {
+      //         console.warn('Failed to store similarity analysis in session storage:', e);
+      //       }
+      //     }
+      //   } else {
+      //     console.error('No infringement analysis result found');
+      //   }
+      // })
+      // .catch(error => {
+      //   console.error('Error starting infringement analysis:', error);
+      //   if (startBtn && btnText && loadingSpinner) {
+      //     // Hide loading spinner
+      //     loadingSpinner.style.display = 'none';
+      //     // Show button text
+      //     btnText.style.display = 'inline';
+      //     // Re-enable button
+      //     startBtn.disabled = false;
+      //     // Optionally update button text to show error
+      //     btnText.textContent = 'Start Analysis (Retry)';
+      //   }
+      // })
+      // .finally(() => {
+      //   console.log('Infringement Analysis Completed.');
+      //   analysisLoading = false;
+      //   if (startBtn && btnText && loadingSpinner) {
+      //     // Hide loading spinner
+      //     loadingSpinner.style.display = 'none';
+      //     // Show button text
+      //     btnText.style.display = 'inline';
+      //     // Re-enable button
+      //     startBtn.disabled = false;
+      //     // Optionally update button text to show error
+      //     btnText.textContent = 'Start Analysis Again';
+      //   }
+      // });
     }
 
     async function fetchCases() {
@@ -1990,9 +2175,6 @@
       if (startBtn) {
         startBtn.addEventListener('click', async () => {
           const context = contextTextarea?.value.trim() || '';
-
-          let documents = caseData.documents.map(doc => doc.url);
-          let keywords = caseData.keywords;
           
           // Show loading
           startBtn.disabled = true;
@@ -2028,11 +2210,13 @@
                 'Content-Type': 'application/json',
                 'X-User-ID': userId || ''
               }
-            }).then(response => response.json())
+            })
+            .then(response => response.json())
             .then(data => {
               if (data && 'case_id' in data) {
                 console.log('Case created:', data);
                 caseData = data.case_data;
+                case_id = data.case_id;
                 // Store case data
                 sessionStorage.setItem('currentCaseId', data.case_id || caseData._id);
                 sessionStorage.setItem('projectName', caseDetails.title);
@@ -2045,7 +2229,7 @@
                 sessionStorage.removeItem(STEP_1_DATA_KEY);
 
                 updateCasesSession()
-                beginSimilarityAnalysis(documents, keywords);
+                beginSimilarityAnalysis(case_id);
                 
                 // Navigate to Analysis page
                 const patentParam = step1Data.activeTab === 'patentId' 
@@ -2147,7 +2331,6 @@
           console.log('Analysis started:', result);
           const data = sessionStorage.getItem(STEP_1_KEY);
           const data_additional = sessionStorage.getItem(STEP_1_DATA_KEY);
-          console.log('Step 1 data:', data);
           console.log('Step 1 data:', data);
         },
         onClose: () => {

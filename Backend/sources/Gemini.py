@@ -37,6 +37,8 @@ Locate the section titled 'Claims' or 'What is claimed is:'.
 Extract all numbered claims starting from Claim 1 until the end of the document. 
 Ignore all other sections like 'Detailed Description', 'Abstract', or 'Background'. 
 Return only the raw text of the claims, preserving their original numbering and hierarchical structure.
+Avoid incomplete claims.
+Do not include any other text or comments.
 
 <DOCUMENT_CONTENTS_REPLACEMENT>
 """
@@ -48,6 +50,7 @@ I want you to search for similar claims in the following sources:
 <SOURCES_LIST_REPLACEMENT>
 Return the similar claims in the following format:
 <RESPONSE_FORMAT_REPLACEMENT>
+Note that entry_title is the title of the patent infringing upon this claim.
 """
 
 response_format = """
