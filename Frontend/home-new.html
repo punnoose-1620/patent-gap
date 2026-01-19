@@ -2086,6 +2086,27 @@
               (data) => {
                 caseDetails = data;
                 console.log('USPTO case details fetched successfully:', data);
+
+                const formData = {
+                  projectName,
+                  activeTab,
+                  patentNumber: activeTab === 'patentId' ? patentNumber : null,
+                  fileName: activeTab === 'upload' && selectedFile ? selectedFile.name : null,
+                  fileSize: activeTab === 'upload' && selectedFile ? selectedFile.size : null
+                };
+                
+                // Store data for Step 2
+                sessionStorage.setItem(STEP_1_KEY, JSON.stringify(formData));
+                if (Object.keys(caseDetails).length > 0) {
+                  sessionStorage.setItem(STEP_1_DATA_KEY, JSON.stringify(caseDetails));
+                }
+                
+                // Close Step 1 and open Step 2
+                closePopup('upload-patent');
+                showPopup('add-context', {
+                  data: formData,
+                  onComplete: onComplete
+                });
               },
               (errorMessage) => {
                 console.error('Error fetching USPTO case details:', data.message);
@@ -2103,27 +2124,6 @@
               }
             );
           }
-          
-          const formData = {
-            projectName,
-            activeTab,
-            patentNumber: activeTab === 'patentId' ? patentNumber : null,
-            fileName: activeTab === 'upload' && selectedFile ? selectedFile.name : null,
-            fileSize: activeTab === 'upload' && selectedFile ? selectedFile.size : null
-          };
-          
-          // Store data for Step 2
-          sessionStorage.setItem(STEP_1_KEY, JSON.stringify(formData));
-          if (Object.keys(caseDetails).length > 0) {
-            sessionStorage.setItem(STEP_1_DATA_KEY, JSON.stringify(caseDetails));
-          }
-          
-          // Close Step 1 and open Step 2
-          closePopup('upload-patent');
-          showPopup('add-context', {
-            data: formData,
-            onComplete: onComplete
-          });
         });
       }
 
@@ -2151,6 +2151,7 @@
       if (caseDetails) {
         caseData = caseDetails.case_data;
         contextTextarea.value = caseData.description;
+        patentDisplay.value = caseData._id || caseData.entry_id || '';
         if (typeof caseData._id === 'string' && caseData._id.includes('uspto')) {
           // Do something if '_id' contains 'uspto'
           patentIcon.style.backgroundColor = '#003661';

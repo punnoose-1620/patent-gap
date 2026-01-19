@@ -142,6 +142,12 @@ def analysis_page():
   """Serve the analysis page"""
   return render_template('analysis-results.html');
 
+@app.route('/infringement-details')
+def infringement_details_page():
+  """Serve the infringement details page"""
+  return render_template('infringement.html');
+
+
 # API Endpoints
 @app.route('/api/create-demo-request', methods=['POST'])
 def create_demo_request():
@@ -1629,7 +1635,6 @@ def get_claims_for_patent(case_id):
       print(f'\nERROR: Error getting claims: Case not found')
       return jsonify({'success': False, 'message': 'Case not found'}), 404
 
-    print(f'\nCase Data: {json.dumps(case_data, indent=4)}')
     existing_claims = case_data.get('claims', [])
     if (len(existing_claims) > 0) and (existing_claims is not None):
       print(f'\nERROR: Error getting claims: Claims already exist')
@@ -1639,13 +1644,12 @@ def get_claims_for_patent(case_id):
     if description.strip() != "":
       complete_document_contents = f"Description:\n{description}"
     
-    document_urls = case_data.get('documents', [])
+    document_urls = case_data.get('document_urls', [])
     document_contents = []
     for document in document_urls:
-      content  = readDocumentFromUrl(document.get('url'), headers={"X-API-KEY": getEnvKey('uspto')})
+      content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
       document_contents.append(content)
 
-    print(f'\nDocument Contents: {json.dumps(document_contents, indent=4)}')
     if (len(document_contents) == 0) or (document_contents is None):
       return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
 
@@ -1703,17 +1707,12 @@ def infringement_analysis_gemini(case_id):
     if (similar_infringements[0] == 'Rate Exceeded Error') or (similar_infringements[0] == 'Access Forbidden Error') or (similar_infringements[0] == 'Authentication Error') or (similar_infringements[0] == 'Bad Request Error'):
       return jsonify({'success': False, 'message': similar_infringements[0]}), 400
     
-    result = update_case(case_id, {'infringements': similar_infringements})
-    returnVal = {
+    return jsonify({
       'success': True, 
       'message': 'Similarity analysis completed', 
       'claims': existing_claims,
       'similar_infringements': similar_infringements
-      }
-    if (result['success'] is False):
-      returnVal['message'] = 'Similarity analysis completed. Unable to update case data.'
-
-    return jsonify(returnVal), 200
+      }), 200
   except Exception as e:
     print(f'\nERROR:Error getting infringement analysis data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting infringement analysis for patent: {str(e)}'}), 500
@@ -1820,6 +1819,47 @@ def get_document_content():
   except Exception as e:
     print(f'\nERROR: Error fetching document content: {str(e)}')
     return jsonify({'success': False, 'message': f'Error fetching document content: {str(e)}'}), 500
+
+@app.route('/api/infringement-details/<case_id>', methods=['GET'])
+def get_infringement_details(case_id):
+  #TODO: Add function information to swagger
+  user_id = get_user_id()
+  if not user_id:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {user_id} Getting Infringement Details for Case: {case_id}')
+  try:
+    case_data = get_case_by_id(case_id)
+    if case_data is None:
+      print(f'\nERROR: Error getting infringement details: Case not found')
+      return jsonify({'success': False, 'message': 'Case not found'}), 404
+    infringement_details = case_data.get('infringement_details', [])
+    if (len(infringement_details) == 0) or (infringement_details is None):
+      print(f'\nERROR: Error getting infringement details: No infringement details found')
+      return jsonify({'success': False, 'message': 'No infringement details found'}), 400
+    # Calculate Chart Data
+    chart_data = []
+    claims = case_data.get('claims', [])
+    for claim in claims:
+      infringement_count = 0
+      infringing_ids = []
+      for infringement in infringement_details:
+        similar_claims = infringement.get('similar_claims', [])
+        for similar_claim in similar_claims:
+          current_claim = similar_claim.get('claim', '')
+
+    return jsonify({
+      'success': True, 
+      'message': 'Infringement details retrieved successfully', 
+      'infringement_details': {
+        'title': case_data.get('title', ''),
+        'claims': claims,
+        'infringements': infringement_details
+      }
+      }), 200
+  except Exception as e:
+    print(f'\nERROR:Error getting infringement details data: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error getting infringement details for patent: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = app.config['PORT']

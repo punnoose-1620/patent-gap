@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infringement Details - Patent Gap AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --background: hsl(210, 20%, 98%);
+      --foreground: hsl(222, 47%, 11%);
+      --card: hsl(0, 0%, 100%);
+      --primary: hsl(170, 70%, 8%);
+      --primary-foreground: hsl(0, 0%, 100%);
+      --secondary: hsl(210, 40%, 96%);
+      --muted: hsl(210, 40%, 96%);
+      --muted-foreground: hsl(215, 16%, 47%);
+      --success: hsl(142, 71%, 45%);
+      --warning: hsl(38, 92%, 50%);
+      --destructive: hsl(0, 72%, 51%);
+      --border: hsl(214, 32%, 91%);
+      --radius: 0.5rem;
+      --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+      --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -2px hsl(0 0% 0% / 0.1);
+      --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -4px hsl(0 0% 0% / 0.1);
+      
+      /* Sidebar colors */
+      --sidebar-background: hsl(170, 70%, 8%);
+      --sidebar-foreground: hsl(0, 0%, 100%);
+      --sidebar-primary: hsl(170, 70%, 15%);
+      --sidebar-accent: hsl(170, 60%, 12%);
+      --sidebar-border: hsl(170, 50%, 10%);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: var(--background);
+      color: var(--foreground);
+      line-height: 1.6;
+      padding: 0;
+      margin: 0;
+      display: flex;
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 100vh;
+      width: 256px;
+      background: var(--sidebar-background);
+      color: var(--sidebar-foreground);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+
+    .sidebar.open {
+      transform: translateX(0);
+    }
+
+    @media (min-width: 1024px) {
+      .sidebar {
+        transform: translateX(0);
+        position: relative;
+      }
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--sidebar-border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-direction: row;
+    }
+
+    .sidebar-header img {
+      margin-right: 4px;
+      padding: 0rem !important;
+      height: 2.5rem;
+      width: 2.5rem;
+    }
+
+    .sidebar-header h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--sidebar-foreground);
+    }
+
+    .sidebar-content {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .sidebar-group {
+      margin-bottom: 24px;
+    }
+
+    .sidebar-group-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--sidebar-foreground);
+      opacity: 0.6;
+      margin-bottom: 8px;
+      padding: 0 12px;
+    }
+
+    .sidebar-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      padding-left: 12px;
+      border-radius: var(--radius);
+      color: var(--sidebar-foreground);
+      opacity: 0.8;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-nav-item:hover {
+      background: var(--sidebar-accent);
+      color: var(--sidebar-foreground);
+      opacity: 1;
+    }
+
+    .sidebar-nav-item.active {
+      background: var(--sidebar-primary);
+      color: var(--sidebar-foreground);
+      opacity: 1;
+    }
+
+    .sidebar-nav-item-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid var(--sidebar-border);
+    }
+
+    .sidebar-footer p {
+      font-size: 12px;
+      color: var(--sidebar-foreground);
+      opacity: 0.6;
+    }
+
+    /* Hamburger Menu */
+    .hamburger-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 1001;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      transition: all 0.2s;
+    }
+
+    .hamburger-btn:hover {
+      background: var(--muted);
+    }
+
+    @media (min-width: 1024px) {
+      .hamburger-btn {
+        display: none;
+      }
+    }
+
+    .hamburger-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+    }
+
+    .hamburger-icon span {
+      width: 100%;
+      height: 2px;
+      background: var(--foreground);
+      border-radius: 2px;
+      transition: all 0.3s;
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(1) {
+      transform: rotate(45deg) translate(5px, 5px);
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .hamburger-btn.open .hamburger-icon span:nth-child(3) {
+      transform: rotate(-45deg) translate(7px, -6px);
+    }
+
+    .sidebar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+    }
+
+    .sidebar-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      margin-left: 0;
+      transition: margin-left 0.3s ease;
+    }
+
+    @media (min-width: 1024px) {
+      .main-content {
+        margin-left: 256px;
+      }
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    @media (min-width: 1024px) {
+      .container {
+        padding: 32px;
+      }
+    }
+
+    /* Header Section */
+    .page-header {
+      margin-bottom: 32px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .page-header-left {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--foreground);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .back-button:hover {
+      background: var(--muted);
+    }
+
+    .page-title {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .page-subtitle {
+      color: var(--muted-foreground);
+      margin-top: 4px;
+    }
+
+    /* Info Grid */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .info-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+      align-items: flex-start !important;
+      justify-content: flex-start !important;
+      vertical-align: top;
+    }
+
+    .info-card-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+    }
+
+    .info-card-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--foreground);
+    }
+
+    .info-card-value.mono {
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+    }
+
+    /* Content Sections */
+    .content-section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 16px;
+    }
+
+    .card-content {
+      color: var(--muted-foreground);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-family: inherit;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+
+    .btn-primary:hover {
+      background: hsl(170, 70%, 8%, 0.9);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--foreground);
+      border: 1px solid var(--border);
+    }
+
+    .btn-outline:hover {
+      background: var(--muted);
+    }
+
+    /* Claim Chart Table */
+    .claim-chart {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+
+    .claim-chart thead {
+      background: var(--muted);
+    }
+
+    .claim-chart th {
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 14px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .claim-chart td {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .claim-chart tbody tr:hover {
+      background: var(--muted);
+    }
+
+    .claim-number {
+      font-weight: 600;
+      color: var(--primary);
+      min-width: 80px;
+    }
+
+    .claim-text {
+      color: var(--foreground);
+      line-height: 1.6;
+    }
+
+    .similarity-score {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .similarity-score.high {
+      background: hsl(0, 72%, 51%, 0.1);
+      color: var(--destructive);
+      border: 1px solid hsl(0, 72%, 51%, 0.2);
+    }
+
+    .similarity-score.medium {
+      background: hsl(38, 92%, 50%, 0.1);
+      color: var(--warning);
+      border: 1px solid hsl(38, 92%, 50%, 0.2);
+    }
+
+    .similarity-score.low {
+      background: hsl(142, 71%, 45%, 0.1);
+      color: var(--success);
+      border: 1px solid hsl(142, 71%, 45%, 0.2);
+    }
+
+    .similar-claim-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 12px;
+      display: inline-block;
+      margin-top: 8px;
+    }
+
+    .similar-claim-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Loading States */
+    .loading {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted-foreground);
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--muted);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-message {
+      background: hsl(0, 72%, 51%, 0.1);
+      border: 1px solid hsl(0, 72%, 51%, 0.2);
+      color: var(--destructive);
+      padding: 16px;
+      border-radius: var(--radius);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar Overlay (Mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Hamburger Menu Button -->
+  <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()">
+    <div class="hamburger-icon">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  </button>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <img src="images/logo-white-nobg.png" alt="Patent Gap Logo">
+      <h2>Patent Gap AI</h2>
+    </div>
+    <div class="sidebar-content">
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">Main</div>
+        <a href="home" class="sidebar-nav-item" onclick="handleNavClick('dashboard', event)">
+          <div class="sidebar-nav-item-icon">📊</div>
+          <span>Dashboard</span>
+        </a>
+        <a href="#new-project" class="sidebar-nav-item" onclick="handleNavClick('new-project', event)">
+          <div class="sidebar-nav-item-icon">📁</div>
+          <span>New Project</span>
+        </a>
+        <a href="#history" class="sidebar-nav-item" onclick="handleNavClick('history', event)">
+          <div class="sidebar-nav-item-icon">🕐</div>
+          <span>History</span>
+        </a>
+        <a href="#settings" class="sidebar-nav-item" onclick="handleNavClick('settings', event)">
+          <div class="sidebar-nav-item-icon">⚙️</div>
+          <span>Settings</span>
+        </a>
+        <a href="#help" class="sidebar-nav-item" onclick="handleNavClick('help', event)">
+          <div class="sidebar-nav-item-icon">❓</div>
+          <span>Help</span>
+        </a>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+        <a href="#login" class="sidebar-nav-item" onclick="handleNavClick('logout', event)">
+            <div class="sidebar-nav-item-icon">
+              <!-- Power icon SVG -->
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v9m6.364-3.364a9 9 0 11-12.728 0"/>
+              </svg>
+            </div>
+            <span>Logout</span>
+        </a>
+        <p>© 2025 Patent Gap AI</p>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      <!-- Page Header -->
+      <div class="page-header">
+        <div class="page-header-left">
+          <a href="#" class="back-button" id="backButton">
+            <span>←</span>
+            Back to Case Details
+          </a>
+          <h1 class="page-title" id="infringementTitle">Loading...</h1>
+          <p class="page-subtitle" id="infringementSubtitle">Loading infringement details...</p>
+        </div>
+      </div>
+
+      <!-- Info Grid -->
+      <div class="info-grid" id="infoGrid">
+        <!-- Will be populated dynamically -->
+      </div>
+
+      <!-- Infringement Details Section -->
+      <div class="content-section">
+        <h2 class="section-title">Infringement Information</h2>
+        <div class="card">
+          <div class="card-content">
+            <div class="info-grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+              <div class="info-card">
+                <div class="info-card-label">Source</div>
+                <div class="info-card-value" id="infringementSource">-</div>
+              </div>
+              <div class="info-card">
+                <div class="info-card-label">Entry ID</div>
+                <div class="info-card-value mono" id="infringementEntryId">-</div>
+              </div>
+            </div>
+            <div style="margin-top: 24px;">
+              <button class="btn btn-primary" id="visitSourceBtn" onclick="visitInfringementSource()">
+                <span>🔗</span>
+                Visit Infringement Source
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Infringement Claim Chart Section -->
+      <div class="content-section">
+        <h2 class="section-title">Infringement Claim Chart</h2>
+        <div class="card">
+          <div class="card-content">
+            <table class="claim-chart" id="claimChartTable">
+              <thead>
+                <tr>
+                  <th style="width: 100px;">Claim #</th>
+                  <th>Your Patent Claim</th>
+                  <th>Similar Infringing Claim</th>
+                  <th style="width: 150px;">Similarity Score</th>
+                </tr>
+              </thead>
+              <tbody id="claimChartBody">
+                <!-- Will be populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const API_BASE_URL = 'https://patent-gap-backend.onrender.com';
+    // const API_BASE_URL = 'http://localhost:5000';
+
+    let caseData = {};
+    let infringementData = {};
+    let caseId = null;
+    let infringementId = null;
+
+    // Get Case Details
+    async function getCaseDetails(onSuccess, onFail, onError) {
+      if(!caseId) {
+        onError('No case ID provided');
+        return;
+      }
+      const userId = getUserId();
+      try {
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        if(userId) {
+          headers['X-User-ID'] = userId;
+        }
+        else {
+          onError('User ID not found');
+          return;
+        }
+        const response = await fetch(`${API_BASE_URL}/api/cases/${caseId}`, {
+          credentials: 'include',
+          headers: headers
+        });
+        const data = await response.json();
+        if(data.success) {
+          onSuccess(data.case);
+        }
+        else {
+          onFail(data.message);
+        }
+        return;
+      } catch (error) {
+        console.error('Error fetching case details:', error);
+        onError(error);
+        return;
+      }
+    }
+
+    // Get URL parameters
+    function getUrlParams() {
+      const params = new URLSearchParams(window.location.search);
+      caseId = params.get('case_id');
+      infringementId = params.get('infringement_id');
+    }
+
+    // Get user ID from session
+    function getUserId() {
+      try {
+        const sessionData = JSON.parse(localStorage.getItem('session') || '{}');
+        return sessionData?.user_id || sessionData?.user?.id || null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    // Check credentials and redirect if needed
+    function checkCredentials() {
+      const userId = getUserId();
+      if (!userId) {
+        alert('You must be logged in to view this page.');
+        window.location.href = 'login';
+        return false;
+      }
+      return true;
+    }
+
+    // Sidebar Toggle
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+      const hamburger = document.getElementById('hamburgerBtn');
+      
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+      hamburger.classList.toggle('open');
+    }
+
+    function handleNavClick(page, event) {
+      event.preventDefault();
+      
+      document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      event.currentTarget.classList.add('active');
+      
+      if (window.innerWidth < 1024) {
+        toggleSidebar();
+      }
+      
+      if (page === 'new-project') {
+        window.dispatchEvent(new CustomEvent('openPatentModal'));
+      }
+    }
+
+    document.getElementById('sidebarOverlay').addEventListener('click', () => {
+      if (window.innerWidth < 1024) {
+        toggleSidebar();
+      }
+    });
+
+    // Get similarity score class
+    function getSimilarityScoreClass(score) {
+      if (score >= 0.9) return 'high';
+      if (score >= 0.7) return 'medium';
+      return 'low';
+    }
+
+    // Format similarity score as percentage
+    function formatSimilarityScore(score) {
+      return `${Math.round(score * 100)}%`;
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Visit infringement source
+    function visitInfringementSource() {
+      if (infringementData && infringementData.entry_url) {
+        window.open(infringementData.entry_url, '_blank');
+      }
+    }
+
+    // Render infringement details
+    function renderInfringementDetails() {
+      // Set page title
+      document.getElementById('infringementTitle').textContent = infringementData.entry_title || 'Infringement Details';
+      document.getElementById('infringementSubtitle').textContent = `Case: ${caseId || 'N/A'} | Infringement: ${infringementId || 'N/A'}`;
+
+      // Set back button URL
+      if (caseId) {
+        document.getElementById('backButton').href = `case-details?id=${caseId}`;
+      }
+
+      // Set info grid
+      document.getElementById('infringementSource').textContent = infringementData.source || '-';
+      document.getElementById('infringementEntryId').textContent = infringementData.entry_id || '-';
+
+      // Render claim chart
+      renderClaimChart();
+    }
+
+    // Render claim chart
+    function renderClaimChart() {
+      const tbody = document.getElementById('claimChartBody');
+      tbody.innerHTML = '';
+
+      if (!caseData.claims || !infringementData.similar_claims) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 24px; color: var(--muted-foreground);">No claim data available</td></tr>';
+        return;
+      }
+
+      // Match claims with similar claims
+      caseData.claims.forEach((claim, index) => {
+        const claimNumber = index + 1;
+        const similarClaim = infringementData.similar_claims[index] || null;
+        
+        const row = document.createElement('tr');
+        
+        // Claim number
+        const claimNumCell = document.createElement('td');
+        claimNumCell.className = 'claim-number';
+        claimNumCell.textContent = claimNumber;
+        
+        // Your patent claim
+        const yourClaimCell = document.createElement('td');
+        yourClaimCell.className = 'claim-text';
+        yourClaimCell.textContent = claim.split('. ')[1].trim();
+        
+        // Similar infringing claim
+        const similarClaimCell = document.createElement('td');
+        similarClaimCell.className = 'claim-text';
+        if (similarClaim) {
+          similarClaimCell.innerHTML = `
+            <div>${escapeHtml(similarClaim.claim)}</div>
+            ${similarClaim.url_to_claim ? `<a href="${similarClaim.url_to_claim}" target="_blank" class="similar-claim-link">View claim source →</a>` : ''}
+          `;
+        } else {
+          similarClaimCell.textContent = 'No similar claim found';
+          similarClaimCell.style.color = 'var(--muted-foreground)';
+        }
+        
+        // Similarity score
+        const scoreCell = document.createElement('td');
+        if (similarClaim && similarClaim.similarity_score !== undefined) {
+          const score = similarClaim.similarity_score;
+          const scoreClass = getSimilarityScoreClass(score);
+          scoreCell.innerHTML = `
+            <span class="similarity-score ${scoreClass}">${formatSimilarityScore(score)}</span>
+          `;
+        } else {
+          scoreCell.textContent = '-';
+          scoreCell.style.color = 'var(--muted-foreground)';
+        }
+        
+        row.appendChild(claimNumCell);
+        row.appendChild(yourClaimCell);
+        row.appendChild(similarClaimCell);
+        row.appendChild(scoreCell);
+        
+        tbody.appendChild(row);
+      });
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!checkCredentials()) {
+        return;
+      }
+      
+      getUrlParams();
+      // Get Case Details
+      getCaseDetails(
+        (case_data) => {
+          console.log('LOG: Case Details:', case_data);
+          caseData = case_data;
+          let infringements = caseData.infringements;
+          for(let infringement of infringements) {
+            if(infringement.entry_id === infringementId) {
+              infringementData = infringement;
+              console.log('LOG: Infringement Data:', infringementData);
+              break;
+            }
+          }
+          renderInfringementDetails();
+        },
+        (errorMessage) => {
+          console.error('ERROR: Error getting case details:', errorMessage);
+        },
+        (error) => {
+          console.error('ERROR: Error getting case details:', error);
+        }
+      );
+    });
+  </script>
+</body>
+</html>
+
