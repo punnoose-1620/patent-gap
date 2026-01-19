@@ -1707,6 +1707,8 @@ def infringement_analysis_gemini(case_id):
     if (similar_infringements[0] == 'Rate Exceeded Error') or (similar_infringements[0] == 'Access Forbidden Error') or (similar_infringements[0] == 'Authentication Error') or (similar_infringements[0] == 'Bad Request Error'):
       return jsonify({'success': False, 'message': similar_infringements[0]}), 400
     
+    for infringement in similar_infringements:
+      infringement['same_as_patent'] = areSimilarStrings(case_data.get('title', ''), infringement.get('entry_title', ''))
     return jsonify({
       'success': True, 
       'message': 'Similarity analysis completed', 
@@ -1819,6 +1821,20 @@ def get_document_content():
   except Exception as e:
     print(f'\nERROR: Error fetching document content: {str(e)}')
     return jsonify({'success': False, 'message': f'Error fetching document content: {str(e)}'}), 500
+
+@app.route('/api/check-same-patent', methods=['POST'])
+def check_same_patent():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'case_title' not in data:
+    return jsonify({'success': False, 'message': 'Case title is required'}), 400
+  if 'infringement_title' not in data:
+    return jsonify({'success': False, 'message': 'Infringement title is required'}), 400
+  
+  case_title = data.get('case_title', '').strip().lower()
+  infringement_title = data.get('infringement_title', '').strip().lower()
+  return jsonify({'success': True, 'message': 'Same patent check completed', 'same_as_patent': areSimilarStrings(case_title, infringement_title)}), 200
 
 @app.route('/api/infringement-details/<case_id>', methods=['GET'])
 def get_infringement_details(case_id):

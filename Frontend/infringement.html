@@ -611,10 +611,9 @@
 
       <!-- Infringement Details Section -->
       <div class="content-section">
-        <div class="card" id="sameAsPatentAlert">
-          <div class="info-card-value" id="sameAsPatentAlertText" style="display: none;">⚠️ Note: This infringement might be the same patent, but filed on a different database.</div>
+        <div class="card" id="sameAsPatentAlert" style="display: none;">
+          <div class="info-card-value" id="sameAsPatentAlertText">⚠️ Note: This infringement might be the same patent, but filed on a different database.</div>
         </div>
-        <br>
         <h2 class="section-title">Infringement Information</h2>
         <div class="card">
           <div class="card-content">
@@ -708,6 +707,28 @@
       }
     }
 
+    // Check if the case title is the same as the infringement title
+    async function checkSamePatent(caseTitle, infringementTitle) {
+      const response = await fetch(`${API_BASE_URL}/api/check-same-patent`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 'case_title': caseTitle, 'infringement_title': infringementTitle }),
+      });
+      const data = await response.json();
+      if(data.success) {
+        console.log('LOG: Same patent check completed:', data.same_as_patent);
+        return data.same_as_patent;
+      }
+      else {
+        console.error('ERROR: Error checking same patent:', data.message);
+        return false;
+      }
+      return false;
+    }
+
     // Get URL parameters
     function getUrlParams() {
       const params = new URLSearchParams(window.location.search);
@@ -798,22 +819,31 @@
 
     // Render infringement details
     function renderInfringementDetails() {
-      caseTitle = caseData.title || 'N/A';
-      infringementTitle = infringementData.entry_title || 'N/A';
-
-      if (
-        (caseTitle != 'N/A') && 
-        (infringementTitle != 'N/A') && 
-        caseTitle.trim().toLowerCase() === infringementTitle.trim().toLowerCase()
-      ) {
-        document.getElementById('sameAsPatentAlertText').style.display = 'block';
+      sameAsPatent = infringementData.same_as_patent || false;
+      
+      // If same as patent is set, display the alert
+      if (sameAsPatent) {
+        document.getElementById('sameAsPatentAlert').style.display = 'block';
       }
       else {
-        document.getElementById('sameAsPatentAlertText').style.display = 'none';
+        document.getElementById('sameAsPatentAlert').style.display = 'none';
       }
+      
+      // If same as patent is not set, check if the case title is the same as the infringement title
+      if(!sameAsPatent) {
+        checkSamePatent(caseData.title, infringementData.entry_title).then((same_As_Patent) => {
+          if(same_As_Patent) {
+            document.getElementById('sameAsPatentAlert').style.display = 'block';
+          }
+          else {
+            document.getElementById('sameAsPatentAlert').style.display = 'none';
+          }
+        });
+      }
+
       // Set page title
       document.getElementById('infringementTitle').textContent = infringementData.entry_title || 'Infringement Details';
-      document.getElementById('infringementSubtitle').textContent = `Case: ${caseId || 'N/A'} | Infringement: ${infringementId || 'N/A'}`;
+      document.getElementById('infringementSubtitle').textContent = `Case: ${caseId.split('_')[1] || 'N/A'} | Infringement: ${infringementId || 'N/A'}`;
 
       // Set back button URL
       if (caseId) {

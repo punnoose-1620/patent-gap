@@ -9,6 +9,7 @@ import requests
 import datetime
 import numpy as np
 from tqdm import tqdm
+from difflib import SequenceMatcher
 from env_controller import getEnvKey
 from models.cases import get_case_embedding, create_case, get_case_by_id, update_case
 from database import updateDataById
@@ -66,6 +67,35 @@ def get_uspto_api():
         return initialize_uspto_api()
     
     return _uspto_api_instance
+
+def areSimilarStrings(str1, str2, threshold=0.8):
+    """
+    Check if two strings are similar using fuzzy logic.
+    
+    Args:
+        str1 (str): First string to compare
+        str2 (str): Second string to compare
+        threshold (float): Similarity threshold (0.0 to 1.0). Default is 0.7.
+                          Higher values require more similarity.
+    
+    Returns:
+        bool: True if strings are similar above the threshold, False otherwise
+    """
+    if not str1 or not str2:
+        return False
+    
+    # Normalize strings (lowercase, strip whitespace)
+    str1_normalized = str1.strip().lower()
+    str2_normalized = str2.strip().lower()
+    
+    # Exact match
+    if str1_normalized == str2_normalized:
+        return True
+    
+    # Calculate similarity ratio using SequenceMatcher
+    similarity_ratio = SequenceMatcher(None, str1_normalized, str2_normalized).ratio()
+    
+    return similarity_ratio >= threshold
 
 def extract_keywords_from_documents(document_urls, top_n=15):
     """
