@@ -611,6 +611,10 @@
 
       <!-- Infringement Details Section -->
       <div class="content-section">
+        <div class="card" id="sameAsPatentAlert">
+          <div class="info-card-value" id="sameAsPatentAlertText" style="display: none;">⚠️ Note: This infringement might be the same patent, but filed on a different database.</div>
+        </div>
+        <br>
         <h2 class="section-title">Infringement Information</h2>
         <div class="card">
           <div class="card-content">
@@ -794,6 +798,19 @@
 
     // Render infringement details
     function renderInfringementDetails() {
+      caseTitle = caseData.title || 'N/A';
+      infringementTitle = infringementData.entry_title || 'N/A';
+
+      if (
+        (caseTitle != 'N/A') && 
+        (infringementTitle != 'N/A') && 
+        caseTitle.trim().toLowerCase() === infringementTitle.trim().toLowerCase()
+      ) {
+        document.getElementById('sameAsPatentAlertText').style.display = 'block';
+      }
+      else {
+        document.getElementById('sameAsPatentAlertText').style.display = 'none';
+      }
       // Set page title
       document.getElementById('infringementTitle').textContent = infringementData.entry_title || 'Infringement Details';
       document.getElementById('infringementSubtitle').textContent = `Case: ${caseId || 'N/A'} | Infringement: ${infringementId || 'N/A'}`;
