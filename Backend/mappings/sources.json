@@ -1,0 +1,194 @@
+[
+    {
+        "source_title": "USPTO Patent Center",
+        "jurisdiction": [
+            "United States"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Google Patents",
+        "jurisdiction": [
+            "United States",
+            "Europe"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Google Patents Europe",
+        "jurisdiction": [
+            "Europe"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "European Patent Register",
+        "jurisdiction": [
+            "Europe"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "FreePatentsOnline",
+        "jurisdiction": [
+            "United States",
+            "Europe"
+        ],
+        "content_type": "text/html; charset=utf-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "German Patent and Trade Mark Office (DPMA)",
+        "jurisdiction": [
+            "Germany"
+        ],
+        "content_type": "text/html;charset=UTF-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Swedish Patent Database",
+        "jurisdiction": [
+            "Sweden"
+        ],
+        "content_type": "text/html;charset=utf-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Norwegian Industrial Property Office",
+        "jurisdiction": [
+            "Norway"
+        ],
+        "content_type": "text/html; charset=utf-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Czech Industrial Property Office",
+        "jurisdiction": [
+            "Czech Republic"
+        ],
+        "content_type": "text/html; charset=UTF-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Belgian Patent Database",
+        "jurisdiction": [
+            "Belgium"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Greek Industrial Property Organisation",
+        "jurisdiction": [
+            "Greece"
+        ],
+        "content_type": "text/html; charset=utf-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "European Patent Bulletin",
+        "jurisdiction": [
+            "Europe"
+        ],
+        "content_type": "text/html; charset=UTF-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "European IP Information Portal",
+        "jurisdiction": [
+            "Europe"
+        ],
+        "content_type": "text/html; charset=UTF-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "US Assignment Database",
+        "jurisdiction": [
+            "United States"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "USPTO Public Pair (Legacy)",
+        "jurisdiction": [
+            "United States"
+        ],
+        "content_type": "text/html; charset=UTF-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Open Patent Services Bibliographic UI",
+        "jurisdiction": [
+            "Europe"
+        ],
+        "content_type": "text/html; charset=UTF-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "US Cooperative Patent Classification Browser",
+        "jurisdiction": [
+            "United States",
+            "Europe"
+        ],
+        "content_type": "text/html; charset=UTF-8",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Finnish Patent Database",
+        "jurisdiction": [
+            "Finland"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "USPTO Patent Center (Granted & Applications)",
+        "jurisdiction": [
+            "United States"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Google Patents (United States)",
+        "jurisdiction": [
+            "United States"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    },
+    {
+        "source_title": "Google Patents (Europe)",
+        "jurisdiction": [
+            "Europe"
+        ],
+        "content_type": "text/html",
+        "converted_type": "str",
+        "verified": true
+    }
+]
