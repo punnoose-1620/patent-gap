@@ -149,6 +149,18 @@ def infringement_details_page():
 
 
 # API Endpoints
+@app.route('/api/source-stats')
+def get_source_stats():
+  """Get source stats"""
+  return jsonify({
+    'success': True,
+    'source_stats': {
+      'remaining_sources': len(getRemainingSources()),
+      'integrated_sources': len(getIntegratedSourceTitles()),
+      'covered_jurisdictions': len(getCoveredJurisdictions())
+    }
+  })
+
 @app.route('/api/create-demo-request', methods=['POST'])
 def create_demo_request():
     """
@@ -1876,6 +1888,76 @@ def get_infringement_details(case_id):
   except Exception as e:
     print(f'\nERROR:Error getting infringement details data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting infringement details for patent: {str(e)}'}), 500
+
+@app.route('/api/generate-patent-summary/<case_id>', methods=['POST'])
+def generate_patent_summary(case_id):
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  
+  case_data = get_case_by_id(case_id)
+  if case_data is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+  
+  document_urls = case_data.get('document_urls', [])
+  document_contents = []
+  for document in document_urls:
+    content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+    document_contents.append(content)
+
+  if (len(document_contents) == 0) or (document_contents is None):
+    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+
+  complete_document_contents = ""
+  for content in document_contents:
+    if content.strip() != "":
+      complete_document_contents = f"{complete_document_contents}\n\n{content}"
+  
+  if complete_document_contents.strip() == "":
+    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+
+  summary = get_patent_summary(complete_document_contents)
+  return jsonify({
+    'success': True, 
+    'message': 'Patent summary generated successfully', 
+    'summary': summary}), 200
+
+@app.route('/api/generate-patent-summary/<case_id>', methods=['POST'])
+def generate_patent_summary(case_id):
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  
+  case_data = get_case_by_id(case_id)
+  if case_data is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+  
+  document_urls = case_data.get('document_urls', [])
+  document_contents = []
+  for document in document_urls:
+    content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+    document_contents.append(content)
+
+  if (len(document_contents) == 0) or (document_contents is None):
+    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+
+  complete_document_contents = ""
+  for content in document_contents:
+    if content.strip() != "":
+      complete_document_contents = f"{complete_document_contents}\n\n{content}"
+  
+  if complete_document_contents.strip() == "":
+    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+
+  summary = get_patent_summary(complete_document_contents)
+  
+  # Update Case Data for the Generated Description
+  result = update_case(case_id, {'description': summary})
+
+  return jsonify({
+    'success': True, 
+    'message': 'Patent summary generated successfully', 
+    'summary': summary}), 200
 
 if __name__ == '__main__':
     port = app.config['PORT']

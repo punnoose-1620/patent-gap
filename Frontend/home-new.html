@@ -1303,8 +1303,35 @@
     const infringementAnalysisLoader = `
     <span class="spinner" style="width: 10px; height: 10px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; margin-right: 8px;"></span>
     Finding Infringements...`;
+    const summaryGenerationAnalysisLoader = `
+    <span class="spinner" style="width: 10px; height: 10px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; margin-right: 8px;"></span>
+    Generating Description...`;
 
     // ==================== API FUNCTIONS ====================
+
+    async function generatePatentSummary(case_id, onSuccess, onFail, onError) {
+      try {
+        const userId = getUserId();
+        const response = await fetch(`${API_BASE_URL}/api/generate-patent-summary/${case_id}`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
+          }
+        });
+        const data = await response.json();
+        if (data.success) {
+          onSuccess(data);
+        } 
+        else {
+          onFail(data.message);
+        }
+      } 
+      catch (error) {
+        onError(error);
+      }
+    }
 
     async function fetchCasefromUspto(patentNumber, onSuccess, onFail, onError) {
       try {
@@ -2086,9 +2113,31 @@
 
             await fetchCasefromUspto(
               patentNumber,
-              (data) => {
-                caseDetails = data;
+              async (data) => {
+                response = data;
+                response_case_id = data.case_id;
+                success = data.success;
+                caseDetails = data.case_data;
                 console.log('USPTO case details fetched successfully:', data);
+
+                descriptionTemp = caseDetails.description;
+                statusTemp = caseDetails.status;
+
+                if((descriptionTemp==statusTemp) || (descriptionTemp.split(' ').length < 10)) {
+                  generatedSummary =await generatePatentSummary(
+                    response_case_id, 
+                    (data) => {
+                      summary = data.summary;
+                      descriptionTemp = summary;
+                      caseDetails.description = generatedSummary.summary;
+                    }, 
+                    (error) => {
+                      console.error('Error generating patent summary:', error);
+                      alert('Failed to generate patent summary. Please try again.');
+                      return;
+                    }
+                  );
+                }
 
                 const formData = {
                   projectName,
