@@ -1,0 +1,38 @@
+[
+    {
+        "title": "FreePatentsOnline",
+        "jurisdiction": [
+            "United States",
+            "Europe"
+        ],
+        "search_using_url": true,
+        "query_keys": [
+            "query_txt"
+        ],
+        "sample_search": "https://www.freepatentsonline.com/result.html?query_txt=machine+learning+image+classification+neural"
+    },
+    {
+        "title": "Google Patents (United States)",
+        "jurisdiction": [
+            "United States"
+        ],
+        "search_using_url": true,
+        "query_keys": [
+            "q",
+            "country"
+        ],
+        "sample_search": "https://patents.google.com/?q=wireless+authentication+encryption+server+method&country=US"
+    },
+    {
+        "title": "Google Patents (Europe)",
+        "jurisdiction": [
+            "Europe"
+        ],
+        "search_using_url": true,
+        "query_keys": [
+            "q",
+            "country"
+        ],
+        "sample_search": "https://patents.google.com/?q=autonomous+vehicle+sensor+fusion+control&country=EP"
+    }
+]

@@ -1,0 +1,80 @@
+[
+    {
+        "source_title": "European Patent Register",
+        "programmatic_search": true,
+        "search_steps": "Use the EPO's Open Patent Services (OPS). Register for an OAuth2 consumer key/secret on the EPO Developers Portal. Use the 'Search' (CQL) or 'Register' constituent to query bibliographic and legal status data.",
+        "sample_search": "GET https://ops.epo.org/3.2/rest-services/register/search?q=txt=robotics"
+    },
+    {
+        "source_title": "German Patent and Trade Mark Office (DPMA)",
+        "programmatic_search": true,
+        "search_steps": "Use the 'DPMAconnectPlus' interface. This is a paid/subscription-based service for permanent machine-to-machine access to DPMAregister and DEPATISnet. It supports REST and SOAP protocols.",
+        "sample_search": "Requires DPMAconnectPlus credentials. Endpoint: https://dpmaconnectplus.dpma.de/api/search"
+    },
+    {
+        "source_title": "Swedish Patent Database",
+        "programmatic_search": false,
+        "search_steps": "No public API is currently documented for direct database queries. For programmatic needs, users are directed to use EPO OPS (for Swedish EP validations) or contact PRV for bulk data delivery/subscriptions.",
+        "sample_search": "N/A (Manual search at https://was.prv.se/spd/)"
+    },
+    {
+        "source_title": "Norwegian Industrial Property Office",
+        "programmatic_search": false,
+        "search_steps": "NIPO (Patentstyret) provides a web interface but no public search API. Programmatic access is typically handled via EPO OPS for Norwegian records or by purchasing bulk data sets from the office.",
+        "sample_search": "N/A (Manual search at https://search.patentstyret.no/)"
+    },
+    {
+        "source_title": "Czech Industrial Property Office",
+        "programmatic_search": true,
+        "search_steps": "The IPO CZ provides 'Open Data' files (Authority Files) for bulk download, but for live search, it uses the EPO's 'Espacenet'/OPS infrastructure. Direct API access for national data is usually requested via their 'Patent Information Department'.",
+        "sample_search": "GET https://ops.epo.org/3.2/rest-services/published-data/search?q=ct=CZ"
+    },
+    {
+        "source_title": "Belgian Patent Database",
+        "programmatic_search": false,
+        "search_steps": "The Benelux Patent Platform (BPP) provides an RSS feed for updates, but no direct search API. Programmatic search for BE patents is primarily performed via EPO OPS using the 'BE' country code.",
+        "sample_search": "GET https://ops.epo.org/3.2/rest-services/published-data/search?q=pn=BE*"
+    },
+    {
+        "source_title": "Greek Industrial Property Organisation",
+        "programmatic_search": false,
+        "search_steps": "The OBI website offers manual searching. For programmatic needs, the data is indexed in the EPO's worldwide databases, so EPO OPS is the standard programmatic route.",
+        "sample_search": "GET https://ops.epo.org/3.2/rest-services/published-data/search?q=pn=GR*"
+    },
+    {
+        "source_title": "European Patent Bulletin",
+        "programmatic_search": true,
+        "search_steps": "Accessible via EPO OPS (Published Data constituent) or through the MyEPO Business-to-Business (B2B) APIs. MyEPO APIs follow WIPO Standard ST.90 for automation.",
+        "sample_search": "GET https://ops.epo.org/3.2/rest-services/published-data/search?q=pd=20240101 (Search by publication date)"
+    },
+    {
+        "source_title": "European IP Information Portal",
+        "programmatic_search": true,
+        "search_steps": "The EUIPO (which manages the portal) offers a dedicated API Portal. You must register an account, create an 'App' in the Sandbox, and subscribe to the 'Back-office API' or 'Search API' products.",
+        "sample_search": "GET https://dev.euipo.europa.eu/api/v1/search (Requires OAuth2 token)"
+    },
+    {
+        "source_title": "US Assignment Database",
+        "programmatic_search": true,
+        "search_steps": "Use the USPTO Open Data Portal's 'Patent Assignment Search API'. It allows querying by assignee, assignor, reel/frame, or patent number.",
+        "sample_search": "GET https://developer.uspto.gov/api-catalog/patent-assignment-search/api/v1/assignment/query?query=assigneeName:Google"
+    },
+    {
+        "source_title": "USPTO Public Pair (Legacy)",
+        "programmatic_search": false,
+        "search_steps": "Public PAIR has been officially retired and replaced by 'Patent Center'. Programmatic access is now performed through the USPTO Open Data APIs (PEDS or Patent Center APIs).",
+        "sample_search": "N/A (Legacy system retired)"
+    },
+    {
+        "source_title": "US Cooperative Patent Classification Browser",
+        "programmatic_search": true,
+        "search_steps": "The USPTO provides the 'Bulk Data Storage System' (BDSS) for CPC data. For search, use the USPTO Search API which supports CPC symbol filtering.",
+        "sample_search": "GET https://developer.uspto.gov/ibd-api/v1/patent/cpc/G06F"
+    },
+    {
+        "source_title": "Finnish Patent Database",
+        "programmatic_search": true,
+        "search_steps": "The PRH (Finnish Patent and Registration Office) provides 'Open Data' APIs. While primarily for company data, patent metadata is accessible via their 'Swagger UI' endpoint for industrial property notifications.",
+        "sample_search": "GET https://avoindata.prh.fi/tr/v1/notifications?type=PAT (General notification search)"
+    }
+]
