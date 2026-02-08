@@ -1312,7 +1312,7 @@
     async function generatePatentSummary(case_id, onSuccess, onFail, onError) {
       try {
         const userId = getUserId();
-        const response = await fetch(`${API_BASE_URL}/api/generate-patent-summary/${case_id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/generate-patent-description/${case_id}`, {
           method: 'POST',
           credentials: 'include',
           headers: {

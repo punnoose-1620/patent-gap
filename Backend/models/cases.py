@@ -1,5 +1,30 @@
+import re
 from database import *
+from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
+
+def string_fuzzy_similarity(s1, s2):
+    """
+    Perform a fuzzy comparison between two strings and return a similarity score between 0 and 1.
+    Normalizes whitespace and performs a lower-case comparison using the SequenceMatcher ratio.
+    """  
+
+    if not isinstance(s1, str) or not isinstance(s2, str):
+        return 0.0
+
+    def normalize_string(s):
+        return re.sub(r"\s+", " ", s.strip().lower())
+
+    s1_norm = normalize_string(s1)
+    s2_norm = normalize_string(s2)
+    if not s1_norm and not s2_norm:
+        return 1.0
+    if not s1_norm or not s2_norm:
+        return 0.0
+
+    matcher = SequenceMatcher(None, s1_norm, s2_norm)
+    return round(matcher.ratio(), 1)
+
 
 def get_all_cases():
     all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
@@ -184,3 +209,49 @@ def get_case_creator(case_id):
     """
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     return case.get('created_by')
+
+def get_infringement_chart(case_id):
+    caseData = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    claims = caseData.get('claims', [])
+    infringements = caseData.get('infringements', [])
+    print('TEST 1: Claims')
+    # If Claims and Infringements are not available, return None
+    if (len(claims) == 0) or (len(infringements) == 0):
+        return None
+    # Let's remove the non-claims part of the claims list, like headings and such
+    for claim in claims:
+        if 'claim' not in claim:
+            claims.remove(claim)
+    print('TEST 2: Claims')
+    # Now let's create a map of claims to their infringements
+    returnVals = {}
+    for infringement in infringements:
+        entryId = infringement.get('entry_id', '')
+        similarClaims = infringement.get('similar_claims', [])
+        print('TEST 3: Similar Claims')
+        for similarClaim in similarClaims:
+            infringing_claim = similarClaim.get('claim', '')
+            similarityScore = similarClaim.get('similarity_score', 0)
+            found = False
+            for c in claims:
+                c = str(c).split('. ')[1].strip()
+                print('\nTEST 4: Claim Comparison: \n', c, '\n', infringing_claim, '\n', c==infringing_claim, '\n', string_fuzzy_similarity(c, infringing_claim), '\n', similarityScore)
+                if c==infringing_claim:
+                    found = True
+                if string_fuzzy_similarity(c, infringing_claim) >= (similarityScore-0.1):
+                    found = True
+            if not found:
+                continue
+            print('TEST 5: Claim')
+            claimIndex = claims.index(claim)
+            returnIndexKeys = returnVals.keys()
+            if claimIndex not in returnIndexKeys:
+                returnVals[claimIndex] = []
+            returnVals[claimIndex].append({
+                'entry_id': entryId,
+                'similarity_score': similarityScore
+            })
+    # If Map is Empty, return None
+    if returnVals=={}:
+        return None
+    return returnVals

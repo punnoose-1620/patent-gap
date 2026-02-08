@@ -1,5 +1,5 @@
 import json
-from Prompts import *
+from sources.Prompts import *
 from env_controller import getEnvKey
 import google.generativeai as genai
 from typing_extensions import TypedDict
@@ -172,7 +172,8 @@ def get_patent_summary(document_contents: str):
     complete_summary_prompt = summary_prompt.replace("<DOCUMENT_CONTENTS_REPLACEMENT>", document_contents)
     try:
         summary_response = get_summary_model_client().generate_content(complete_summary_prompt)
-        return summary_response._result.candidates[0].content.parts[0].text
+        summary_text = summary_response._result.candidates[0].content.parts[0].text
+        return summary_text
     except Exception as e:
         print('\nERROR: Error in get_patent_summary: ', e)
         return ''

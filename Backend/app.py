@@ -1922,8 +1922,8 @@ def generate_patent_summary(case_id):
     'message': 'Patent summary generated successfully', 
     'summary': summary}), 200
 
-@app.route('/api/generate-patent-summary/<case_id>', methods=['POST'])
-def generate_patent_summary(case_id):
+@app.route('/api/generate-patent-description/<case_id>', methods=['POST'])
+def generate_patent_description(case_id):
   data = request.get_json()
   if data is None:
     return jsonify({'success': False, 'message': 'No data provided'}), 400
@@ -1932,15 +1932,16 @@ def generate_patent_summary(case_id):
   if case_data is None:
     return jsonify({'success': False, 'message': 'Case not found'}), 404
   
+  
   document_urls = case_data.get('document_urls', [])
   document_contents = []
   for document in document_urls:
     content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
     document_contents.append(content)
-
+  
   if (len(document_contents) == 0) or (document_contents is None):
     return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-
+  
   complete_document_contents = ""
   for content in document_contents:
     if content.strip() != "":
@@ -1953,11 +1954,32 @@ def generate_patent_summary(case_id):
   
   # Update Case Data for the Generated Description
   result = update_case(case_id, {'description': summary})
-
+  print('TEST 6: Result')
   return jsonify({
     'success': True, 
     'message': 'Patent summary generated successfully', 
     'summary': summary}), 200
+
+@app.route('/api/infringement-chart/<case_id>', methods=['GET'])
+def getInfringementChart(case_id):
+  user_id = get_user_id()
+  if not user_id:
+    print('\nERROR:User ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {user_id} Getting Infringement Chart for Case: {case_id}')
+  try:
+    infringement_chart = get_infringement_chart(case_id)
+    print('LOG: Infringement Chart: ', infringement_chart)
+    if infringement_chart is None:
+      return jsonify({'success': False, 'message': 'No infringement chart found. Please check Claims and Infringements'}), 400
+    return jsonify({
+      'success': True, 
+      'message': 'Infringement chart retrieved successfully', 
+      'infringement_chart': infringement_chart
+      }), 200
+  except Exception as e:
+    print(f'\nERROR:Error getting infringement chart data: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error getting infringement chart for patent: {str(e)}'}), 500
 
 if __name__ == '__main__':
     port = app.config['PORT']
