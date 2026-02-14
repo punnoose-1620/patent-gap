@@ -831,8 +831,11 @@
       <div class="content-section" id="contextSection" style="display: none;">
         <h2 class="section-title">Context & Description</h2>
         <div class="card">
-          <div class="card-content" id="contextContent">
+          <div class="card-content" id="contextContent" contenteditable="true">
             <!-- Will be populated dynamically -->
+          </div>
+          <div id="contextSaveWrapper" style="display: none; margin-top: 8px;">
+            <button type="button" class="btn btn-primary" id="contextSaveBtn">Save</button>
           </div>
         </div>
       </div>
@@ -866,6 +869,18 @@
         <div class="card">
           <div class="card-content">
             <div class="metadata-list" id="claimsDataList">
+              <!-- Will be populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Claims Charts Section -->
+      <div class="content-section" id="claimsChartSection" style="display: none;">
+        <h2 class="section-title">Claims Charts</h2>
+        <div class="card">
+          <div class="card-content">
+            <div class="metadata-list" id="claimsChartDataList">
               <!-- Will be populated dynamically -->
             </div>
           </div>
@@ -963,6 +978,19 @@
     </div>`;
 
     let caseData = {};
+
+    function selectMainColor(score) {
+      if (score >= 0.9) {
+        return '#B22222'; // blood red
+      }
+      else if (score >= 0.7) {
+        return '#FFA500'; // bright orange
+      }
+      else {
+        return '#00FF00'; // bright green
+      }
+      return '#00FF00'; // bright green
+    }
 
     function getSourceName(id) {
       if (id.includes('uspto')) {
@@ -1268,6 +1296,46 @@
       }
     }
 
+    async function fetchInfringementChart() {
+      const caseId = getCaseId();
+      const userId = getUserId();
+      if (!caseId) {
+        showError('No case ID provided');
+        return null;
+      }
+      try {
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        if (userId) {
+          headers['X-User-ID'] = userId;
+        }
+        const response = await fetch(`${API_BASE_URL}/api/infringement-chart/${caseId}`, {
+          credentials: 'include',
+          headers: headers
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch infringement chart: ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log('LOG: Infringement Chart Data: ', data['infringement_chart']);
+        return data['infringement_chart'];
+        if (data.success) {
+          infringementChart = data['infringement_chart'];
+          return infringementChart;
+        }
+        else {
+          console.error('Error fetching infringement chart:', data.message);
+          return null;
+        }
+      }
+      catch (error) {
+        console.error('Error fetching infringement chart:', error);
+        return null;
+      }
+      return null;
+    }
+
     function renderMatchData(match) {
       const riskLevel = calculateOverallRisk(match.similar_claims) || 'low';
       const overlapScore = calculateOverlapScore(match.similar_claims) || 0;
@@ -1389,6 +1457,19 @@
       `;
     }
 
+    function renderClaimBarItem(itemId, score) {
+      const claimBarItem = document.createElement('div');
+      claimBarItem.style.display = 'flex';
+      claimBarItem.style.flexDirection = 'row';
+      claimBarItem.style.border = "2px solid " + selectMainColor(score);
+      claimBarItem.style.borderRadius = '5px';
+      claimBarItem.style.padding = '3px';
+      claimBarItem.style.width = '3rem !important';
+      claimBarItem.innerHTML = itemId;
+      claimBarItem.style.color = selectMainColor(score);
+      return claimBarItem;
+    }
+
     // Render case details
     function renderCaseDetails(caseData) {
       if (!caseData) return;
@@ -1467,7 +1548,9 @@
       if (caseData.context || caseData.description) {
         const contextSection = document.getElementById('contextSection');
         contextSection.style.display = 'block';
-        document.getElementById('contextContent').textContent = caseData.context || caseData.description || '';
+        descriptionSection = document.getElementById('contextContent');
+        
+        descriptionSection.textContent = caseData.context || caseData.description || '';
       }
 
       // Search strategy section
@@ -1564,6 +1647,34 @@
         claimsSection.style.display = 'block';
         const claimsElement = document.getElementById('claimsDataList');
         claimsElement.innerHTML = caseData.claims.map((claim) => renderClaimData(claim)).join('');
+      }
+
+      if (caseData.claimsChart && caseData.claimsChart!={}) {
+        const claimsChartSection = document.getElementById('claimsChartSection');
+        claimsChartSection.style.display = 'block';
+        let claimsChartElement = document.getElementById('claimsChartDataList');
+        for (const [key, value] of Object.entries(caseData.claimsChart)) {
+          // Create a claim bar for each claim index
+          const claimBar = document.createElement('div');
+          claimBar.style.display = 'flex';
+          claimBar.style.flexDirection = 'row';
+          claimBar.style.gap = '5px';
+          // Add Claim Index as title for the bar
+          const claimBarTitle = document.createElement('div');
+          claimBarTitle.style.fontWeight = 'bold';
+          claimBarTitle.style.marginRight = '5px';
+          claimBarTitle.style.marginTop = '5px';
+          claimBarTitle.textContent = `Claim ${key}`;
+          claimBar.appendChild(claimBarTitle);
+          // Add Infringement items to claim bar
+          for (const item of value) {
+            claimBar.appendChild(renderClaimBarItem(item.entry_id, item.similarity_score));
+          }
+          // Append claim bar to claims chart element
+          claimsChartElement.appendChild(claimBar);
+          // For each key, render inner html for chart
+        }
+        // claimsChartElement.innerHTML = caseData.claimsChart.map((claim) => renderClaimData(claim)).join('');
       }
 
       // Matches section (if complete and has matches)
@@ -1724,7 +1835,15 @@
       await checkCredentials();
       const caseData = await fetchCaseDetails();
       if (caseData) {
+        if (caseData.claims && caseData.claims.length > 0) {
+          let claimsChart = await fetchInfringementChart();
+          if (claimsChart) {
+            caseData['claimsChart'] = claimsChart;
+          }
+          console.log('TEST: Claims Chart: ', caseData['claimsChart']);
+        }
         renderCaseDetails(caseData);
+        
       }
     });
   </script>

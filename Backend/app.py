@@ -1506,6 +1506,13 @@ def api_create_patent():
     print(f'Create Patent Data by {user_id}: {json.dumps(data, indent=4)}')
     # patent_data = data.get('patent_data')
 
+    # Check if the patent already exists
+    patent_id = data.get('case_id')
+    if patent_id is not None:
+      patent_data = get_patent_by_id(patent_id)
+      if patent_data is not None:
+        return jsonify({'success': False, 'message': 'Patent already exists'}), 400
+
     data['created_by'] = user_id
     data['created_date'] = datetime.now().strftime('%Y-%m-%d')
     created_patent = create_patent(data)
