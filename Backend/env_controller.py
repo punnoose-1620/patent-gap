@@ -94,3 +94,17 @@ def getUserDatabaseName():
         return os.environ.get('USERS_DATABASE_NAME_TEST')
     else:
         return os.environ.get('USERS_DATABASE_NAME_DEV')
+
+def getDocumentDatabaseName():
+    # Load environment variables
+    load_dotenv()
+    
+    environment = os.environ.get('ENVIRONMENT')
+    if environment == production:
+        return os.environ.get('DOCUMENTS_DATABASE_NAME_PROD')
+    elif environment == development:
+        return os.environ.get('DOCUMENTS_DATABASE_NAME_PROD')
+    elif environment == testing:
+        return os.environ.get('DOCUMENTS_DATABASE_NAME_PROD')
+    else:
+        return os.environ.get('DOCUMENTS_DATABASE_NAME_PROD')
