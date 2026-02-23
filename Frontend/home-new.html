@@ -1331,8 +1331,33 @@
 
         if (data.success) {
           onSuccess(data);
-        } else {
+        } 
+        else {
           onFail(data.message || 'Upload failed');
+        }
+      } catch (error) {
+        onError(error);
+      }
+    }
+
+    async function createLocalCase(case_data, onSuccess, onFail, onError) {
+      try {
+        const userId = getUserId();
+        const response = await fetch(`${API_BASE_URL}/api/create-patent`, {
+          method: 'POST',
+          credentials: 'include',
+          body: JSON.stringify(case_data),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
+          }
+        });
+        const data = await response.json();
+        if (data.success) {
+          onSuccess(data);
+        } 
+        else {
+          onFail(data.message);
         }
       } catch (error) {
         onError(error);
