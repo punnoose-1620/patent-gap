@@ -1,5 +1,6 @@
 import re
 from database import *
+from documents import getDocumentById
 from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
 
@@ -25,9 +26,26 @@ def string_fuzzy_similarity(s1, s2):
     matcher = SequenceMatcher(None, s1_norm, s2_norm)
     return round(matcher.ratio(), 1)
 
+def find_document_metadata(case_data):
+    documents = case_data.get('documents', [])
+    for entry in documents:
+        if entry['source'] == 'local':
+            url = entry['url']
+            document_id = url.split('/')[-1].split('.')[0]
+            document = getDocumentById(document_id)
+            if document['success']:
+                entry['title'] = document['document'].get('file_name', '')
+                entry['size'] = document['document'].get('file_size', '')
+                entry['type'] = document['document'].get('file_type', '')
+                entry['created_at'] = document['document'].get('created_at', '')
+                entry['created_by'] = document['document'].get('created_by', '')
+    case_data['documents'] = documents
+    return case_data
 
 def get_all_cases():
     all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
+    for case in all_cases:
+        case = find_document_metadata(case)
     print('TEST: All cases: ', all_cases)
     return all_cases
 
@@ -41,6 +59,7 @@ def get_open_cases():
     open_cases = []
     for case in getAllData(connect_to_database(), getCaseDatabaseName()):
         if case['status'] != 'Completed':
+            case = find_document_metadata(case)
             open_cases.append(case)
     return open_cases
 
@@ -128,7 +147,11 @@ def get_case_by_id(case_id, show_password=False):
     Returns:
         dict: Case details or None if not found
     """
-    return getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    if case is not None:
+        case = find_document_metadata(case)
+        return case
+    return None
 
 def get_case_related_to_user(user_id):
     """
@@ -146,14 +169,17 @@ def get_case_related_to_user(user_id):
         keys = case.keys()
         if ('assigned_to' in keys):
             if (case['assigned_to'] == user_id):
+                case = find_document_metadata(case)
                 user_cases.append(case)
                 continue
         if ('accepted_by' in keys):
             if (case['accepted_by'] == user_id):
+                case = find_document_metadata(case)
                 user_cases.append(case)
                 continue
         if ('created_by' in keys):
             if (case['created_by'] == user_id):
+                case = find_document_metadata(case)
                 user_cases.append(case)
                 continue
     return user_cases

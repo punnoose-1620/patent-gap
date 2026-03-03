@@ -1309,6 +1309,61 @@
 
     // ==================== API FUNCTIONS ====================
 
+    async function uploadDocument(file, case_id, user_id, onSuccess, onFail, onError) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const headers = {};
+        if (user_id) {
+          headers['X-User-ID'] = user_id;
+        }
+        // Do NOT set Content-Type; browser sets multipart/form-data with boundary
+
+        const response = await fetch(`${API_BASE_URL}/api/upload-file-to-local-storage/${case_id}`, {
+          method: 'POST',
+          credentials: 'include',
+          headers,
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          onSuccess(data);
+        } 
+        else {
+          onFail(data.message || 'Upload failed');
+        }
+      } catch (error) {
+        onError(error);
+      }
+    }
+
+    async function createLocalCase(case_data, onSuccess, onFail, onError) {
+      try {
+        const userId = getUserId();
+        const response = await fetch(`${API_BASE_URL}/api/create-patent`, {
+          method: 'POST',
+          credentials: 'include',
+          body: JSON.stringify(case_data),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': userId || ''
+          }
+        });
+        const data = await response.json();
+        if (data.success) {
+          onSuccess(data);
+        } 
+        else {
+          onFail(data.message);
+        }
+      } catch (error) {
+        onError(error);
+      }
+    }
+
     async function generatePatentSummary(case_id, onSuccess, onFail, onError) {
       try {
         const userId = getUserId();
@@ -2176,6 +2231,8 @@
               }
             );
           }
+          // Create Case from input data
+          else {}
         });
       }
 

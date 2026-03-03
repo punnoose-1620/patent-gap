@@ -1,22 +1,25 @@
 import os
 import requests
 from flask_cors import CORS
+from datetime import datetime
 from swagger import initialize_swagger
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, Response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, Response, stream_with_context
 
 from models.demo import *
 from models.cases import *
 from models.users import *
 from models.alerts import *
-from database import *
-from controller import *
-from env_controller import *
-from data_processor import *
-from llm_processor import *
-from datetime import datetime
+from models.documents import *
+
 from sources.USPTO import *
 from sources.Gemini import *
 from sources.OpenAlex import *
+
+from database import *
+from controller import *
+from llm_processor import *
+from data_processor import *
+from env_controller import *
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -32,6 +35,11 @@ app.config['DEBUG'] = os.environ.get('DEBUG', 'True').lower() == 'true'
 
 # Initialize Swagger
 swagger = initialize_swagger(app)
+
+# Helper function to generate chunks of data
+def chunk_generator(data, chunk_size=8192):    
+  for i in range(0, len(data), chunk_size):        
+    yield data[i:i + chunk_size]
 
 # Helper function to get user_id from header or session
 def get_user_id():
@@ -1018,169 +1026,78 @@ def upload_file_to_local_storage(case_id):
         schema:
           $ref: '#/definitions/ErrorResponse'
     """
-
-    from werkzeug.utils import secure_filename
-
     # Check authentication
     user_id = get_user_id()
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
     print(f'LOG: {user_id} Upload File to Local Storage')
+
+    caseData = get_case_by_id(case_id)
+    if caseData is None:
+        return jsonify({'success': False, 'message': 'Case not found'}), 404
+    documents = caseData.get('documents', [])
+
     # Check file in request
     if 'file' not in request.files:
         return jsonify({'success': False, 'message': 'No file part in the request'}), 400
 
+    file_as_blob = request.files['file'].read()
+    if not is_blob_under_16mb(file_as_blob):
+        return jsonify({'success': False, 'message': 'File is too large. Maximum size is 16MB'}), 400
+
+    file_type = request.files['file'].content_type
+    if file_type not in ['application/pdf', 'application/xml']:
+        return jsonify({'success': False, 'message': 'Invalid file type. Only PDF and XML are allowed'}), 400
+      
+    file_name = request.files['file'].filename
     file = request.files['file']
 
-    if file.filename == '':
-        return jsonify({'success': False, 'message': 'No selected file'}), 400
+    newEntryData = {
+      'file_name': file_name,
+      'file_type': file_type,
+      'file_size': len(file_as_blob),
+      'created_at': datetime.now().isoformat(),
+      'created_by': user_id,
+      'case_id': case_id,
+      'file_content': file_as_blob,
+    }
 
     try:
-        # Safe filename
-        filename = secure_filename(file.filename)
-        # Ensure documentFiles directory exists
-        upload_folder = os.path.join(os.getcwd(), 'documentFiles')
-        os.makedirs(upload_folder, exist_ok=True)
-        file_path = os.path.join(upload_folder, filename)
-        file.save(file_path)
-
-        # Construct file URL (relative)
-        file_url = f'/documentFiles/{filename}'
-
-        case_data = get_case_by_id(case_id)
-        if case_data is not None:
-          documents = case_data.get('documents', [])
-          if not isinstance(documents, list):
-            documents = []
-          documents.append({
-            'url': file_url,
-            'source': 'local'
-          })
-          case_data['documents'] = documents
-          from database import connect_to_database
-          db = connect_to_database()
-          updateDataById(db, collectionName=getCaseDatabaseName(), entryData={'_id': case_id, 'documents': documents})
-
-        # Optionally: Here you might want to update the corresponding case to add this file URL
-
-        return jsonify({'success': True, 'message': 'File uploaded successfully', 'file_url': file_url}), 200
+      created_document = createDocument(newEntryData)
+      if not created_document.get('success', False):
+        return jsonify({
+          'success': False, 
+          'message': created_document.get('message')
+          }), 400
+      document_id = created_document.get('document_id')
+      document_source = created_document.get('document_source')
+      document_url = f'documents/{document_id}'
+      documentEntry = {
+        'url': document_url,
+        'source': document_source
+      }
+      documents.append(documentEntry)
+      updateData = {
+        'documents': documents
+      }
+      updateResult = update_case(case_id, updateData)
+      if not updateResult.get('success', False):
+        return jsonify({
+          'success': False, 
+          'message': 'Unable to update document id to case entry'
+          }), 400
+      return jsonify({
+        'success': True,
+        'message': 'File uploaded successfully',
+        'document_id': document_id,
+        'document_url': document_url
+      })
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Failed to upload file: {str(e)}'}), 500
-
-@app.route('/api/upload-file/<case_id>', methods=['POST'])
-def upload_file(case_id):
-    """
-    Upload a file to Google Cloud Storage
-    ---
-    tags:
-      - Files
-    summary: Upload file to GCP bucket
-    description: |
-      Uploads a file to a Google Cloud Storage bucket and adds it to the case's documents.
-      Requires GCP credentials and bucket configuration.
-    consumes:
-      - application/json
-    produces:
-      - application/json
-    security:
-      - session: []
-    parameters:
-      - name: case_id
-        in: path
-        type: string
-        required: true
-        description: The unique identifier of the case
-        example: "case_001"
-      - in: body
-        name: upload_request
-        description: File upload information for GCP
-        required: true
-        schema:
-          $ref: '#/definitions/GcpFileUploadRequest'
-    responses:
-      200:
-        description: File uploaded successfully
-        schema:
-          type: object
-          properties:
-            success:
-              type: boolean
-              example: True
-            message:
-              type: string
-              example: "File uploaded successfully"
-            bucket:
-              type: string
-              example: "my-patent-bucket"
-            blob:
-              type: string
-              example: "documents/patent.pdf"
-      400:
-        description: Bad request - missing required parameters or upload failed
-        schema:
-          $ref: '#/definitions/ErrorResponse'
-      401:
-        description: Not authenticated
-        schema:
-          $ref: '#/definitions/ErrorResponse'
-      500:
-        description: Server error during file upload
-        schema:
-          $ref: '#/definitions/ErrorResponse'
-    """
-    user_id = get_user_id()
-    if not user_id:
-        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-    print(f'LOG: {user_id} Upload File: {case_id}')
-
-    data = request.get_json()
-    if not data:
-        return jsonify({'success': False, 'message': 'No data provided'}), 400
-
-    # Use uploadToGcpBucket from database.py to upload the file
-    # Expecting data to have: 'bucketName', 'sourceFile', 'destinationBlob'
-    bucket_name = data.get('bucketName')
-    source_file = data.get('sourceFile')
-    destination_blob = data.get('destinationBlob')
-
-    result = {}
-
-    if not all([bucket_name, source_file, destination_blob]):
-        result = {'success': False, 'message': 'Missing required file upload parameters'}
-    else:
-        #TODO: Update File's url to case entry using case_id
-        case_data = get_case_by_id(case_id)
-        upload_url = uploadToGcpBucket(bucket_name, source_file, destination_blob)
-        if upload_url is not None:
-            # Add upload_url to the references list in case_data
-            if case_data is not None:
-                references = case_data.get('references', [])
-                if not isinstance(references, list):
-                    references = []
-                references.append({
-                  'url': upload_url,
-                  'source': 'local'
-                  })
-                case_data['documents'] = references
-                # Update the case entry in the database
-                from database import connect_to_database
-                db = connect_to_database()
-                updateDataById(db, collectionName=getCaseDatabaseName(), entryData={'_id': case_id, 'documents': references})
-            result = {
-                'success': True,
-                'message': 'File uploaded successfully',
-                'bucket': bucket_name,
-                'blob': destination_blob
-            }
-        else:
-            result = {
-                'success': False,
-                'message': 'File upload failed'
-            }
-    if result.get('success'):
-        return jsonify(result)
-    else:
-        return jsonify(result), 400
+        return jsonify({
+          'success': False, 
+          'message': f'Failed to upload file: {str(e)}'
+          }), 500
 
 @app.route('/api/alerts', methods=['GET'])
 def get_all_alerts():
@@ -1499,10 +1416,21 @@ def api_import_patent_from_uspto():
 @app.route('/api/create-patent', methods=['POST'])
 def api_create_patent():
   try:
-    data = request.get_json()
+    # Check if the user is authenticated
     user_id = get_user_id()
     if not user_id:
-      return jsonify({'success': False, 'message': 'User ID is required'}), 400
+      return jsonify({
+        'success': False, 
+        'message': 'User ID is required'
+        }), 400
+
+    # Check if the data is provided
+    data = request.get_json()
+    if not data:
+      return jsonify({
+        'success': False, 
+        'message': 'No data provided'
+        }), 400
     print(f'Create Patent Data by {user_id}: {json.dumps(data, indent=4)}')
     # patent_data = data.get('patent_data')
 
@@ -1515,18 +1443,22 @@ def api_create_patent():
 
     data['created_by'] = user_id
     data['created_date'] = datetime.now().strftime('%Y-%m-%d')
-    created_patent = create_patent(data)
-    print('\nCreated Patent: ', created_patent, '\n')
+    created_patent = create_case(uspto_data)
+    print('\nLOG: Created Patent: ', created_patent, '\n')
     
     returnVal = {
       'success': True, 
       'message': 'Patent created successfully', 
-      'case_id': created_patent['patent_id']
+      'case_id': created_patent['case_id'],
+      'case_data': uspto_data
       }
     return jsonify(returnVal), 200
   except Exception as e:
     print(f'Error creating patent: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error creating patent: {str(e)}'}), 500
+    return jsonify({
+      'success': False, 
+      'message': f'Error creating patent: {str(e)}'
+      }), 500
 
 @app.route('/api/fetch-patent-from-uspto', methods=['POST'])
 def fetch_patent_from_uspto():
@@ -1816,6 +1748,27 @@ def similarity_analysis_gemini():
     'claims': claims,
     'similar_infringements': similar_infringements
     }), 200
+
+@app.route('/api/document/<document_id>', methods=['GET'])
+def get_document(document_id):
+  user_id = get_user_id()
+  if not user_id:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+
+  print(f'LOG: {user_id} Getting Document: {document_id}')
+  document = getDocumentById(document_id)
+
+  if document['success']:
+    return Response(
+        stream_with_context(chunk_generator(pdf_bytes)),
+        mimetype=file_type,
+        headers={'Content-Disposition': f'inline; filename="{file_name}"'}
+    ), 200
+    # return jsonify({'success': True, 'message': 'Document retrieved successfully', 'document': document['document']}), 200
+  else:
+    print(f'\nERROR: Error getting document: {document['message']}')
+    return jsonify({'success': False, 'message': document['message']}), 400
 
 @app.route('/api/proxy-document', methods=['POST'])
 def get_document_content():
