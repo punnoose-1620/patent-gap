@@ -21,6 +21,16 @@ class LiveSearchResults(BaseModel):
     inventors: list[str]
     # Set Mailing Addresses to an empty list
 
+    def created(self, creator: str):
+        self.created_date = str(datetime.now().isoformat())
+        self.created_by = creator
+
+        self.references = []
+        self.infringement_details = []
+        self.infringements = []
+        self.mailing_addresses = []
+        return self
+
 class DocumentsData(BaseModel):
     url: str
     source: str
