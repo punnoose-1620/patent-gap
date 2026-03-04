@@ -8,11 +8,26 @@ class CaseDataUrlFromSearchResults:
   ids:list
   classes:list
   tags:dict
-  def __init__(self, html_content:str, ids:list, classes:list, tags:dict):
-    self.html_content = html_content
+
+  def __init__(self, html_content:str, ids:list, classes:list, tags:dict, drop_list: list[str]):
+    self.html_content = self.drop_elements_by_classes(html_content, drop_list)
     self.ids = ids
     self.classes = classes
     self.tags = tags
+
+  def isolate_case_data_urls(self, selector:list[str]):
+    # TODO
+    # Isolate Case Data Urls using ids, classes and tags. 
+    # Merge all results into a single list
+    # Return merged list
+    print()
+
+  def drop_elements_by_classes(self, drop_list: list[str]):
+    soup = BeautifulSoup(self.html_content, "html.parser")
+    for class_name in drop_list:
+        for tag in soup.find_all(class_=class_name):
+            tag.decompose()
+    return str(soup)
 
   def get_entries_by_id(self):
     resultList = []
