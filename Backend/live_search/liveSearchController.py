@@ -60,6 +60,10 @@ SOURCES = [
     }
 ]
 
+def passToGemini(text:str):
+    print()
+    return {}
+
 def converHtmlToText(html:str, selector:str):
     soup = BeautifulSoup(html, "html.parser")
     text_content = soup.get_text(separator='\n', strip=True)
@@ -85,6 +89,7 @@ def fetchCaseData(url:str, session:requests.Session = None):
     return text_content
 
 def searchFreePatentsOnline(keywords:list[str]):
+    resultCasesList = []
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
     freePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[0]['search_url'])
@@ -102,26 +107,56 @@ def searchFreePatentsOnline(keywords:list[str]):
         drop_list=SOURCES[0]['search_classes_to_drop']
         )
     caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(selector=SOURCES[0]['url_builder_selector'])
-    # For each case data, fetch case data html content
-    # Convert html content to string
-    # Pass to Gemini for detail extraction
-    print()
+    for caseDataUrl in caseDataUrlsList:
+        caseDataHtml = fetchCaseData(caseDataUrl, session)
+        caseDataText = converHtmlToText(caseDataHtml, selector)
+        caseData = passToGemini(caseDataText)
+        resultCasesList.append(caseData)
+    return resultCasesList
 
 def searchGooglePatents(keywords:list[str]):
+    resultCasesList = []
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
-    # Construct the URL
-    # Perform the search and get list html
-    # Isolate Case Data Urls from result html
-    # For each case data, fetch case data html content
-    # Convert html content to string
-    # Pass to Gemini for detail extraction
-    print()
+    googlePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[1]['search_url'])
+    googlePatentsUrl = googlePatentsUrlBuilder.build_url(
+        keywords=keywords, 
+        country='', 
+        selector=SOURCES[1]['url_builder_selector']
+        )
+    searchResultsHtml = performSearch(googlePatentsUrl, session)
+    caseDataUrlIsolator = CaseDataUrlFromSearchResults(
+        html_content=searchResultsHtml, 
+        ids=SOURCES[1]['search_ids'], 
+        classes=SOURCES[1]['search_classes'], 
+        tags=SOURCES[1]['search_tags'],
+        drop_list=SOURCES[1]['search_classes_to_drop']
+        )
+    caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(selector=SOURCES[1]['url_builder_selector'])
+    for caseDataUrl in caseDataUrlsList:
+        caseDataHtml = fetchCaseData(caseDataUrl, session)
+        caseDataText = converHtmlToText(caseDataHtml, selector)
+        caseData = passToGemini(caseDataText)
+        resultCasesList.append(caseData)
+    return resultCasesList
+
+def alreadyExists(patent:dict, merged_results:list[dict]):
+    for result in merged_results:
+        if result['_id'] == patent['_id']:
+            return True
+        if result['title'] == patent['title']:
+            return True
+        if result['case_id'] == patent['case_id']:
+            return True
+        if result['patent_id'] == patent['patent_id']:
+            return True
+    return False
 
 def performLiveSearch(keywords:list[str], country:str):
-    # Perform live search on Free Patents Online and get list1
-    # Perform live search on Google Patents and get list2
-    # Merge list 1 and list 2 without duplicates. Use ID for checking. 
-    # Use fuzzy checking on titles and add 'duplicate_warning' boolean flage if >0.8 similarity score
-    # Return the merged list
-    print()
+    free_patents_results = searchFreePatentsOnline(keywords)
+    google_patents_results = searchGooglePatents(keywords)
+    merged_results = free_patents_results
+    for patent in google_patents_results:
+        if patent not alreadyExists(patent, merged_results):
+            merged_results.append(patent)
+    return merged_results
