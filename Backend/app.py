@@ -20,6 +20,7 @@ from controller import *
 from llm_processor import *
 from data_processor import *
 from env_controller import *
+from live_search.liveSearchController import *
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -1940,6 +1941,29 @@ def getInfringementChart(case_id):
   except Exception as e:
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting infringement chart for patent: {str(e)}'}), 500
+
+@app.route('/api/live-search', methods=['POST'])
+def live_search():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'keywords' not in data:
+    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  keywords = data.get('keywords', [])
+
+  try:
+    results = performLiveSearch(keywords, country='')
+    return jsonify({
+      'success': True, 
+      'message': 'Live search completed', 
+      'results': results
+      }), 200
+  except Exception as e:
+    print(f'\nERROR:Error performing live search: {str(e)}')
+    return jsonify({
+      'success': False, 
+      'message': f'Error performing live search: {str(e)}'}
+      ), 500
 
 if __name__ == '__main__':
     port = app.config['PORT']
