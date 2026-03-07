@@ -39,3 +39,10 @@ class AttorneysData(BaseModel):
     name: str
     registrationNumber: str
     contact: list[str]
+
+class IsolatedClaims(BaseModel):
+    claims: list[str]
+
+class InfringementAnalysis(BaseModel):
+    claim: str
+    similarity_score: float

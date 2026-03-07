@@ -52,5 +52,11 @@ Similarity score is a number between 0 and 1 that represents the similarity betw
 The higher the similarity score, the more similar the claims are.
 The similarity score is calculated using the cosine similarity algorithm.
 Do not include any other text or comments.
+
+Reference Claims : 
+<reference_claims_replacement>
+
+Infringing Claims : 
+<infringing_claims_replacement>
 """
 
