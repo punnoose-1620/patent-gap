@@ -1949,10 +1949,15 @@ def live_search():
     return jsonify({'success': False, 'message': 'No data provided'}), 400
   if 'keywords' not in data:
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  if 'country' not in data:
+    return jsonify({'success': False, 'message': 'Country is required'}), 400
+  if 'claims' not in data:
+    return jsonify({'success': False, 'message': 'Claims are required'}), 400
   keywords = data.get('keywords', [])
-
+  country = data.get('country', '')
+  ref_claims = data.get('claims', [])
   try:
-    results = performLiveSearch(keywords, country='')
+    results = performLiveSearch(keywords, country=country)
     return jsonify({
       'success': True, 
       'message': 'Live search completed', 

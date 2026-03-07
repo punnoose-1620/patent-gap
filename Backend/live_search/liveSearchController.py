@@ -1,5 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
+from llm_brain.gemini import Gemini
 from searchUrlBuilder import SearchUrlBuilderByKeywords
 from file_controller import readFromXmlUrl, readFromPdfUrl
 from caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
@@ -60,9 +61,10 @@ SOURCES = [
     }
 ]
 
-def passToGemini(text:str):
-    print()
-    return {}
+def passToGeminiForMetadata(text:str):
+    case_data = Gemini.extract_patent_metadata(text)
+    case_data.claims = Gemini.extract_claims(text)
+    return case_data
 
 def converHtmlToText(html:str, selector:str):
     soup = BeautifulSoup(html, "html.parser")
@@ -110,7 +112,7 @@ def searchFreePatentsOnline(keywords:list[str]):
     for caseDataUrl in caseDataUrlsList:
         caseDataHtml = fetchCaseData(caseDataUrl, session)
         caseDataText = converHtmlToText(caseDataHtml, selector)
-        caseData = passToGemini(caseDataText)
+        caseData = passToGeminiForMetadata(caseDataText)
         resultCasesList.append(caseData)
     return resultCasesList
 
@@ -136,7 +138,7 @@ def searchGooglePatents(keywords:list[str]):
     for caseDataUrl in caseDataUrlsList:
         caseDataHtml = fetchCaseData(caseDataUrl, session)
         caseDataText = converHtmlToText(caseDataHtml, selector)
-        caseData = passToGemini(caseDataText)
+        caseData = passToGeminiForMetadata(caseDataText)
         resultCasesList.append(caseData)
     return resultCasesList
 
@@ -160,3 +162,7 @@ def performLiveSearch(keywords:list[str], country:str):
         if patent not alreadyExists(patent, merged_results):
             merged_results.append(patent)
     return merged_results
+
+def performInfringementAnalysis(reference_claims:list[str], infringing_claims:list[str]):
+    infringement_analysis = Gemini.analyze_infringements(reference_claims, infringing_claims)
+    return infringement_analysis
