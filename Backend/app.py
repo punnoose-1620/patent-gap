@@ -1,4 +1,5 @@
 import os
+import warnings
 import requests
 from flask_cors import CORS
 from datetime import datetime
@@ -21,6 +22,8 @@ from llm_processor import *
 from data_processor import *
 from env_controller import *
 from live_search.liveSearchController import *
+
+warnings.filterwarnings("ignore", message=".*google.generativeai.*", category=FutureWarning)
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -1768,7 +1771,7 @@ def get_document(document_id):
     ), 200
     # return jsonify({'success': True, 'message': 'Document retrieved successfully', 'document': document['document']}), 200
   else:
-    print(f'\nERROR: Error getting document: {document['message']}')
+    print(f"\nERROR: Error getting document: {document['message']}")
     return jsonify({'success': False, 'message': document['message']}), 400
 
 @app.route('/api/proxy-document', methods=['POST'])
@@ -1956,6 +1959,12 @@ def live_search():
   keywords = data.get('keywords', [])
   country = data.get('country', '')
   ref_claims = data.get('claims', [])
+
+  if (len(keywords) == 0) or (keywords is None):
+    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  if (len(ref_claims) == 0) or (ref_claims is None):
+    return jsonify({'success': False, 'message': 'Claims are required'}), 400
+
   try:
     results = performLiveSearch(keywords, country=country)
     return jsonify({

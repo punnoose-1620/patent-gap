@@ -1,5 +1,14 @@
 from pydantic import BaseModel
 
+class DocumentsData(BaseModel):
+    url: str
+    source: str
+
+class AttorneysData(BaseModel):
+    name: str
+    registrationNumber: str
+    contact: list[str]
+
 class LiveSearchResults(BaseModel):
     _id: str
     title: str
@@ -30,15 +39,6 @@ class LiveSearchResults(BaseModel):
         self.infringements = []
         self.mailing_addresses = []
         return self
-
-class DocumentsData(BaseModel):
-    url: str
-    source: str
-
-class AttorneysData(BaseModel):
-    name: str
-    registrationNumber: str
-    contact: list[str]
 
 class IsolatedClaims(BaseModel):
     claims: list[str]

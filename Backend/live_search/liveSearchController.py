@@ -1,9 +1,12 @@
+import time
 import requests
+from tqdm import tqdm
 from bs4 import BeautifulSoup
-from llm_brain.gemini import Gemini
-from searchUrlBuilder import SearchUrlBuilderByKeywords
 from file_controller import readFromXmlUrl, readFromPdfUrl
-from caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
+
+from llm_brain.gemini import Gemini
+from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
+from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
 SEARCH_TIMEOUT = 10
 SESSION_HEADERS = {
@@ -39,7 +42,7 @@ SOURCES = [
         'details_class_to_isolate': ['fixed-width document-details-wrapper'],
         'details_class_to_isolate': [],
         'use_gemini_for_details': True
-    }
+    },
     {
         'title': 'Google Patents',
         'search_url': 'https://patents.google.com',
@@ -62,11 +65,11 @@ SOURCES = [
 ]
 
 def passToGeminiForMetadata(text:str):
-    case_data = Gemini.extract_patent_metadata(text)
-    case_data.claims = Gemini.extract_claims(text)
+    case_data = Gemini().extract_patent_metadata(patent_content=text)
+    case_data.claims = Gemini().extract_claims(patent_content=text)
     return case_data
 
-def converHtmlToText(html:str, selector:str):
+def htmlToText(html:str, selector:str):
     soup = BeautifulSoup(html, "html.parser")
     text_content = soup.get_text(separator='\n', strip=True)
     return text_content
@@ -80,66 +83,139 @@ def performSearch(url:str, session:requests.Session = None):
     html_content = response.text
     return html_content
 
-def fetchCaseData(url:str, session:requests.Session = None):
+def fetchCaseData(url:str, session:requests.Session = None, selector:str = ''):
     if session is None:
         session = requests.Session()
         session.headers.update(SESSION_HEADERS)
     response = session.get(url, timeout=SEARCH_TIMEOUT)
     response.raise_for_status()
     html_content = response.text
-    text_content = converHtmlToText(html_content, selector)
+    text_content = htmlToText(html_content, selector)
     return text_content
 
-def searchFreePatentsOnline(keywords:list[str]):
+def get_case_datas(
+    urlIsolatorInstance: CaseDataUrlFromSearchResults, 
+    case_data_url:str, 
+    session:requests.Session = None, 
+    selector:str = '',
+    count:int = 0):
+    try:
+        caseDataHtml = fetchCaseData(case_data_url, session, selector)
+        caseDataText = htmlToText(caseDataHtml, selector)
+        caseData = passToGeminiForMetadata(caseDataText)
+        return caseData
+    except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+        print(f"\nERROR: Connection reset error ({count + 1} of 3): {str(e)}")
+        if count > 3:
+            raise e
+        time.sleep(2)
+        return get_case_datas(urlIsolatorInstance, case_data_url, session, selector, count + 1)
+    except Exception as e:
+        print(f"\nERROR: Error getting case data: {str(e)}")
+        raise e
+
+def searchFreePatentsOnline(keywords:list[str], count:int = 0):
     resultCasesList = []
+    caseDataUrlsList = []
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
-    freePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[0]['search_url'])
-    freePatentsUrl = freePatentsUrlBuilder.build_url(
-        keywords=keywords, 
-        country='', 
-        selector=SOURCES[0]['url_builder_selector']
-        )
-    searchResultsHtml = performSearch(freePatentsUrl, session)
-    caseDataUrlIsolator = CaseDataUrlFromSearchResults(
-        html_content=searchResultsHtml, 
-        ids=SOURCES[0]['search_ids'], 
-        classes=SOURCES[0]['search_classes'], 
-        tags=SOURCES[0]['search_tags'],
-        drop_list=SOURCES[0]['search_classes_to_drop']
-        )
-    caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(selector=SOURCES[0]['url_builder_selector'])
-    for caseDataUrl in caseDataUrlsList:
-        caseDataHtml = fetchCaseData(caseDataUrl, session)
-        caseDataText = converHtmlToText(caseDataHtml, selector)
-        caseData = passToGeminiForMetadata(caseDataText)
+    selector = SOURCES[0].get('url_builder_selector', '')
+
+    try:
+        freePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[0].get('search_url', ''))
+        freePatentsUrl = freePatentsUrlBuilder.build_url(
+            keywords=keywords, 
+            country='', 
+            selector=SOURCES[0].get('url_builder_selector', '')
+            )
+    except Exception as e:
+        print(f"\nERROR: Error building free patents online URL: {str(e)}")
+        raise e
+        
+    try:
+        searchResultsHtml = performSearch(freePatentsUrl, session)
+        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
+            html_content=searchResultsHtml, 
+            ids=SOURCES[0].get('search_ids', {}), 
+            classes=SOURCES[0].get('search_classes', []), 
+            tags=SOURCES[0].get('search_tags', {}),
+            drop_list=SOURCES[0].get('search_classes_to_drop', [])
+            )
+        caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(
+            selector=selector, 
+            base_url=SOURCES[0].get('search_url', '')
+            )
+        print(f'LOG: Case Data URLs List:')
+        for caseDataUrl in caseDataUrlsList:
+            index = caseDataUrlsList.index(caseDataUrl)
+            print(f'LOG: {index + 1}: {caseDataUrl}')
+    except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+        print(f"\nERROR: Connection reset error: {str(e)}")
+        if count > 3:
+            raise e
+        time.sleep(2)
+        return searchFreePatentsOnline(keywords, count + 1)
+    except Exception as e:
+        print(f"\nERROR: Error performing search for free patents online: {str(e)}")
+        raise e
+
+    print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
+    for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
+        caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
         resultCasesList.append(caseData)
+    print(f'LOG: Result Cases List: {resultCasesList}')
     return resultCasesList
 
-def searchGooglePatents(keywords:list[str]):
+def searchGooglePatents(keywords:list[str], count:int = 0):
     resultCasesList = []
+    caseDataUrlsList = []
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
-    googlePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[1]['search_url'])
-    googlePatentsUrl = googlePatentsUrlBuilder.build_url(
-        keywords=keywords, 
-        country='', 
-        selector=SOURCES[1]['url_builder_selector']
-        )
-    searchResultsHtml = performSearch(googlePatentsUrl, session)
-    caseDataUrlIsolator = CaseDataUrlFromSearchResults(
-        html_content=searchResultsHtml, 
-        ids=SOURCES[1]['search_ids'], 
-        classes=SOURCES[1]['search_classes'], 
-        tags=SOURCES[1]['search_tags'],
-        drop_list=SOURCES[1]['search_classes_to_drop']
-        )
-    caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(selector=SOURCES[1]['url_builder_selector'])
-    for caseDataUrl in caseDataUrlsList:
-        caseDataHtml = fetchCaseData(caseDataUrl, session)
-        caseDataText = converHtmlToText(caseDataHtml, selector)
-        caseData = passToGeminiForMetadata(caseDataText)
+    selector = SOURCES[1].get('url_builder_selector', '')
+
+    try:
+        googlePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[1].get('search_url', ''))
+        googlePatentsUrl = googlePatentsUrlBuilder.build_url(
+            keywords=keywords, 
+            country='', 
+            selector=SOURCES[1].get('url_builder_selector', '')
+            )
+    except Exception as e:
+        print(f"\nERROR: Error building Google Patents URL: {str(e)}")
+        raise e
+
+    try:
+        searchResultsHtml = performSearch(googlePatentsUrl, session)
+        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
+            html_content=searchResultsHtml, 
+            ids=SOURCES[1].get('search_ids', {}), 
+            classes=SOURCES[1].get('search_classes', []), 
+            tags=SOURCES[1].get('search_tags', {}),
+            drop_list=SOURCES[1].get('search_classes_to_drop', [])
+            )
+        caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(
+            selector=selector, 
+            base_url=SOURCES[1].get('search_url', '')
+            )
+        print(f'LOG: Case Data URLs List: ')
+        for caseDataUrl in caseDataUrlsList:
+            index = caseDataUrlsList.index(caseDataUrl)
+            print(f'LOG: {index + 1}: {caseDataUrl}')
+    except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+        print(f"\nERROR: Connection reset error: {str(e)}")
+        if count > 3:
+            raise e
+        time.sleep(2)
+        return searchGooglePatents(keywords, count + 1)
+    except Exception as e:
+        print(f"\nERROR: Error performing search for Google Patents: {str(e)}")
+        raise e
+    
+    print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
+    for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
+        caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
         resultCasesList.append(caseData)
+    print(f'LOG: Result Cases List: {resultCasesList}')
     return resultCasesList
 
 def alreadyExists(patent:dict, merged_results:list[dict]):
@@ -159,7 +235,7 @@ def performLiveSearch(keywords:list[str], country:str):
     google_patents_results = searchGooglePatents(keywords)
     merged_results = free_patents_results
     for patent in google_patents_results:
-        if patent not alreadyExists(patent, merged_results):
+        if not alreadyExists(patent, merged_results):
             merged_results.append(patent)
     return merged_results
 
