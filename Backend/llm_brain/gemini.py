@@ -1,6 +1,6 @@
 import copy
 import json
-import google.generativeai as genai
+from google import genai
 from env_controller import getEnvKey
 
 from llm_brain.static_prompts import *
@@ -61,7 +61,7 @@ class Gemini:
 
     def __init__(self):
         self.apiKey = getEnvKey('gemini')
-        instance = genai.configure(api_key=self.apiKey)
+        self._client = genai.Client(api_key=self.apiKey)
 
     def extract_patent_metadata(
         self, 
@@ -70,19 +70,16 @@ class Gemini:
         ):
         final_prompt = PATENT_METADATA_EXTRACTOR + "\nHere's the content : \n" + patent_content
 
-        # Example (pseudo) setup for API client (replace with actual Gemini SDK/client):
-        gemini_client = genai.GenerativeModel(model_name)
-
-        # To actually call the model and use the prompt:
         schema = _rename_schema_keys_for_api(
             _strip_unsupported_schema_keys(_schema_without_defs(LiveSearchResults.model_json_schema()))
         )
-        response = gemini_client.generate_content(
-            final_prompt,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=schema
-            )
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": schema,
+            },
         )
         data = json.loads(response.text)
         data["_id"] = data.pop("id", data.get("_id", ""))
@@ -113,16 +110,14 @@ class Gemini:
         ):
         final_prompt = CLAIM_ISOLATOR + "\nHere's the content : \n" + patent_content
 
-        # Example (pseudo) setup for API client (replace with actual Gemini SDK/client):
-        gemini_client = genai.GenerativeModel(model_name)
-
-        # To actually call the model and use the prompt:
-        response = gemini_client.generate_content(
-            final_prompt,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=_strip_unsupported_schema_keys(_schema_without_defs(IsolatedClaims.model_json_schema()))
-            )
+        schema = _strip_unsupported_schema_keys(_schema_without_defs(IsolatedClaims.model_json_schema()))
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": schema,
+            },
         )
         return IsolatedClaims.model_validate_json(response.text)
 
@@ -134,15 +129,13 @@ class Gemini:
         ):
         final_prompt = INFRINGEMENT_ANALYZER.replace("<reference_claims_replacement>", "\n".join(reference_claims)).replace("<infringing_claims_replacement>", "\n".join(infringing_claims))
 
-        # Example (pseudo) setup for API client (replace with actual Gemini SDK/client):
-        gemini_client = genai.GenerativeModel(model_name)
-
-        # To actually call the model and use the prompt:
-        response = gemini_client.generate_content(
-            final_prompt,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=_strip_unsupported_schema_keys(_schema_without_defs(InfringementAnalysis.model_json_schema()))
-            )
+        schema = _strip_unsupported_schema_keys(_schema_without_defs(InfringementAnalysis.model_json_schema()))
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": schema,
+            },
         )
         return InfringementAnalysis.model_validate_json(response.text)

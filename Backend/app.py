@@ -1,5 +1,4 @@
 import os
-import warnings
 import requests
 from flask_cors import CORS
 from datetime import datetime
@@ -23,7 +22,6 @@ from data_processor import *
 from env_controller import *
 from live_search.liveSearchController import *
 
-warnings.filterwarnings("ignore", message=".*google.generativeai.*", category=FutureWarning)
 
 app = Flask(__name__, 
             static_folder='../Assets',

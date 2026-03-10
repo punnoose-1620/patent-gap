@@ -37,6 +37,10 @@ class CaseDataUrlFromSearchResults:
     return returnVal
 
   def resolve_url(self, href:str, base:str, selector:str):
+    if not href:
+        return base
+    if href.startswith('//'):
+        return 'https:' + href
     if self.url_checker(href):
         return href
     if selector == 'google-patents':
@@ -70,6 +74,7 @@ class CaseDataUrlFromSearchResults:
         for url in urls_by_tags:
             if url not in urls:
                 urls.append(url)
+        urls = [u for u in urls if u and ('patents.google.com' in u or '/patent/' in u)]
     return urls
 
   def drop_elements_by_classes(self, html_content:str, drop_list: list[str]):

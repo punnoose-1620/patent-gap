@@ -64,10 +64,42 @@ SOURCES = [
     }
 ]
 
-def passToGeminiForMetadata(text:str):
-    case_data = Gemini().extract_patent_metadata(patent_content=text)
-    case_data.claims = Gemini().extract_claims(patent_content=text)
-    return case_data
+def _live_result_to_dict(obj):
+    """Convert LiveSearchResults (or similar) to a JSON-serializable dict for API and alreadyExists()."""
+    if obj is None:
+        return None
+    if hasattr(obj, 'model_dump'):
+        d = obj.model_dump()
+    elif hasattr(obj, 'dict'):
+        d = obj.dict()
+    else:
+        return obj
+    if isinstance(d.get('claims'), dict) and 'claims' in d['claims']:
+        d['claims'] = d['claims']['claims']
+    return d
+
+
+def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float = 2.0):
+    """
+    Call Gemini to extract metadata and claims with simple retry/backoff.
+    Retries on transient errors (including 5xx) up to max_attempts times.
+    """
+    attempt = 0
+    last_error: Exception | None = None
+    while attempt < max_attempts:
+        try:
+            case_data = Gemini().extract_patent_metadata(patent_content=text)
+            case_data.claims = Gemini().extract_claims(patent_content=text)
+            return case_data
+        except Exception as e:
+            last_error = e
+            attempt += 1
+            # If we've exhausted retries, re-raise
+            if attempt >= max_attempts:
+                raise
+            # Basic backoff between retries
+            print(f"\nERROR: Gemini metadata error ({attempt} of {max_attempts}): {str(e)}")
+            time.sleep(base_delay * attempt)
 
 def htmlToText(html:str, selector:str):
     soup = BeautifulSoup(html, "html.parser")
@@ -106,7 +138,7 @@ def get_case_datas(
         return caseData
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error ({count + 1} of 3): {str(e)}")
-        if count > 3:
+        if count >= 2:  # after 3 attempts (count 0,1,2) give up
             raise e
         time.sleep(2)
         return get_case_datas(urlIsolatorInstance, case_data_url, session, selector, count + 1)
@@ -151,7 +183,7 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
             print(f'LOG: {index + 1}: {caseDataUrl}')
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error: {str(e)}")
-        if count > 3:
+        if count >= 2:
             raise e
         time.sleep(2)
         return searchFreePatentsOnline(keywords, count + 1)
@@ -161,8 +193,14 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
 
     print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
     for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
-        caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
-        resultCasesList.append(caseData)
+        try:
+            caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
+            resultCasesList.append(_live_result_to_dict(caseData))
+        except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+            print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
+        except Exception as e:
+            print(f"\nERROR: Skipping URL: {caseDataUrl} — {str(e)}")
+        time.sleep(1)
     print(f'LOG: Result Cases List: {resultCasesList}')
     return resultCasesList
 
@@ -203,7 +241,7 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
             print(f'LOG: {index + 1}: {caseDataUrl}')
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error: {str(e)}")
-        if count > 3:
+        if count >= 2:
             raise e
         time.sleep(2)
         return searchGooglePatents(keywords, count + 1)
@@ -213,8 +251,14 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
     
     print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
     for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
-        caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
-        resultCasesList.append(caseData)
+        try:
+            caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
+            resultCasesList.append(_live_result_to_dict(caseData))
+        except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+            print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
+        except Exception as e:
+            print(f"\nERROR: Skipping URL: {caseDataUrl} — {str(e)}")
+        time.sleep(1)
     print(f'LOG: Result Cases List: {resultCasesList}')
     return resultCasesList
 
@@ -231,9 +275,23 @@ def alreadyExists(patent:dict, merged_results:list[dict]):
     return False
 
 def performLiveSearch(keywords:list[str], country:str):
-    free_patents_results = searchFreePatentsOnline(keywords)
-    google_patents_results = searchGooglePatents(keywords)
-    merged_results = free_patents_results
+    free_patents_results = []
+    try:
+        free_patents_results = searchFreePatentsOnline(keywords)
+    except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+        print(f"\nERROR: Free Patents Online search failed after retries: {str(e)}")
+    except Exception as e:
+        print(f"\nERROR: Free Patents Online search failed: {str(e)}")
+
+    google_patents_results = []
+    try:
+        google_patents_results = searchGooglePatents(keywords)
+    except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+        print(f"\nERROR: Google Patents search failed after retries: {str(e)}")
+    except Exception as e:
+        print(f"\nERROR: Google Patents search failed: {str(e)}")
+
+    merged_results = list(free_patents_results)
     for patent in google_patents_results:
         if not alreadyExists(patent, merged_results):
             merged_results.append(patent)

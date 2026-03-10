@@ -1,8 +1,16 @@
 import json
 from sources.Prompts import *
 from env_controller import getEnvKey
-import google.generativeai as genai
+from google import genai
 from typing_extensions import TypedDict
+
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=getEnvKey('gemini'))
+    return _client
 
 """
 This file contains the functions to get the similar infringements from the document contents using the Gemini model.
@@ -29,17 +37,31 @@ class InfringementSource(TypedDict):
     entry_url: str
     similar_claims: list[SimilarityClaim]
 
-def get_claim_model_client():
-    genai.configure(api_key=getEnvKey('gemini'))
-    return genai.GenerativeModel(claim_model_name)
-
-def get_summary_model_client():
-    genai.configure(api_key=getEnvKey('gemini'))
-    return genai.GenerativeModel(summary_model_name)
-
-def get_infringement_model_client():
-    genai.configure(api_key=getEnvKey('gemini'))
-    return genai.GenerativeModel(infringement_model_name)
+# JSON schema for list-of-infringements structured output (new SDK response_json_schema)
+INFRINGEMENT_LIST_JSON_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "entry_id": {"type": "string"},
+            "entry_title": {"type": "string"},
+            "entry_url": {"type": "string"},
+            "similar_claims": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "claim": {"type": "string"},
+                        "similarity_score": {"type": "number"},
+                        "source": {"type": "string"},
+                        "url_to_claim": {"type": "string"},
+                    },
+                },
+            },
+        },
+    },
+}
 
 def get_claims(document_contents: str):
     """
@@ -48,8 +70,11 @@ def get_claims(document_contents: str):
     """
     complete_claim_isolation_prompt = claim_isolation_propmt.replace("<DOCUMENT_CONTENTS_REPLACEMENT>", document_contents)
     try:
-        claims_response = get_claim_model_client().generate_content(complete_claim_isolation_prompt)
-        claims_list_string = claims_response._result.candidates[0].content.parts[0].text
+        response = _get_client().models.generate_content(
+            model=claim_model_name,
+            contents=complete_claim_isolation_prompt,
+        )
+        claims_list_string = response.text
         claims_lists = []
         for claim in claims_list_string.split("\n"):
             if (claim.strip() != "") and (claim.strip()[0].isdigit()):
@@ -117,14 +142,15 @@ def get_similar_infringements(claims: list[str]):
         print('\nTEST: complete_infringement_search_prompt is missing some placeholders: ', complete_infringement_search_prompt)
         return []
     try:
-        infringements_response = get_infringement_model_client().generate_content(
-            complete_infringement_search_prompt,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=list[InfringementSource]
-            )
+        response = _get_client().models.generate_content(
+            model=infringement_model_name,
+            contents=complete_infringement_search_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": INFRINGEMENT_LIST_JSON_SCHEMA,
+            },
         )
-        infringements = json.loads(infringements_response._result.candidates[0].content.parts[0].text)
+        infringements = json.loads(response.text)
         if len(infringements) > 0:
             for infringement in infringements:
                 infringements_list.append(infringement)
@@ -171,8 +197,11 @@ def get_patent_summary(document_contents: str):
     """
     complete_summary_prompt = summary_prompt.replace("<DOCUMENT_CONTENTS_REPLACEMENT>", document_contents)
     try:
-        summary_response = get_summary_model_client().generate_content(complete_summary_prompt)
-        summary_text = summary_response._result.candidates[0].content.parts[0].text
+        response = _get_client().models.generate_content(
+            model=summary_model_name,
+            contents=complete_summary_prompt,
+        )
+        summary_text = response.text
         return summary_text
     except Exception as e:
         print('\nERROR: Error in get_patent_summary: ', e)
