@@ -1,31 +1,41 @@
 PATENT_METADATA_EXTRACTOR = """
-I am providing a full patent document below.
-Extract the metadata of the patent in the following format:
-{
-  "_id": "<string: Unique identifier for the patent>",
-  "title": "<string: Title of the patent>",
-  "status": "<string: Status of the patent shows the current status of the patent>",
-  "description": "<string: Description of the patent>",
-  "currentStatusCode": "<number: Current status code of the patent shows the current status of the patent>",
-  "currentStatusDate": "<string: Current status date of the patent shows when the patent was last updated>",
-  "filingDate": "<string: Filing date of the patent shows when the patent was filed>",
-  "documents": "<list[DocumentsData]: List of documents of the patent>",
-  "document_urls": "<list[str]: List of document urls of the patent>",
-  "keywords": "<list[str]: List of keywords of the patent>",
-  "claims": "<list[str]: List of claims of the patent>",
-  "attorneys": "<list[AttorneysData]: List of attorneys of the patent>",
-  "inventors": "<list[str]: List of inventors of the patent>"
-}
-DocumentsData is a dictionary with the following keys:
-{
-  "url": "<string: URL of the document>",
-  "source": "<string: Source of the document>",
-}
-AttorneysData is a dictionary with the following keys:
-{
-  "name": "<string: Name of the attorney>",
-  "registrationNumber": "<string: Registration number of the attorney in the country in which they are registered>",
-}
+You are an expert patent data extractor.
+You will be given the full text of a patent record (including header and body).
+
+Your task is to extract **all** available metadata and return a **single JSON object** that
+matches the schema provided by the caller. You **must include every key in the schema**
+in your JSON output.
+
+For any field that is **not explicitly available** in the text, follow these rules:
+- If the field is a **string**, return an empty string `""`.
+- If the field is a **number**, return `0`.
+- If the field is a **list**, return an empty list `[]`.
+- Never omit keys, and never change key names.
+
+The fields to extract are:
+- `_id`: Unique identifier for the patent (use the best identifier you can find in the text; if multiple IDs exist, choose the main publication/application number; if nothing is clearly an ID, return `""`).
+- `title`: Title of the patent.
+- `status`: Current legal/status description of the patent.
+- `description`: High-level description/abstract of the patent.
+- `currentStatusCode`: Numeric code (if one is explicitly given in the text). If not present, return `0`.
+- `currentStatusDate`: Date when the status was last updated (or the most recent legal status date).
+- `filingDate`: Filing date of the patent.
+- `documents`: List of `DocumentsData` objects for any clearly identified documents.
+- `document_urls`: List of URLs for any documents (including PDF/HTML links).
+- `keywords`: List of important technical keywords and phrases that describe the invention.
+- `claims`: List of claims of the patent (you may extract them here in addition to any separate claims call).
+- `attorneys`: List of `AttorneysData` objects for any attorneys/agents of record.
+- `inventors`: List of inventor names.
+
+`DocumentsData` is a dictionary with the following keys:
+- `url`: URL of the document.
+- `source`: Human-readable name of the source (e.g. "USPTO", "Google Patents").
+
+`AttorneysData` is a dictionary with the following keys:
+- `name`: Name of the attorney or agent.
+- `registrationNumber`: Registration number of the attorney in the country in which they are registered (if not present, use an empty string).
+
+Return **only** the final JSON object, with no explanations or comments.
 """
 
 CLAIM_ISOLATOR = """
@@ -55,6 +65,9 @@ Do not include any other text or comments.
 
 Reference Claims : 
 <reference_claims_replacement>
+
+Context of the reference claims :
+<context_of_reference_claims_replacement>
 
 Infringing Claims : 
 <infringing_claims_replacement>

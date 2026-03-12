@@ -78,7 +78,6 @@ def _live_result_to_dict(obj):
         d['claims'] = d['claims']['claims']
     return d
 
-
 def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float = 2.0):
     """
     Call Gemini to extract metadata and claims with simple retry/backoff.
@@ -89,7 +88,18 @@ def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float 
     while attempt < max_attempts:
         try:
             case_data = Gemini().extract_patent_metadata(patent_content=text)
-            case_data.claims = Gemini().extract_claims(patent_content=text)
+            title = case_data.title
+            filing_date = case_data.filingDate
+            if (title.strip() == "") or (filing_date.strip() == ""):
+                raise Exception("Error: Failed to extract patent metadata after 3 attempts")
+
+            # Extract claims as a separate model, then attach just the list.
+            isolated_claims = Gemini().extract_claims(patent_content=text)
+            try:
+                claims_list = getattr(isolated_claims, "claims", [])
+            except Exception:
+                claims_list = []
+            case_data.claims = claims_list
             return case_data
         except Exception as e:
             last_error = e
@@ -98,7 +108,6 @@ def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float 
             if attempt >= max_attempts:
                 raise
             # Basic backoff between retries
-            print(f"\nERROR: Gemini metadata error ({attempt} of {max_attempts}): {str(e)}")
             time.sleep(base_delay * attempt)
 
 def htmlToText(html:str, selector:str):
@@ -133,14 +142,16 @@ def get_case_datas(
     count:int = 0):
     try:
         caseDataHtml = fetchCaseData(case_data_url, session, selector)
-        caseDataText = htmlToText(caseDataHtml, selector)
-        caseData = passToGeminiForMetadata(caseDataText)
+        caseData = passToGeminiForMetadata(caseDataHtml)
         return caseData
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error ({count + 1} of 3): {str(e)}")
         if count >= 2:  # after 3 attempts (count 0,1,2) give up
             raise e
         time.sleep(2)
+        session.close()
+        session = requests.Session()
+        session.headers.update(SESSION_HEADERS)
         return get_case_datas(urlIsolatorInstance, case_data_url, session, selector, count + 1)
     except Exception as e:
         print(f"\nERROR: Error getting case data: {str(e)}")
@@ -165,6 +176,8 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
         raise e
         
     try:
+        session = requests.Session()
+        session.headers.update(SESSION_HEADERS)
         searchResultsHtml = performSearch(freePatentsUrl, session)
         caseDataUrlIsolator = CaseDataUrlFromSearchResults(
             html_content=searchResultsHtml, 
@@ -186,12 +199,18 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
         if count >= 2:
             raise e
         time.sleep(2)
+        session.close()
+        session = requests.Session()
+        session.headers.update(SESSION_HEADERS)
         return searchFreePatentsOnline(keywords, count + 1)
     except Exception as e:
         print(f"\nERROR: Error performing search for free patents online: {str(e)}")
         raise e
 
     print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
+    session.close()
+    session = requests.Session()
+    session.headers.update(SESSION_HEADERS)
     for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
@@ -200,17 +219,17 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
             print(f"\nERROR: Skipping URL: {caseDataUrl} — {str(e)}")
-        time.sleep(1)
-    print(f'LOG: Result Cases List: {resultCasesList}')
+        # time.sleep(1)
+    print(f'LOG: Result Cases List: {len(resultCasesList)}')
     return resultCasesList
 
 def searchGooglePatents(keywords:list[str], count:int = 0):
     resultCasesList = []
     caseDataUrlsList = []
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
     selector = SOURCES[1].get('url_builder_selector', '')
 
+    session = requests.Session()
+    session.headers.update(SESSION_HEADERS)
     try:
         googlePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[1].get('search_url', ''))
         googlePatentsUrl = googlePatentsUrlBuilder.build_url(
@@ -222,6 +241,9 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
         print(f"\nERROR: Error building Google Patents URL: {str(e)}")
         raise e
 
+    session.close()
+    session = requests.Session()
+    session.headers.update(SESSION_HEADERS)
     try:
         searchResultsHtml = performSearch(googlePatentsUrl, session)
         caseDataUrlIsolator = CaseDataUrlFromSearchResults(
@@ -244,12 +266,18 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
         if count >= 2:
             raise e
         time.sleep(2)
+        session.close()
+        session = requests.Session()
+        session.headers.update(SESSION_HEADERS)
         return searchGooglePatents(keywords, count + 1)
     except Exception as e:
         print(f"\nERROR: Error performing search for Google Patents: {str(e)}")
         raise e
     
     print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
+    session.close()
+    session = requests.Session()
+    session.headers.update(SESSION_HEADERS)
     for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
@@ -258,7 +286,7 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
             print(f"\nERROR: Skipping URL: {caseDataUrl} — {str(e)}")
-        time.sleep(1)
+        # time.sleep(1)
     print(f'LOG: Result Cases List: {resultCasesList}')
     return resultCasesList
 
@@ -297,6 +325,6 @@ def performLiveSearch(keywords:list[str], country:str):
             merged_results.append(patent)
     return merged_results
 
-def performInfringementAnalysis(reference_claims:list[str], infringing_claims:list[str]):
-    infringement_analysis = Gemini.analyze_infringements(reference_claims, infringing_claims)
+def performInfringementAnalysis(reference_claims:list[str], infringing_claims:list[str], context:str):
+    infringement_analysis = Gemini().analyze_infringements(reference_claims, infringing_claims, context)
     return infringement_analysis

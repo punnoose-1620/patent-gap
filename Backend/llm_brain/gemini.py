@@ -6,8 +6,10 @@ from env_controller import getEnvKey
 from llm_brain.static_prompts import *
 from Backend.models.live_search_results import *
 
-# Keys the legacy SDK doesn't accept (remove these, keep everything else)
-_SCHEMA_STRIP_KEYS = {"title", "description", "examples", "default", "$defs"}
+# Keys the legacy SDK doesn't accept as *schema annotations*.
+# IMPORTANT: Do NOT include field names like "title" or "description" here,
+# or they will be stripped from the properties we want Gemini to fill.
+_SCHEMA_STRIP_KEYS = {"examples", "default", "$defs"}
 
 def _strip_unsupported_schema_keys(obj):
     if isinstance(obj, dict):
@@ -66,9 +68,12 @@ class Gemini:
     def extract_patent_metadata(
         self, 
         patent_content:str, 
-        model_name:str = 'gemini-2.5-flash'
+        model_name:str = 'gemini-2.5-flash', 
+        count:int = 0
         ):
         final_prompt = PATENT_METADATA_EXTRACTOR + "\nHere's the content : \n" + patent_content
+        if count > 0:
+            final_prompt += "\n\nPlease try again. You haven't extracted valid patent metadata yet."
 
         schema = _rename_schema_keys_for_api(
             _strip_unsupported_schema_keys(_schema_without_defs(LiveSearchResults.model_json_schema()))
@@ -101,6 +106,12 @@ class Gemini:
         for key, default in _defaults.items():
             if key not in data or data[key] is None:
                 data[key] = default
+        title = data.get("title", "")
+        filing_date = data.get("filingDate", "")
+        if (title.strip() == "") or (filing_date.strip() == ""):
+            if count >= 3:
+                raise Exception("Error: Failed to extract patent metadata after 3 attempts")
+            return LiveSearchResults.model_validate(self.extract_patent_metadata(patent_content, model_name, count + 1))
         return LiveSearchResults.model_validate(data)
 
     def extract_claims(
@@ -125,9 +136,13 @@ class Gemini:
         self, 
         reference_claims:list[str], 
         infringing_claims:list[str], 
+        context:str,
         model_name:str = 'gemini-2.5-flash'
         ):
-        final_prompt = INFRINGEMENT_ANALYZER.replace("<reference_claims_replacement>", "\n".join(reference_claims)).replace("<infringing_claims_replacement>", "\n".join(infringing_claims))
+        
+        final_prompt = INFRINGEMENT_ANALYZER.replace("<reference_claims_replacement>", "\n".join(reference_claims))
+        final_prompt = final_prompt.replace("<infringing_claims_replacement>", "\n".join(infringing_claims))
+        final_prompt = final_prompt.replace("<context_of_reference_claims_replacement>", context)
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(InfringementAnalysis.model_json_schema()))
         response = self._client.models.generate_content(
