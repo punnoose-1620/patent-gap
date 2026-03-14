@@ -338,6 +338,39 @@ def alreadyExistsInProductDetailsList(product_detail, product_details_list: list
             return True
     return False
 
+def searchPatentSources(keywords:list[str], country:str, reference_claims:list[str]):
+    searchResults = []
+    infringement_analysis_results = []
+    # Perform Live Patent Search
+    try:
+        results = performLiveSearch(keywords, country=country)
+        for result in results:
+            searchResults.append(result)
+    except Exception as e:
+        print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
+        raise e
+    # Perform Infringement Analysis
+    try:
+        for result in searchResults:
+            infringement_analysis = performInfringementAnalysis(
+                ref_claims,
+                result.get('claims', []),
+                result.get('context', '')
+            )
+            # Convert Pydantic model to plain dict so Flask/jsonify can serialize it
+            if hasattr(infringement_analysis, "model_dump"):
+                infringement_dict = infringement_analysis.model_dump()
+            elif hasattr(infringement_analysis, "dict"):
+                infringement_dict = infringement_analysis.dict()
+            else:
+                infringement_dict = infringement_analysis
+            infringement_analysis_results.append(infringement_dict)
+        return infringement_analysis_results
+    except Exception as e:
+        print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
+        raise e
+    return []
+
 def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str]):
     # Generate Search String using Gemini
     search_string = Gemini().get_search_string(keywords, owners)
