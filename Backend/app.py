@@ -1757,9 +1757,9 @@ def live_similarity_analysis():
   if data is None:
     return jsonify({'success': False, 'message': 'No data provided'}), 400
   user_id = get_user_id()
-  # if not user_id:
-  #   print('\nERROR: LiveSearch: User ID is not in session')
-  #   return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  if not user_id:
+    print('\nERROR: LiveSearch: User ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
   if 'keywords' not in data:
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
@@ -1784,9 +1784,9 @@ def live_similarity_analysis():
   if (len(ref_claims) == 0) or (ref_claims is None):
     print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Claims are required'}), 400
-  # if (len(owners) == 0) or (owners is None):
-  #   print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
-  #   return jsonify({'success': False, 'message': 'Owners are required'}), 400
+  if (len(owners) == 0) or (owners is None):
+    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Owners are required'}), 400
   
   infringement_analysis_results = []
   start_time = time.time()
