@@ -1,0 +1,164 @@
+PATENT_METADATA_EXTRACTOR = """
+You are an expert patent data extractor.
+You will be given the full text of a patent record (including header and body).
+
+Your task is to extract **all** available metadata and return a **single JSON object** that
+matches the schema provided by the caller. You **must include every key in the schema**
+in your JSON output.
+
+For any field that is **not explicitly available** in the text, follow these rules:
+- If the field is a **string**, return an empty string `""`.
+- If the field is a **number**, return `0`.
+- If the field is a **list**, return an empty list `[]`.
+- Never omit keys, and never change key names.
+
+The fields to extract are:
+- `_id`: Unique identifier for the patent (use the best identifier you can find in the text; if multiple IDs exist, choose the main publication/application number; if nothing is clearly an ID, return `""`).
+- `title`: Title of the patent.
+- `status`: Current legal/status description of the patent.
+- `description`: High-level description/abstract of the patent.
+- `currentStatusCode`: Numeric code (if one is explicitly given in the text). If not present, return `0`.
+- `currentStatusDate`: Date when the status was last updated (or the most recent legal status date).
+- `filingDate`: Filing date of the patent.
+- `documents`: List of `DocumentsData` objects for any clearly identified documents.
+- `document_urls`: List of URLs for any documents (including PDF/HTML links).
+- `keywords`: List of important technical keywords and phrases that describe the invention.
+- `claims`: List of claims of the patent (you may extract them here in addition to any separate claims call).
+- `attorneys`: List of `AttorneysData` objects for any attorneys/agents of record.
+- `inventors`: List of inventor names.
+
+`DocumentsData` is a dictionary with the following keys:
+- `url`: URL of the document.
+- `source`: Human-readable name of the source (e.g. "USPTO", "Google Patents").
+
+`AttorneysData` is a dictionary with the following keys:
+- `name`: Name of the attorney or agent.
+- `registrationNumber`: Registration number of the attorney in the country in which they are registered (if not present, use an empty string).
+
+Return **only** the final JSON object, with no explanations or comments.
+"""
+
+CLAIM_ISOLATOR = """
+I am providing all the content from all documents related to a patent below.
+Extract all the claims from the documents.
+Return the claims in the following format:
+{
+  "claims": "<list[str]: List of claims of the patent>",
+}
+Do not include any other text or comments.
+"""
+
+INFRINGEMENT_ANALYZER = """
+I am providing you with 2 sets of claims :
+Reference Claims: <list[str]: List of claims of the patent>
+Infringing Claims: <list[str]: List of claims of the patent>
+Analyze the claims and determine if the infringing claims are similar to the reference claims.
+Return the analysis in the following format:
+{
+  "claim": "<string: Claim that is similar to the reference claims>",
+  "similarity_score": "<number: Similarity score between 0 and 1>",
+}
+Similarity score is a number between 0 and 1 that represents the similarity between the infringing claim and the reference claim.
+The higher the similarity score, the more similar the claims are.
+The similarity score is calculated using the cosine similarity algorithm.
+Do not include any other text or comments.
+
+Reference Claims : 
+<reference_claims_replacement>
+
+Context of the reference claims :
+<context_of_reference_claims_replacement>
+
+Infringing Claims : 
+<infringing_claims_replacement>
+"""
+
+SEARCH_STRING_GENERATOR = """
+I am providing you with a list of keywords and a list of owners.
+Generate a search string that will be used to search for products related to the keywords and owners.
+The search string should be a valid Google Search string.
+The result of the google search should yield product pages from various relevant sources like Amazon, eBay, Walmart, etc.
+The result of the google search should not be another search results page, but rather a product page from a relevant source.
+If owners firms/companies are provided, prioritize their competitor products in the search results.
+The search string should be a single string, not a list of strings.
+
+Return the search string in the following format:
+{
+  "search_string": "<string: Search string>",
+}
+
+Keywords: <keywords_replacement>
+
+Owners: <owners_replacement>
+Do not include any other text or comments.
+"""
+
+PERFORM_GOOGLE_SEARCH_PROMPT = """
+I am providing you with a search string.
+Perform a google search with the search string.
+Return the results in the following format:
+{
+  "results": [
+    {
+      "title": "<string: Title of the result>",
+      "url": "<string: URL of the result>",
+      "website_name": "<string: Name of the website of the result>",
+      "description": "<string: Description of the result>",
+    }
+  ]
+}
+Do not include any other text or comments.
+
+Here's is the search string to perform the google search:
+<search_string_replacement>
+"""
+
+PRODUCT_DETAILS_EXTRACTOR = """
+I am providing you with the content of a product page from a relevant source.
+Extract the essential details of the product from the content.
+Return the details in the following format:
+{
+  "product_details": [
+    {
+      "source": "<string: Source of the product details>",
+      "product_id": "<string: ID of the product>",
+      "product_url": "<string: URL of the product>",
+      "product_name": "<string: Name of the product>",
+      "claims": "<list[str]: List of claims of the product>"
+    }
+  ]
+}
+Do not include any other text or comments.
+"""
+
+PRODUCT_INFRINGEMENT_ANALYZER = """
+I am providing you with 2 sets of claims :
+Reference Claims: <list[str]: List of claims of the patent>
+Infringing Claims: <list[str]: List of claims of the patent>
+Analyze the claims and determine if the infringing claims are similar to the reference claims.
+Return the analysis in the following format:
+{
+  "items": [
+    {
+      "claim": "<string: Claim that is similar to the reference claims>",
+      "similarity_score": "<number: Similarity score between 0 and 1>",
+      "source": "<string: Source of the product details>",
+      "url_to_claim": "<string: URL to the claim>",
+      "justification": "<string: Justification for the similarity score>"
+    }
+  ]
+}
+Similarity score is a number between 0 and 1 that represents the similarity between the infringing claim and the reference claim.
+The higher the similarity score, the more similar the claims are.
+The similarity score is calculated using the cosine similarity algorithm.
+Do not include any other text or comments.
+
+Reference Claims : 
+<reference_claims_replacement>
+
+Context of the reference claims :
+<context_of_reference_claims_replacement>
+
+Infringing Claims : 
+<infringing_claims_replacement>
+"""

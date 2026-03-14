@@ -1,5 +1,5 @@
 import openai
-import google.generativeai as genai
+from google import genai
 from env_controller import getEnvKey
 
 title_prompt = "You are given two documents: Document A and Document B. Generate a clear and informative title describing the comparison between these two documents in 10 words or fewer. Use only information from the documents and no external references. Do not add any formatting. Strictly stay within the word limit."
@@ -35,8 +35,7 @@ def getModelClient(model_name='gemini-2.5-flash'):
         if api_key is None:
             print("GEMINI_API_KEY is not set in environment variables")
             return None
-        genai.configure(api_key=api_key)
-        client = genai.GenerativeModel(model_name)
+        client = genai.Client(api_key=api_key)
     elif 'gpt' in model_name:
         api_key = getEnvKey('openai')
         if api_key is None:
@@ -54,13 +53,17 @@ def llm_health_check(model_name='gemini-2.5-flash'):
     Check the health of the LLM
     """
     client = getModelClient(model_name)
-
     if client is None:
         return False
-    response = client.generate_content("Hello, how are you?")
-    if response is None:
+    try:
+        if 'gemini' in model_name:
+            response = client.models.generate_content(model=model_name, contents="Hello, how are you?")
+            return response is not None
+        else:
+            response = client.chat.completions.create(model=model_name, messages=[{"role": "user", "content": "Hello, how are you?"}])
+            return response is not None
+    except Exception:
         return False
-    return True
 
 def getIndividualReport(reference_text, document_text, model_name='gemini-2.5-flash'):
     """
@@ -70,16 +73,21 @@ def getIndividualReport(reference_text, document_text, model_name='gemini-2.5-fl
         document_text: Text of the document to get report for
         model_name: Name of the model to use
     Returns:
-        Report for document
+        Report for document (string), or None
     """
-
     client = getModelClient(model_name)
-
     if client is None:
         return None
-
-    response = client.generate_content(f"{report_prompt}\n\nReference Text: {reference_text}\n\nDocument Text: {document_text}")
-    return response
+    prompt = f"{report_prompt}\n\nReference Text: {reference_text}\n\nDocument Text: {document_text}"
+    try:
+        if 'gemini' in model_name:
+            response = client.models.generate_content(model=model_name, contents=prompt)
+            return response.text if response else None
+        else:
+            response = client.chat.completions.create(model=model_name, messages=[{"role": "user", "content": prompt}])
+            return response.choices[0].message.content if response.choices else None
+    except Exception:
+        return None
 
 def getIndividualTitle(reference_text, document_text, model_name='gemini-2.5-flash'):
     """
@@ -89,14 +97,21 @@ def getIndividualTitle(reference_text, document_text, model_name='gemini-2.5-fla
         document_text: Text of the document to get title for
         model_name: Name of the model to use
     Returns:
-        Title for document
+        Title for document (string), or None
     """
     client = getModelClient(model_name)
     if client is None:
         return None
-
-    response = client.generate_content(f"{title_prompt}\n\nReference Text: {reference_text}\n\nDocument Text: {document_text}")
-    return response
+    prompt = f"{title_prompt}\n\nReference Text: {reference_text}\n\nDocument Text: {document_text}"
+    try:
+        if 'gemini' in model_name:
+            response = client.models.generate_content(model=model_name, contents=prompt)
+            return response.text if response else None
+        else:
+            response = client.chat.completions.create(model=model_name, messages=[{"role": "user", "content": prompt}])
+            return response.choices[0].message.content if response.choices else None
+    except Exception:
+        return None
 
 def getCompleteReport(reference_text, documents, model_name='gemini-2.5-flash'):
     """
@@ -116,8 +131,7 @@ def getCompleteReport(reference_text, documents, model_name='gemini-2.5-flash'):
     for i in range(len(documents)):
         document = documents[i]
         title = getIndividualTitle(reference_text, document, model_name)
-        if title is None:
-            title = "Untitled"
+        title = title if title is not None else "Untitled"
         report = getIndividualReport(reference_text, document, model_name)
         if report is not None:
             final_report = f"{final_report}\n-----\n ##{i+1}. {title}\n\n{report}"
@@ -125,19 +139,27 @@ def getCompleteReport(reference_text, documents, model_name='gemini-2.5-flash'):
 
 def getReportSummary(report, model_name='gemini-2.5-flash'):
     """
-    Get summary of the report
+    Get summary of the report. report must be the report text (string).
     Args:
-        report: Report to get summary for
+        report: Report text to get summary for
         model_name: Name of the model to use
     Returns:
-        Summary of the report
+        Summary section string, or None
     """
     client = getModelClient(model_name)
     if client is None:
         return None
-
-    response = client.generate_content(f"{report_summary_prompt}\n\nReport: {report}")
-    return f"## Summary\n\n{response}"
+    prompt = f"{report_summary_prompt}\n\nReport: {report}"
+    try:
+        if 'gemini' in model_name:
+            response = client.models.generate_content(model=model_name, contents=prompt)
+            text = response.text if response else ""
+        else:
+            response = client.chat.completions.create(model=model_name, messages=[{"role": "user", "content": prompt}])
+            text = response.choices[0].message.content if response.choices else ""
+        return f"## Summary\n\n{text}"
+    except Exception:
+        return None
 
 def getReportWithSummary(report, summary, model_name='gemini-2.5-flash'):
     """
@@ -158,14 +180,21 @@ def getDummyReportWithSummary(title, model_name='gemini-2.5-flash'):
         title: Title of the report
         model_name: Name of the model to use
     Returns:
-        Dummy report with summary
+        (dummy_report_text, dummy_summary) both strings, or (None, None)
     """
     dummy_report_prompt = f'You are given the patent application under the title {title} from the US Patent Office. Create a list of 5 similar patents from the US Patent Office. The list can be dummy patents. For each patent provide the following: \n\n- Title of comparison\n- Brief report comparing these 2 patents (limit to 250 words)\n\nThe generated reports should be in MD format with title having "##" and summary having no formatting.'
     client = getModelClient(model_name)
     if client is None:
         return None, None
-
-    dummy_report = client.generate_content(f"{dummy_report_prompt}\n\nTitle: {title}")
-    dummy_summary = getReportSummary(dummy_report, model_name)
-
-    return dummy_report, dummy_summary
+    prompt = f"{dummy_report_prompt}\n\nTitle: {title}"
+    try:
+        if 'gemini' in model_name:
+            response = client.models.generate_content(model=model_name, contents=prompt)
+            dummy_report_text = response.text if response else ""
+        else:
+            response = client.chat.completions.create(model=model_name, messages=[{"role": "user", "content": prompt}])
+            dummy_report_text = response.choices[0].message.content if response.choices else ""
+    except Exception:
+        return None, None
+    dummy_summary = getReportSummary(dummy_report_text, model_name)
+    return dummy_report_text, dummy_summary

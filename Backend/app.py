@@ -20,6 +20,8 @@ from controller import *
 from llm_processor import *
 from data_processor import *
 from env_controller import *
+from live_search.liveSearchController import *
+
 
 app = Flask(__name__, 
             static_folder='../Assets',
@@ -1749,6 +1751,102 @@ def similarity_analysis_gemini():
     'similar_infringements': similar_infringements
     }), 200
 
+@app.route('/api/similarity-analysis-live', methods=['POST'])
+def live_similarity_analysis():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  user_id = get_user_id()
+  # if not user_id:
+  #   print('\nERROR: LiveSearch: User ID is not in session')
+  #   return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  if 'keywords' not in data:
+    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  if 'country' not in data:
+    print(f'\nERROR: LiveSearch: Country is required for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Country is required'}), 400
+  if 'claims' not in data:
+    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Claims are required'}), 400
+  if 'owners' not in data:
+    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Owners are required'}), 400
+  keywords = data.get('keywords', [])
+  owners = data.get('owners', [])
+  ref_claims = data.get('claims', [])
+  country = data.get('country', '')
+  context = data.get('context', '')
+
+  if (len(keywords) == 0) or (keywords is None):
+    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  if (len(ref_claims) == 0) or (ref_claims is None):
+    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Claims are required'}), 400
+  # if (len(owners) == 0) or (owners is None):
+  #   print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
+  #   return jsonify({'success': False, 'message': 'Owners are required'}), 400
+  
+  infringement_analysis_results = []
+  start_time = time.time()
+  # Perform Live Patent Search
+  try:
+    patentResults = searchPatentSources(keywords, country, ref_claims)
+    for result in tqdm(patentResults, desc="Serializing Patent Sources Results"):
+      infringement_analysis_results.append(result)
+  except Exception as e:
+    current_time = time.time()
+    time_in_seconds = current_time - start_time
+    time_in_minutes = time_in_seconds // 60
+    time_in_hours = int(time_in_minutes // 60)
+    time_in_seconds = time_in_seconds % 60
+    time_in_minutes = int(time_in_minutes % 60)
+    print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
+    return jsonify({
+      'success': False, 
+      'message': f'Error performing patent source infringement analysis: {str(e)}',
+      'search_results': infringement_analysis_results,
+      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+      }), 500
+  
+  # Perform Live Product Search
+  try:
+    product_details_list = searchProductSources(keywords, owners, ref_claims)
+    for item in tqdm(product_details_list, desc="Serializing Product Sources Results"):
+      if hasattr(item, 'model_dump'):
+        infringement_analysis_results.append(item.model_dump())
+      elif hasattr(item, 'dict'):
+        infringement_analysis_results.append(item.dict())
+      else:
+        infringement_analysis_results.append(item)
+    current_time = time.time()
+    time_in_seconds = current_time - start_time
+    time_in_minutes = time_in_seconds // 60
+    time_in_hours = int(time_in_minutes // 60)
+    time_in_seconds = time_in_seconds % 60
+    time_in_minutes = int(time_in_minutes % 60)
+    return jsonify({
+      'success': True, 
+      'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
+      'infringement_analysis': infringement_analysis_results,
+      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+      }), 200
+  except Exception as e:
+    current_time = time.time()
+    time_in_seconds = current_time - start_time
+    time_in_minutes = time_in_seconds // 60
+    time_in_hours = int(time_in_minutes // 60)
+    time_in_seconds = time_in_seconds % 60
+    time_in_minutes = int(time_in_minutes % 60)
+    print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
+    return jsonify({
+      'success': False, 
+      'message': f'Error performing product sourceinfringement analysis: {str(e)}',
+      'search_results': searchResults,
+      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+      }), 500
+
 @app.route('/api/document/<document_id>', methods=['GET'])
 def get_document(document_id):
   user_id = get_user_id()
@@ -1767,7 +1865,7 @@ def get_document(document_id):
     ), 200
     # return jsonify({'success': True, 'message': 'Document retrieved successfully', 'document': document['document']}), 200
   else:
-    print(f'\nERROR: Error getting document: {document['message']}')
+    print(f"\nERROR: Error getting document: {document['message']}")
     return jsonify({'success': False, 'message': document['message']}), 400
 
 @app.route('/api/proxy-document', methods=['POST'])

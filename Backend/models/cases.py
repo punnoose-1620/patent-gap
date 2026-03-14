@@ -1,6 +1,6 @@
 import re
 from database import *
-from documents import getDocumentById
+from models.documents import getDocumentById
 from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
 
