@@ -5,7 +5,7 @@ from google.genai import types
 from env_controller import getEnvKey
 
 from llm_brain.static_prompts import *
-from Backend.models.live_search_results import *
+from models.live_search_results import *
 
 # Keys the legacy SDK doesn't accept as *schema annotations*.
 # IMPORTANT: Do NOT include field names like "title" or "description" here,
