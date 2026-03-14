@@ -338,6 +338,8 @@ def alreadyExistsInProductDetailsList(product_detail, product_details_list: list
             return True
     return False
 
+# Final Search Functions
+
 def searchPatentSources(keywords:list[str], country:str, reference_claims:list[str]):
     searchResults = []
     infringement_analysis_results = []
@@ -349,11 +351,13 @@ def searchPatentSources(keywords:list[str], country:str, reference_claims:list[s
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
         raise e
+    if len(searchResults) > 0:
+        print(f"TEST: Search Result: {json.dumps(searchResults[0], indent=4)}")
     # Perform Infringement Analysis
     try:
         for result in searchResults:
             infringement_analysis = performInfringementAnalysis(
-                ref_claims,
+                reference_claims,
                 result.get('claims', []),
                 result.get('context', '')
             )
@@ -364,7 +368,8 @@ def searchPatentSources(keywords:list[str], country:str, reference_claims:list[s
                 infringement_dict = infringement_analysis.dict()
             else:
                 infringement_dict = infringement_analysis
-            infringement_analysis_results.append(infringement_dict)
+            result['similar_claims'] = infringement_dict
+            infringement_analysis_results.append(result)
         return infringement_analysis_results
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')

@@ -1757,9 +1757,9 @@ def live_similarity_analysis():
   if data is None:
     return jsonify({'success': False, 'message': 'No data provided'}), 400
   user_id = get_user_id()
-  if not user_id:
-    print('\nERROR: LiveSearch: User ID is not in session')
-    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  # if not user_id:
+  #   print('\nERROR: LiveSearch: User ID is not in session')
+  #   return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
   if 'keywords' not in data:
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
@@ -1784,9 +1784,9 @@ def live_similarity_analysis():
   if (len(ref_claims) == 0) or (ref_claims is None):
     print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Claims are required'}), 400
-  if (len(owners) == 0) or (owners is None):
-    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Owners are required'}), 400
+  # if (len(owners) == 0) or (owners is None):
+  #   print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
+  #   return jsonify({'success': False, 'message': 'Owners are required'}), 400
   
   infringement_analysis_results = []
   start_time = time.time()
@@ -1798,13 +1798,15 @@ def live_similarity_analysis():
   except Exception as e:
     current_time = time.time()
     time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds / 60
-    time_in_hours = time_in_minutes / 60
+    time_in_minutes = time_in_seconds // 60
+    time_in_hours = int(time_in_minutes // 60)
+    time_in_seconds = time_in_seconds % 60
+    time_in_minutes = int(time_in_minutes % 60)
     print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
     return jsonify({
       'success': False, 
       'message': f'Error performing patent source infringement analysis: {str(e)}',
-      'search_results': searchResults,
+      'search_results': infringement_analysis_results,
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 500
   
@@ -1820,8 +1822,10 @@ def live_similarity_analysis():
         infringement_analysis_results.append(item)
     current_time = time.time()
     time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds / 60
-    time_in_hours = time_in_minutes / 60
+    time_in_minutes = time_in_seconds // 60
+    time_in_hours = int(time_in_minutes // 60)
+    time_in_seconds = time_in_seconds % 60
+    time_in_minutes = int(time_in_minutes % 60)
     return jsonify({
       'success': True, 
       'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
@@ -1831,8 +1835,10 @@ def live_similarity_analysis():
   except Exception as e:
     current_time = time.time()
     time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds / 60
-    time_in_hours = time_in_minutes / 60
+    time_in_minutes = time_in_seconds // 60
+    time_in_hours = int(time_in_minutes // 60)
+    time_in_seconds = time_in_seconds % 60
+    time_in_minutes = int(time_in_minutes % 60)
     print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
     return jsonify({
       'success': False, 
