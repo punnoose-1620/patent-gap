@@ -2033,6 +2033,47 @@ def live_search():
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 500
 
+@app.route('/api/search-product-sources', methods=['POST'])
+def search_product_sources():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  # user_id = get_user_id()
+  # if not user_id:
+  #   return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  if 'keywords' not in data:
+    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  if 'owners' not in data:
+    return jsonify({'success': False, 'message': 'Owners are required'}), 400
+  if 'claims' not in data:
+    return jsonify({'success': False, 'message': 'Claims are required'}), 400
+  keywords = data.get('keywords', [])
+  owners = data.get('owners', [])
+  claims = data.get('claims', [])
+
+  if (len(keywords) == 0) or (keywords is None):
+    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  # if (len(owners) == 0) or (owners is None):
+  #   return jsonify({'success': False, 'message': 'Owners are required'}), 400
+  if (len(claims) == 0) or (claims is None):
+    return jsonify({'success': False, 'message': 'Claims are required'}), 400
+
+  product_details_list = searchProductSources(keywords, owners, claims)
+  # Serialize Pydantic models to dicts for JSON response
+  serialized = []
+  for item in product_details_list:
+    if hasattr(item, 'model_dump'):
+      serialized.append(item.model_dump())
+    elif hasattr(item, 'dict'):
+      serialized.append(item.dict())
+    else:
+      serialized.append(item)
+  return jsonify({
+    'success': True, 
+    'message': 'Product sources searched successfully', 
+    'product_details_list': serialized
+    }), 200
+
 if __name__ == '__main__':
     port = app.config['PORT']
     debug = app.config['DEBUG']

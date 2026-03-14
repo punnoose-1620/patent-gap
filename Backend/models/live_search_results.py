@@ -46,3 +46,32 @@ class IsolatedClaims(BaseModel):
 class InfringementAnalysis(BaseModel):
     claim: str
     similarity_score: float
+
+class GoogleSearchResults(BaseModel):
+    title: str
+    url: str
+    website_name: str
+    description: str
+
+class GoogleSearchResultsList(BaseModel):
+    """Wrapper so Gemini receives an object schema (required), not an array."""
+    results: list[GoogleSearchResults]
+
+class InfringingProductDetail(BaseModel):
+    source: str
+    product_id: str
+    product_url: str
+    product_name: str
+    claims: list[str]
+    similar_claims: list["ProductSimilarityClaim"] = []
+
+class ProductSimilarityClaim(BaseModel):
+    claim: str
+    similarity_score: float
+    source: str
+    url_to_claim: str
+    justification: str
+
+class ProductSimilarityClaimList(BaseModel):
+    """Wrapper so Gemini receives an object schema (required), not an array."""
+    items: list[ProductSimilarityClaim]

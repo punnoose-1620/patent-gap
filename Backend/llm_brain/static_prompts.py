@@ -73,3 +73,92 @@ Infringing Claims :
 <infringing_claims_replacement>
 """
 
+SEARCH_STRING_GENERATOR = """
+I am providing you with a list of keywords and a list of owners.
+Generate a search string that will be used to search for products related to the keywords and owners.
+The search string should be a valid Google Search string.
+The result of the google search should yield product pages from various relevant sources like Amazon, eBay, Walmart, etc.
+The result of the google search should not be another search results page, but rather a product page from a relevant source.
+If owners firms/companies are provided, prioritize their competitor products in the search results.
+The search string should be a single string, not a list of strings.
+
+Return the search string in the following format:
+{
+  "search_string": "<string: Search string>",
+}
+
+Keywords: <keywords_replacement>
+
+Owners: <owners_replacement>
+Do not include any other text or comments.
+"""
+
+PERFORM_GOOGLE_SEARCH_PROMPT = """
+I am providing you with a search string.
+Perform a google search with the search string.
+Return the results in the following format:
+{
+  "results": [
+    {
+      "title": "<string: Title of the result>",
+      "url": "<string: URL of the result>",
+      "website_name": "<string: Name of the website of the result>",
+      "description": "<string: Description of the result>",
+    }
+  ]
+}
+Do not include any other text or comments.
+
+Here's is the search string to perform the google search:
+<search_string_replacement>
+"""
+
+PRODUCT_DETAILS_EXTRACTOR = """
+I am providing you with the content of a product page from a relevant source.
+Extract the essential details of the product from the content.
+Return the details in the following format:
+{
+  "product_details": [
+    {
+      "source": "<string: Source of the product details>",
+      "product_id": "<string: ID of the product>",
+      "product_url": "<string: URL of the product>",
+      "product_name": "<string: Name of the product>",
+      "claims": "<list[str]: List of claims of the product>"
+    }
+  ]
+}
+Do not include any other text or comments.
+"""
+
+PRODUCT_INFRINGEMENT_ANALYZER = """
+I am providing you with 2 sets of claims :
+Reference Claims: <list[str]: List of claims of the patent>
+Infringing Claims: <list[str]: List of claims of the patent>
+Analyze the claims and determine if the infringing claims are similar to the reference claims.
+Return the analysis in the following format:
+{
+  "items": [
+    {
+      "claim": "<string: Claim that is similar to the reference claims>",
+      "similarity_score": "<number: Similarity score between 0 and 1>",
+      "source": "<string: Source of the product details>",
+      "url_to_claim": "<string: URL to the claim>",
+      "justification": "<string: Justification for the similarity score>"
+    }
+  ]
+}
+Similarity score is a number between 0 and 1 that represents the similarity between the infringing claim and the reference claim.
+The higher the similarity score, the more similar the claims are.
+The similarity score is calculated using the cosine similarity algorithm.
+Do not include any other text or comments.
+
+Reference Claims : 
+<reference_claims_replacement>
+
+Context of the reference claims :
+<context_of_reference_claims_replacement>
+
+Infringing Claims : 
+<infringing_claims_replacement>
+"""

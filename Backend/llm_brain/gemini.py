@@ -1,6 +1,7 @@
 import copy
 import json
 from google import genai
+from google.genai import types
 from env_controller import getEnvKey
 
 from llm_brain.static_prompts import *
@@ -154,3 +155,65 @@ class Gemini:
             },
         )
         return InfringementAnalysis.model_validate_json(response.text)
+
+    def get_search_string(
+        self, 
+        keywords: list[str], 
+        owners: list[str], 
+        model_name:str = 'gemini-2.5-flash'
+        ):
+        final_prompt = SEARCH_STRING_GENERATOR.replace("<keywords_replacement>", "\n".join(keywords))
+        final_prompt = final_prompt.replace("<owners_replacement>", "\n".join(owners))
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+        )
+        return response.text
+    
+    def perform_google_search(
+        self, 
+        search_string: str, 
+        model_name:str = 'gemini-2.5-flash'
+        ):
+        final_prompt = PERFORM_GOOGLE_SEARCH_PROMPT.replace("<search_string_replacement>", search_string)
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": GoogleSearchResultsList.model_json_schema(),
+            },
+        )
+        wrapper = GoogleSearchResultsList.model_validate_json(response.text)
+        return wrapper.results
+    
+    def get_product_details(self, product_content: str, model_name:str = 'gemini-2.5-flash'):
+        final_prompt = PRODUCT_DETAILS_EXTRACTOR + "\nHere's the content : \n" + product_content
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": InfringingProductDetail.model_json_schema(),
+            },
+        )
+        return InfringingProductDetail.model_validate_json(response.text)
+
+    def analyze_product_infringements(
+        self, 
+        reference_claims:list[str], 
+        infringing_claims:list[str],
+        model_name:str = 'gemini-2.5-flash'
+        ):
+        final_prompt = PRODUCT_INFRINGEMENT_ANALYZER.replace("<reference_claims_replacement>", "\n".join(reference_claims))
+        final_prompt = final_prompt.replace("<infringing_claims_replacement>", "\n".join(infringing_claims))
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": ProductSimilarityClaimList.model_json_schema(),
+            },
+        )
+        wrapper = ProductSimilarityClaimList.model_validate_json(response.text)
+        return wrapper.items

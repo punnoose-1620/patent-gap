@@ -1,4 +1,5 @@
 import time
+import json
 import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
@@ -328,3 +329,65 @@ def performLiveSearch(keywords:list[str], country:str):
 def performInfringementAnalysis(reference_claims:list[str], infringing_claims:list[str], context:str):
     infringement_analysis = Gemini().analyze_infringements(reference_claims, infringing_claims, context)
     return infringement_analysis
+
+def alreadyExistsInProductDetailsList(product_detail, product_details_list: list):
+    pid = getattr(product_detail, "product_id", None) or (product_detail.get("product_id") if isinstance(product_detail, dict) else None)
+    for product in product_details_list:
+        other_pid = getattr(product, "product_id", None) or (product.get("product_id") if isinstance(product, dict) else None)
+        if pid and other_pid and pid == other_pid:
+            return True
+    return False
+
+def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str]):
+    # Generate Search String using Gemini
+    search_string = Gemini().get_search_string(keywords, owners)
+    print(f"LOG: Search String: {search_string}")
+    # Perform Google Search
+    google_search_results = Gemini().perform_google_search(search_string)
+    sites_searched = {}
+    product_details_list = []
+    # Iterate through Google Search Results
+    for result in tqdm(google_search_results, desc="Fetching Product Details from Google Search Results"):
+        website_searched = result.website_name
+        if website_searched not in sites_searched.keys():
+            sites_searched[website_searched] = 0
+        sites_searched[website_searched] += 1
+        url = result.url
+        # Get HTML Content for each URL from search results
+        try:
+            session = requests.Session()
+            session.headers.update(SESSION_HEADERS)
+            html_content = performSearch(url, session)
+        except (ConnectionResetError, requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
+            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+            continue
+        except Exception as e:
+            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+            continue
+        # Pass HTML Content to Gemini to extract product details
+        product_details = Gemini().get_product_details(html_content)
+        # Analyze Product Infringements
+        try:
+            infringement_analysis = Gemini().analyze_product_infringements(reference_claims, product_details.claims)
+            product_details.similar_claims = infringement_analysis
+            product_id = product_details.product_id
+            product_url = product_details.product_url
+            print(f"LOG: Product ID: {product_id}")
+            print(f"LOG: Product URL: {product_url}")
+            if alreadyExistsInProductDetailsList(product_details, product_details_list):
+                continue
+            if (product_id is None) or (product_url is None):
+                continue
+            if (product_id == "") or (product_url == ""):
+                continue
+            if (str(product_id).lower() == "unknown") or (str(product_url).lower == "unknown"):
+                continue
+            if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
+                continue
+            product_details_list.append(product_details)
+        except Exception as e:
+            print(f"\nERROR: Error analyzing product infringements: {str(e)}")
+            continue
+    print(f"LOG: Product Search Sources: {json.dumps(sites_searched, indent=4)}")
+    print(f"LOG: Products Found: {len(product_details_list)}")
+    return product_details_list
