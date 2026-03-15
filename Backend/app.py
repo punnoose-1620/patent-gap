@@ -1838,6 +1838,7 @@ def live_similarity_analysis(case_id):
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
+    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Completed'})
     return jsonify({
       'success': True, 
       'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
