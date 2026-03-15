@@ -1751,8 +1751,8 @@ def similarity_analysis_gemini():
     'similar_infringements': similar_infringements
     }), 200
 
-@app.route('/api/similarity-analysis-live', methods=['POST'])
-def live_similarity_analysis():
+@app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
+def live_similarity_analysis(case_id):
   data = request.get_json()
   if data is None:
     return jsonify({'success': False, 'message': 'No data provided'}), 400
@@ -1777,7 +1777,15 @@ def live_similarity_analysis():
   ref_claims = data.get('claims', [])
   country = data.get('country', '')
   context = data.get('context', '')
-
+  
+  if case_id is None:
+    print(f'\nERROR: LiveSearch: Case ID is required for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+  case_data = get_case_by_id(case_id)
+  if case_data is None:
+    print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+  keywords = case_data.get('keywords', [])
   if (len(keywords) == 0) or (keywords is None):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
@@ -1790,11 +1798,13 @@ def live_similarity_analysis():
   
   infringement_analysis_results = []
   start_time = time.time()
+  update_case(case_id, {'infringement_analysis_status': 'Started'})
   # Perform Live Patent Search
   try:
     patentResults = searchPatentSources(keywords, country, ref_claims)
     for result in tqdm(patentResults, desc="Serializing Patent Sources Results"):
       infringement_analysis_results.append(result)
+    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Patent Sources Completed'})
   except Exception as e:
     current_time = time.time()
     time_in_seconds = current_time - start_time
@@ -1802,6 +1812,7 @@ def live_similarity_analysis():
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
+    update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources'})
     print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
     return jsonify({
       'success': False, 
@@ -1820,6 +1831,7 @@ def live_similarity_analysis():
         infringement_analysis_results.append(item.dict())
       else:
         infringement_analysis_results.append(item)
+    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Product Sources Completed'})
     current_time = time.time()
     time_in_seconds = current_time - start_time
     time_in_minutes = time_in_seconds // 60
@@ -1839,6 +1851,7 @@ def live_similarity_analysis():
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
+    update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources'})
     print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
     return jsonify({
       'success': False, 
