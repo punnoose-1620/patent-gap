@@ -1040,8 +1040,6 @@ def update_patent():
     data = request.get_json()
     if not data:
       return jsonify({'success': False, 'message': 'No data provided'}), 400
-    if not data.get('case_id'):
-      return jsonify({'success': False, 'message': 'Case ID is required'}), 400
     if not data.get('_id'):
       return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
     
