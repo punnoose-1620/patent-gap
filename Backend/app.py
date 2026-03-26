@@ -942,7 +942,7 @@ def api_create_attorney():
     data['role'] = 'attorney'
 
     print(f'Create Attorney Data: {json.dumps(data, indent=4)}')
-    # TODO: Create User in database
+    return jsonify(create_user(data))
   except Exception as e:
     return jsonify({
       'success': False, 
