@@ -34,6 +34,7 @@ app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 # Configuration
 app.config['PORT'] = int(os.environ.get('PORT', 5000))
 app.config['DEBUG'] = os.environ.get('DEBUG', 'True').lower() == 'true'
+app.config['ENVIRONMENT'] = os.environ.get('ENVIRONMENT', 'dev')
 
 # Initialize Swagger
 swagger = initialize_swagger(app)
@@ -2052,6 +2053,19 @@ def getInfringementChart(case_id):
   except Exception as e:
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting infringement chart for patent: {str(e)}'}), 500
+
+# @app.route('/api/test-new-infringement-analysis', methods=['POST'])
+# def test_new_infringement_analysis():
+#   data = request.get_json()
+#   if data is None:
+#     return jsonify({'success': False, 'message': 'No data provided'}), 400
+#   if 'keywords' not in data:
+#     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+#   if 'country' not in data:
+#     return jsonify({'success': False, 'message': 'Country is required'}), 400
+  
+#   search_results = searchPatentSourcesNew(data['keywords'], data['country'], data['claims'], data['context'])
+#   return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
 
 if __name__ == '__main__':
     port = app.config['PORT']
