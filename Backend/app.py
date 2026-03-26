@@ -1,7 +1,7 @@
 import os
 import requests
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime as dt
 from swagger import initialize_swagger
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, Response, stream_with_context
 
@@ -938,7 +938,7 @@ def api_create_attorney():
     if not data.get('full_name'):
       return jsonify({'success': False, 'message': 'Name is required'}), 400
     
-    data['created_date'] = datetime.now().strftime('%Y-%m-%d')
+    data['created_date'] = dt.now().strftime('%Y-%m-%d')
     data['role'] = 'attorney'
 
     print(f'Create Attorney Data: {json.dumps(data, indent=4)}')
@@ -1112,7 +1112,7 @@ def upload_file_to_local_storage(case_id):
       'file_name': file_name,
       'file_type': file_type,
       'file_size': len(file_as_blob),
-      'created_at': datetime.now().isoformat(),
+      'created_at': dt.now().isoformat(),
       'created_by': user_id,
       'case_id': case_id,
       'file_content': file_as_blob,
@@ -1317,7 +1317,7 @@ def trigger_similarity_analysis():
     newAlertId = create_alert(user_id, case_id, references)
     add_to_alerts(
         triggered_by=user_id, 
-        triggered_at=datetime.datetime.utcnow().isoformat(), 
+        triggered_at=dt.utcnow().isoformat(), 
         alert_users=[user_id], 
         title='HETEROJUNCTION BIPOLAR TRANSISTOR', 
         description='Patent Expired Due to NonPayment of Maintenance Fees Under 37 CFR 1.362')
@@ -1497,7 +1497,7 @@ def api_create_patent():
         return jsonify({'success': False, 'message': 'Patent already exists'}), 400
 
     data['created_by'] = user_id
-    data['created_date'] = datetime.now().strftime('%Y-%m-%d')
+    data['created_date'] = dt.now().strftime('%Y-%m-%d')
     created_patent = create_case(uspto_data)
     print('\nLOG: Created Patent: ', created_patent, '\n')
     
