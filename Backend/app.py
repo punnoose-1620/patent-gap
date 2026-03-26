@@ -1034,6 +1034,21 @@ def add_patent():
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error adding patent: {str(e)}'}), 500
 
+@app.route('/api/update-patent', methods=['POST'])
+def update_patent():
+  try:
+    data = request.get_json()
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    if not data.get('case_id'):
+      return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+    if not data.get('_id'):
+      return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
+    
+    return jsonify(update_case(data.get('case_id'), data))
+  except Exception as e:
+    return jsonify({'success': False, 'message': f'Error updating patent: {str(e)}'}), 500
+
 @app.route('/api/upload-file-to-local-storage/<case_id>', methods=['POST'])
 def upload_file_to_local_storage(case_id):
     """
