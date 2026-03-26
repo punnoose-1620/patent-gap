@@ -502,6 +502,7 @@ def profile():
     user_id = get_user_id()
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    
     print(f'LOG: {user_id} Get Profile Data')
     try:
         profile_data = get_user_profile(user_id)
@@ -923,6 +924,57 @@ def api_change_password():
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error changing password: {str(e)}'}), 500
   
+# Create User
+@app.route('/api/create-attorney', methods=['POST'])
+def api_create_attorney():
+  try:
+    data = request.get_json()
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    if not data.get('email'):
+      return jsonify({'success': False, 'message': 'Email is required'}), 400
+    if not data.get('password'):
+      return jsonify({'success': False, 'message': 'Password is required'}), 400
+    if not data.get('full_name'):
+      return jsonify({'success': False, 'message': 'Name is required'}), 400
+    
+    data['created_date'] = datetime.now().strftime('%Y-%m-%d')
+    data['role'] = 'attorney'
+
+    print(f'Create Attorney Data: {json.dumps(data, indent=4)}')
+    # TODO: Create User in database
+  except Exception as e:
+    return jsonify({
+      'success': False, 
+      'message': f'Error creating attorney: {str(e)}'
+      }), 500
+    
+@app.route('/api/update-password', methods=['POST'])
+def api_update_password():
+  try:
+    data = request.get_json()
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    if not data.get('password'):
+      return jsonify({'success': False, 'message': 'Password is required'}), 400
+    if not data.get('old_password'):
+      return jsonify({'success': False, 'message': 'Old Password is required'}), 400
+    if not data.get('user_id'):
+      return jsonify({'success': False, 'message': 'User ID is required'}), 400
+
+    verified = verify_password(data.get('user_id'), data.get('old_password'))
+    if verified is True:
+      result = change_password(data.get('user_id'), data.get('new_password'))
+      if result.get('success'):
+        return jsonify({'success': True, 'message': result.get('message')})
+      else:
+        return jsonify({'success': False, 'message': result.get('message')}), 400
+    else:
+      return jsonify({'success': False, 'message': 'Invalid password'}), 400
+
+  except Exception as e:
+    return jsonify({'success': False, 'message': f'Error verifying password: {str(e)}'}), 500
+
 @app.route('/api/add-patent', methods=['POST'])
 def add_patent():
     """
