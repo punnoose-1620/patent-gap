@@ -111,6 +111,19 @@ def login_user(email, password):
         'email': email
     }
 
+def does_user_exist(email):
+    """
+    Check if a user exists by email
+    
+    Args:
+        email (str): User's email address
+    """
+    users = getAllData(connect_to_database(), getUserDatabaseName())
+    for user in users:
+        if user['email'] == email:
+            return True
+    return False
+
 def get_user_profile(user_id, show_password=False):
     """
     Get user profile information

@@ -941,6 +941,9 @@ def api_create_attorney():
     data['created_date'] = dt.now().strftime('%Y-%m-%d')
     data['role'] = 'attorney'
 
+    if does_user_exist(data.get('email')):
+      return jsonify({'success': False, 'message': 'Email already in use'}), 400
+
     print(f'Create Attorney Data: {json.dumps(data, indent=4)}')
     return jsonify(create_user(data))
   except Exception as e:
