@@ -506,6 +506,7 @@ def profile():
     print(f'LOG: {user_id} Get Profile Data')
     try:
         profile_data = get_user_profile(user_id)
+        print(f'LOG: Profile Data {user_id}: {json.dumps(profile_data, indent=4)}')
         return jsonify({
             'success': True,
             'profile': profile_data
