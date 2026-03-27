@@ -1009,18 +1009,23 @@ def api_update_attorney():
 def api_update_password():
   try:
     data = request.get_json()
+    print(f'LOG: Update Password Data: {json.dumps(data, indent=4)}')
     if not data:
       return jsonify({'success': False, 'message': 'No data provided'}), 400
     if not data.get('password'):
       return jsonify({'success': False, 'message': 'Password is required'}), 400
+    if data.get('password') == 'null':
+      return jsonify({'success': False, 'message': 'Password is invalid/null'}), 400
     if not data.get('old_password'):
       return jsonify({'success': False, 'message': 'Old Password is required'}), 400
+    if data.get('old_password') == 'null':
+      return jsonify({'success': False, 'message': 'Old Password is invalid/null'}), 400
     if not data.get('user_id'):
       return jsonify({'success': False, 'message': 'User ID is required'}), 400
 
     verified = verify_password(data.get('user_id'), data.get('old_password'))
     if verified is True:
-      result = change_password(data.get('user_id'), data.get('new_password'))
+      result = change_password(data.get('user_id'), data.get('password'))
       if result.get('success'):
         return jsonify({'success': True, 'message': result.get('message')})
       else:
