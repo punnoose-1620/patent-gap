@@ -103,6 +103,11 @@ def update_case(case_id, update_data):
         dict: Result containing success status
     """
     case = get_case_by_id(case_id, show_password=True)
+    if case is None:
+        return {
+            'success': False,
+            'message': 'Case not found'
+        }
     case.update(update_data)
     updated = updateDataById(connect_to_database(), getCaseDatabaseName(), case)
     if updated:
@@ -146,6 +151,12 @@ def get_case_by_id(case_id, show_password=False):
     Returns:
         dict: Case details or None if not found
     """
+    all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
+    for case in all_cases:
+        if (case.get('_id') == case_id) or (case.get('id') == case_id) or (case.get('case_id') == case_id):
+            case = find_document_metadata(case)
+            return case
+    return None
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     if case is not None:
         case = find_document_metadata(case)

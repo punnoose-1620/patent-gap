@@ -1091,6 +1091,13 @@ def add_patent():
         if not data:
             return jsonify({'success': False, 'message': 'No data provided'}), 400
 
+        data['created_by'] = user_id
+        data['created_date'] = dt.now().strftime('%Y-%m-%d')
+        current_id = data.get('_id')
+        if current_id is None:
+          data['_id'] = f"local_{str(uuid.uuid4())[:8]}"
+        if 'local_' not in current_id:
+          data['_id'] = f"local_{current_id}"
         result = create_patent(data)
         if result.get('success'):
             return jsonify(result)
@@ -1108,7 +1115,7 @@ def update_patent():
     if not data.get('_id'):
       return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
     
-    return jsonify(update_case(data.get('case_id'), data))
+    return jsonify(update_case(data.get('_id'), data))
   except Exception as e:
     return jsonify({'success': False, 'message': f'Error updating patent: {str(e)}'}), 500
 
