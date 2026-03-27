@@ -46,7 +46,6 @@ def get_all_cases():
     all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
     for case in all_cases:
         case = find_document_metadata(case)
-    print('TEST: All cases: ', all_cases)
     return all_cases
 
 def get_open_cases():

@@ -356,6 +356,8 @@ def all_cases():
     # print(f'LOG: {user_id} Get My Cases')
     try:
         cases = get_all_cases()
+        ids = [case.get('_id') for case in cases]
+        print(f'LOG: All Cases({len(cases)}): {ids}')
         return jsonify({
             'success': True,
             'cases': cases
@@ -1009,6 +1011,7 @@ def api_update_attorney():
 @app.route('/api/update-password', methods=['POST'])
 def api_update_password():
   try:
+    print(f'LOG: Update Password Request Initiated')
     data = request.get_json()
     print(f'LOG: Update Password Data: {json.dumps(data, indent=4)}')
     if not data:
