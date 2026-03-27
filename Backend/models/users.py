@@ -111,7 +111,7 @@ def login_user(email, password):
         'email': email
     }
 
-def get_user_profile(user_id):
+def get_user_profile(user_id, show_password=False):
     """
     Get user profile information
     
@@ -124,7 +124,7 @@ def get_user_profile(user_id):
     user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
     if user is not None:
         user_copy = user.copy()
-        if 'password' in user_copy:
+        if 'password' in user_copy and not show_password:
             del user_copy['password']
         return user_copy
     return None

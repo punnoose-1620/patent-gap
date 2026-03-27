@@ -992,7 +992,7 @@ def api_update_attorney():
     data['updated_date'] = dt.now().strftime('%Y-%m-%d')
     data['role'] = 'attorney'
 
-    existing_user = get_user_by_id(data.get('_id'))
+    existing_user = get_user_profile(data.get('_id'), show_password=True)
     if not existing_user:
       return jsonify({'success': False, 'message': 'Attorney not found'}), 404
     
