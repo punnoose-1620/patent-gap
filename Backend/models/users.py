@@ -53,6 +53,25 @@ def create_user(data):
         'message': 'Failed to create user'
     }
 
+def update_user(data):
+    """
+    Update a user's information
+    
+    Args:
+        data (dict): User data
+    """
+    updated = updateDataById(connect_to_database(), getUserDatabaseName(), data)
+    if updated:
+        return {
+            'success': True,
+            'message': 'User updated successfully',
+            'user_id': data.get('_id', None)
+        }
+    return {
+        'success': False,
+        'message': 'Failed to update user'
+    }
+
 def login_user(email, password):
     """
     Authenticate user login

@@ -948,7 +948,60 @@ def api_create_attorney():
       'success': False, 
       'message': f'Error creating attorney: {str(e)}'
       }), 500
+
+@app.route('/api/update-attorney', methods=['POST'])
+def api_update_attorney():
+  """
+  Update an attorney's information
+  ---
+  tags:
+    - Attorneys
+  summary: Update attorney information
+  description: Updates the information of an attorney
+  consumes:
+    - application/json
+  produces:
+    - application/json
+  security:
+    - session: []
+  parameters:
+    - in: body
+      name: attorney_data
+      description: Attorney information
+      required: true
+    responses:
+      200:
+        description: Attorney updated successfully
+    returns structure:
+      {
+        'success': True,
+        'message': 'User updated successfully',
+        'user_id': 'user_id'
+      }
+  """
+  try:
+    data = request.get_json()
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    if not data.get('_id'):
+      return jsonify({'success': False, 'message': 'Attorney ID is required'}), 400
+    if not data.get('email'):
+      return jsonify({'success': False, 'message': 'Email is required'}), 400
+    if not data.get('full_name'):
+      return jsonify({'success': False, 'message': 'Name is required'}), 400
+    data['updated_date'] = dt.now().strftime('%Y-%m-%d')
+    data['role'] = 'attorney'
+
+    existing_user = get_user_by_id(data.get('_id'))
+    if not existing_user:
+      return jsonify({'success': False, 'message': 'Attorney not found'}), 404
     
+    password = existing_user.get('password')
+    data['password'] = password
+    return jsonify(update_user(data))
+  except Exception as e:
+    return jsonify({'success': False, 'message': f'Error updating attorney: {str(e)}'}), 500
+
 @app.route('/api/update-password', methods=['POST'])
 def api_update_password():
   try:
