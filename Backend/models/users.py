@@ -1,3 +1,4 @@
+import json
 from database import *
 from env_controller import getUserDatabaseName
 
@@ -71,11 +72,12 @@ def login_user(email, password):
     
     users = getAllData(connect_to_database(), getUserDatabaseName())
     for user in users:
+        print(f'LOG: User found: {json.dumps(user, indent=4)}')
         if user['email'] == email and user['password'] == password:
             return {
                 'success': True,
                 'message': 'Login successful',
-                'user_id': user.get('id', None),
+                'user_id': user.get('_id', None),
                 'email': email
             }
         elif user['email'] == email:
