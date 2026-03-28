@@ -9,6 +9,9 @@ from llm_brain.gemini import Gemini
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
+from web_scraper.free_patents_online import FreePatentsOnline
+from web_scraper.google_patents import GooglePatents
+
 SEARCH_TIMEOUT = 10
 SESSION_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -41,7 +44,7 @@ SOURCES = [
         'details_tag': {},
         'details_ids': {},
         'details_class_to_isolate': ['fixed-width document-details-wrapper'],
-        'details_class_to_isolate': [],
+        'details_id_to_isolate': [],
         'use_gemini_for_details': True
     },
     {
@@ -79,25 +82,27 @@ def _live_result_to_dict(obj):
         d['claims'] = d['claims']['claims']
     return d
 
-def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float = 2.0):
+def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float = 2.0, attempt: int = 0):
     """
     Call Gemini to extract metadata and claims with simple retry/backoff.
     Retries on transient errors (including 5xx) up to max_attempts times.
     """
-    attempt = 0
     last_error: Exception | None = None
     while attempt < max_attempts:
         try:
-            case_data = Gemini().extract_patent_metadata(patent_content=text)
+            case_data = Gemini().extract_patent_metadata(patent_content=str(text))
             title = case_data.title
             filing_date = case_data.filingDate
             if (title.strip() == "") or (filing_date.strip() == ""):
                 raise Exception("Error: Failed to extract patent metadata after 3 attempts")
 
             # Extract claims as a separate model, then attach just the list.
-            isolated_claims = Gemini().extract_claims(patent_content=text)
+            isolated_claims = Gemini().extract_claims(patent_content=str(text))
             try:
                 claims_list = getattr(isolated_claims, "claims", [])
+                if isinstance(claims_list, list):
+                    if len(claims_list) <3:
+                        raise Exception("ClaimsError: Claims not properly isolated")
             except Exception:
                 claims_list = []
             case_data.claims = claims_list
@@ -105,11 +110,18 @@ def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float 
         except Exception as e:
             last_error = e
             attempt += 1
+            if hasattr(e, 'message'):
+                message = e.message
+            else:
+                message = str(e)
+            print(f"\nLOG: Attempt {attempt} failed: {message}")
             # If we've exhausted retries, re-raise
             if attempt >= max_attempts:
-                raise
+                print(f"\nMAX_ATTEMPTS_ERROR: Failed to extract patent metadata after {max_attempts} attempts")
+                return None
             # Basic backoff between retries
             time.sleep(base_delay * attempt)
+            passToGeminiForMetadata(str(text), max_attempts, base_delay, attempt)
 
 def htmlToText(html:str, selector:str):
     soup = BeautifulSoup(html, "html.parser")
@@ -143,7 +155,9 @@ def get_case_datas(
     count:int = 0):
     try:
         caseDataHtml = fetchCaseData(case_data_url, session, selector)
-        caseData = passToGeminiForMetadata(caseDataHtml)
+        caseData = passToGeminiForMetadata(str(caseDataHtml))
+        if caseData is None:
+            return None
         return caseData
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error ({count + 1} of 3): {str(e)}")
@@ -429,3 +443,68 @@ def searchProductSources(keywords:list[str], owners:list[str], reference_claims:
     print(f"LOG: Product Search Sources: {json.dumps(sites_searched, indent=4)}")
     print(f"LOG: Products Found: {len(product_details_list)}")
     return product_details_list
+
+# New Search Functions
+
+def searchPatentSourcesNew(keywords:list[str], country:str, reference_claims:list[str], context:str):
+    searchResults = []
+    infringement_analysis_results = []
+
+    all_patent_details = []
+    # TODO: Perform Live Patent Search
+    try:
+        # Patent Search
+        google_patents = GooglePatents()
+        google_patents_urls = google_patents.initial_search_results(keywords)
+        print(f"LOG: Google Patents URLs({len(google_patents_urls)})")
+        search_urls = []
+        for data in tqdm(google_patents_urls, desc="Fetching Google Patents Details"):
+            search_urls.append(data['case_data'])
+            case_details = google_patents.get_single_patent_details(data['case_data'])
+            if case_details is not None:
+                data['url'] = data['case_data']
+                data['case_data'] = case_details
+                all_patent_details.append(data)
+            else:
+                continue
+        if len(all_patent_details) > 0:
+            print(f"LOG: Google Patents Details({len(all_patent_details)})")
+        else:
+            print(f"LOG: Google Patents Details({len(all_patent_details)})")
+        free_patents = FreePatentsOnline()
+        free_patents_urls = free_patents.initial_search_results(keywords)
+        print(f"LOG: Free Patents Online URLs({len(free_patents_urls)})")
+        search_urls = []
+        for data in tqdm(free_patents_urls, desc="Fetching Free Patents Online Details"):
+            search_urls.append(data['case_data'])
+            case_details = free_patents.get_single_patent_details(data['case_data'])
+            if case_details is not None:
+                data['url'] = data['case_data']
+                data['case_data'] = case_details
+                all_patent_details.append(data)
+            else:
+                continue
+        if len(all_patent_details) > 0:
+            print(f"LOG: Free Patents Online Details({len(all_patent_details)})")
+        else:
+            print(f"LOG: Free Patents Online Details({len(all_patent_details)})")
+        # Get Details using Gemini
+        patent_details_final = []
+        for data in tqdm(all_patent_details, desc="Isolating MetaData"):
+            case_details = passToGeminiForMetadata(str(data['case_data']))
+            if case_details is not None:
+                data.pop('case_data')
+                for key, value in case_details.model_dump().items():
+                    data[key] = value
+                patent_details_final.append(data)
+            else:
+                continue
+        if len(patent_details_final) > 0:
+            print(f"LOG: Processed Patents with MetaData({len(patent_details_final)}) : {json.dumps(patent_details_final[0], indent=4)}")
+        else:
+            print(f"LOG: Processed Patents with MetaData({len(patent_details_final)})")
+        return patent_details_final
+        #TODO: Infringement Analysis
+    except Exception as e:
+        print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
+        raise e

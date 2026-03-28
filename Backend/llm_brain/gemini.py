@@ -72,7 +72,7 @@ class Gemini:
         model_name:str = 'gemini-2.5-flash', 
         count:int = 0
         ):
-        final_prompt = PATENT_METADATA_EXTRACTOR + "\nHere's the content : \n" + patent_content
+        final_prompt = PATENT_METADATA_EXTRACTOR + "\nHere's the content : \n" + str(patent_content)
         if count > 0:
             final_prompt += "\n\nPlease try again. You haven't extracted valid patent metadata yet."
 
@@ -87,6 +87,8 @@ class Gemini:
                 "response_json_schema": schema,
             },
         )
+        if "429 RESOURCE_EXHAUSTED" in response.text:
+            raise Exception("Error: Gemini rate limit exceeded")
         data = json.loads(response.text)
         data["_id"] = data.pop("id", data.get("_id", ""))
         data["status"] = data.pop("case_status", data.get("status", ""))
@@ -120,7 +122,7 @@ class Gemini:
         patent_content:str, 
         model_name:str = 'gemini-2.5-flash'
         ):
-        final_prompt = CLAIM_ISOLATOR + "\nHere's the content : \n" + patent_content
+        final_prompt = CLAIM_ISOLATOR + "\nHere's the content : \n" + str(patent_content)
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(IsolatedClaims.model_json_schema()))
         response = self._client.models.generate_content(

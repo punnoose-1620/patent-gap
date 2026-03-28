@@ -1695,7 +1695,6 @@ def fetch_patent_from_uspto():
     uspto_data = uspto_instance.get_complete_patent_info(patent_id)
     uspto_data['created_by'] = user_id
     uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-    # TODO: Get Keywords from USPTO Data
     print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
     if uspto_data is None:
       return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
@@ -1709,7 +1708,51 @@ def fetch_patent_from_uspto():
       }), 200
   except Exception as e:
     print(f'\nError getting patent data from USPTO: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
+    # return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
+  # Try searching patent id using Google Patents
+  try:
+    google_patents = GooglePatents()
+    google_patents_details = google_patents.search_by_id(patent_id)
+    if google_patents_details is not None:
+      case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
+      if case_data is not None:
+        case_data['source'] = 'google_patents'
+        case_data['_id'] = f"googlepatents_{patent_id}"
+        case_data['created_by'] = user_id
+        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+        creationResult = create_case(case_data)
+        return jsonify({
+          'success': True, 
+          'message': 'Patent data imported successfully', 
+          'case_id': case_data['_id'],
+          'keywords': case_data['keywords'],
+          'case_data': case_data
+          }), 200
+  except Exception as e:
+    print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
+  # Patent not found using Google Patents, try using Free Patents Online
+  # try:
+    free_patents = FreePatentsOnline()
+    free_patents_details = free_patents.search_by_id(patent_id)
+    if free_patents_details is not None:
+      case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
+      if case_data is not None:
+        case_data['source'] = 'free_patents_online'
+        case_data['_id'] = f"freepatentsonline_{patent_id}"
+        case_data['created_by'] = user_id
+        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+        creationResult = create_case(case_data)
+        return jsonify({
+          'success': True, 
+          'message': 'Patent data imported successfully', 
+          'case_id': case_data['_id'],
+          'keywords': case_data['keywords'],
+          'case_data': case_data
+          }), 200
+  except Exception as e:
+    print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
+
+  return jsonify({'success': False, 'message': f"Failed to find patent with ID {patent_id}"}), 500
 
 @app.route('/api/get-claims/<case_id>', methods=['GET'])
 def get_claims_for_patent(case_id):
@@ -2201,8 +2244,7 @@ def getInfringementChart(case_id):
 #   if 'country' not in data:
 #     return jsonify({'success': False, 'message': 'Country is required'}), 400
   
-#   search_results = searchPatentSourcesNew(data['keywords'], data['country'], data['claims'], data['context'])
-#   return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
+  return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
 
 if __name__ == '__main__':
     port = app.config['PORT']
