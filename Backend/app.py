@@ -1577,7 +1577,7 @@ def api_create_patent():
     # Check if the patent already exists
     patent_id = data.get('_id', None)
     if patent_id is not None:
-      patent_data = get_patent_by_id(patent_id)
+      patent_data = get_case_by_id(patent_id)
       if patent_data is not None:
         return jsonify({'success': False, 'message': 'Patent already exists'}), 400
 
@@ -2244,6 +2244,7 @@ def getInfringementChart(case_id):
 #   if 'country' not in data:
 #     return jsonify({'success': False, 'message': 'Country is required'}), 400
   
+  search_results = searchPatentSourcesNew(data['keywords'], data['country'], data['claims'], data['context'])
   return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
 
 if __name__ == '__main__':
