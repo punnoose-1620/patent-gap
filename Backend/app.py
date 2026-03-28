@@ -1708,7 +1708,6 @@ def fetch_patent_from_uspto():
       }), 200
   except Exception as e:
     print(f'\nError getting patent data from USPTO: {str(e)}')
-    # return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
   # Try searching patent id using Google Patents
   try:
     google_patents = GooglePatents()
@@ -1719,6 +1718,8 @@ def fetch_patent_from_uspto():
         case_data['source'] = 'google_patents'
         case_data['_id'] = f"googlepatents_{patent_id}"
         case_data['created_by'] = user_id
+        if case_data.get('current_status', '') == '':
+          case_data['current_status'] = 'Granted'
         case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
         creationResult = create_case(case_data)
         return jsonify({
@@ -1740,6 +1741,8 @@ def fetch_patent_from_uspto():
         case_data['source'] = 'free_patents_online'
         case_data['_id'] = f"freepatentsonline_{patent_id}"
         case_data['created_by'] = user_id
+        if case_data.get('current_status', '') == '':
+          case_data['current_status'] = 'Granted'
         case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
         creationResult = create_case(case_data)
         return jsonify({
