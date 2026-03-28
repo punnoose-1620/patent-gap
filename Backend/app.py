@@ -1583,7 +1583,7 @@ def api_create_patent():
 
     data['created_by'] = user_id
     data['created_date'] = dt.now().strftime('%Y-%m-%d')
-    created_patent = create_case(uspto_data)
+    created_patent = create_case(data)
     print('\nLOG: Created Patent: ', created_patent, '\n')
     
     returnVal = {
