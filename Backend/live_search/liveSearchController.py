@@ -333,9 +333,9 @@ def performLiveSearch(keywords:list[str], country:str):
         print(f"\nERROR: Google Patents search failed after retries: {str(e)}")
     except Exception as e:
         print(f"\nERROR: Google Patents search failed: {str(e)}")
-
-    merged_results = list(free_patents_results)
-    for patent in google_patents_results:
+    # TODO: Change to all results when new version is ready
+    merged_results = list(free_patents_results)[:10]
+    for patent in google_patents_results[:10]:
         if not alreadyExists(patent, merged_results):
             merged_results.append(patent)
     return merged_results
@@ -369,6 +369,7 @@ def searchPatentSources(keywords:list[str], country:str, reference_claims:list[s
         print(f"TEST: Search Result: {json.dumps(searchResults[0], indent=4)}")
     # Perform Infringement Analysis
     try:
+        # TODO: Isolate to 10 results
         for result in searchResults:
             infringement_analysis = performInfringementAnalysis(
                 reference_claims,
@@ -398,8 +399,9 @@ def searchProductSources(keywords:list[str], owners:list[str], reference_claims:
     google_search_results = Gemini().perform_google_search(search_string)
     sites_searched = {}
     product_details_list = []
+    # TODO: Change to all results when new version is ready
     # Iterate through Google Search Results
-    for result in tqdm(google_search_results, desc="Fetching Product Details from Google Search Results"):
+    for result in tqdm(google_search_results[:10], desc="Fetching Product Details from Google Search Results"):
         website_searched = result.website_name
         if website_searched not in sites_searched.keys():
             sites_searched[website_searched] = 0
