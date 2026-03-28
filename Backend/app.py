@@ -1589,7 +1589,7 @@ def api_create_patent():
     returnVal = {
       'success': True, 
       'message': 'Patent created successfully', 
-      'case_id': created_patent['case_id'],
+      'case_id': created_patent['_id'],
       'case_data': uspto_data
       }
     return jsonify(returnVal), 200
