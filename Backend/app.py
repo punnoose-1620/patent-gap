@@ -1575,7 +1575,7 @@ def api_create_patent():
     # patent_data = data.get('patent_data')
 
     # Check if the patent already exists
-    patent_id = data.get('case_id')
+    patent_id = data.get('_id', None)
     if patent_id is not None:
       patent_data = get_patent_by_id(patent_id)
       if patent_data is not None:
