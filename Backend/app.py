@@ -1,7 +1,7 @@
 import os
 import requests
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime as dt
 from swagger import initialize_swagger
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, Response, stream_with_context
 
@@ -34,6 +34,7 @@ app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 # Configuration
 app.config['PORT'] = int(os.environ.get('PORT', 5000))
 app.config['DEBUG'] = os.environ.get('DEBUG', 'True').lower() == 'true'
+app.config['ENVIRONMENT'] = os.environ.get('ENVIRONMENT', 'dev')
 
 # Initialize Swagger
 swagger = initialize_swagger(app)
@@ -346,6 +347,49 @@ def logout():
         'redirect': '/'
     })
 
+@app.route('/api/stats')
+def get_case_stats():
+  user_id = get_user_id()
+  returnStats = {
+    'activeScans': 0,
+    'patentsAnalyzed': 0,
+    'highRiskMatches': 0,
+    'mediumRiskMatches': 0,
+    'lowRiskMatches': 0,
+    'clearedPatents': 0
+  }
+  if not user_id:
+    print('TEST: My Cases - Not authenticated')
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+  try:
+    cases = get_case_related_to_user(user_id)
+    for case in cases:
+      # Calculate Risk Counts
+      infringement_percentage = calculate_average_infringement_percentage(case)
+      risk_level = get_risk_level(infringement_percentage)
+      if risk_level == 'high':
+        returnStats['highRiskMatches'] += 1
+      elif risk_level == 'medium':
+        returnStats['mediumRiskMatches'] += 1
+      else:
+        returnStats['lowRiskMatches'] += 1
+      # Calculate Active Count
+      if case.get('current_status', '').strip().lower() == 'processing':
+        returnStats['activeScans'] += 1
+      # Calculate Analyzed Count
+      similar_claims = case.get('similar_claims', [])
+      infringement_analysis_flag = case.get('infringement_analysis_flag', '').strip().lower()
+      infringements = case.get('infringements', [])
+      if ('complete' in infringement_analysis_flag and len(similar_claims) > 0) or (len(infringements) > 0):
+        returnStats['patentsAnalyzed'] += 1
+      # Calculate Cleared Count
+      if (len(infringements) == 0) or ((len(similar_claims) == 0) and ('complete' not in infringement_analysis_flag)):
+        returnStats['clearedPatents'] += 1
+    return returnStats
+  except Exception as e:
+    print(f'Error getting case stats: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error getting case stats: {str(e)}'}), 500
+
 @app.route('/api/all-cases')
 def all_cases():
     # if 'user_id' not in session:
@@ -355,6 +399,8 @@ def all_cases():
     # print(f'LOG: {user_id} Get My Cases')
     try:
         cases = get_all_cases()
+        ids = [case.get('_id') for case in cases]
+        print(f'LOG: All Cases({len(cases)}): {ids}')
         return jsonify({
             'success': True,
             'cases': cases
@@ -501,9 +547,11 @@ def profile():
     user_id = get_user_id()
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    
     print(f'LOG: {user_id} Get Profile Data')
     try:
         profile_data = get_user_profile(user_id)
+        print(f'LOG: Profile Data {user_id}: {json.dumps(profile_data, indent=4)}')
         return jsonify({
             'success': True,
             'profile': profile_data
@@ -922,6 +970,121 @@ def api_change_password():
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error changing password: {str(e)}'}), 500
   
+# Create User
+@app.route('/api/create-attorney', methods=['POST'])
+def api_create_attorney():
+  try:
+    data = request.get_json()
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    if not data.get('email'):
+      return jsonify({'success': False, 'message': 'Email is required'}), 400
+    if not data.get('password'):
+      return jsonify({'success': False, 'message': 'Password is required'}), 400
+    if not data.get('full_name'):
+      return jsonify({'success': False, 'message': 'Name is required'}), 400
+    
+    data['created_date'] = dt.now().strftime('%Y-%m-%d')
+    data['role'] = 'attorney'
+
+    if does_user_exist(data.get('email')):
+      return jsonify({'success': False, 'message': 'Email already in use'}), 400
+
+    print(f'Create Attorney Data: {json.dumps(data, indent=4)}')
+    return jsonify(create_user(data))
+  except Exception as e:
+    return jsonify({
+      'success': False, 
+      'message': f'Error creating attorney: {str(e)}'
+      }), 500
+
+@app.route('/api/update-attorney', methods=['POST'])
+def api_update_attorney():
+  """
+  Update an attorney's information
+  ---
+  tags:
+    - Attorneys
+  summary: Update attorney information
+  description: Updates the information of an attorney
+  consumes:
+    - application/json
+  produces:
+    - application/json
+  security:
+    - session: []
+  parameters:
+    - in: body
+      name: attorney_data
+      description: Attorney information
+      required: true
+    responses:
+      200:
+        description: Attorney updated successfully
+    returns structure:
+      {
+        'success': True,
+        'message': 'User updated successfully',
+        'user_id': 'user_id'
+      }
+  """
+  try:
+    data = request.get_json()
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    if not data.get('_id'):
+      return jsonify({'success': False, 'message': 'Attorney ID is required'}), 400
+    if not data.get('email'):
+      return jsonify({'success': False, 'message': 'Email is required'}), 400
+    if not data.get('full_name'):
+      return jsonify({'success': False, 'message': 'Name is required'}), 400
+
+    user_id = get_user_id()
+    if not user_id:
+      return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    data['updated_date'] = dt.now().strftime('%Y-%m-%d')
+    data['role'] = 'attorney'
+
+    existing_user = get_user_profile(user_id, show_password=True)
+    if not existing_user:
+      return jsonify({'success': False, 'message': 'Attorney not found'}), 404
+
+    return jsonify(update_user(data, user_id))
+  except Exception as e:
+    return jsonify({'success': False, 'message': f'Error updating attorney: {str(e)}'}), 500
+
+@app.route('/api/update-password', methods=['POST'])
+def api_update_password():
+  try:
+    print(f'LOG: Update Password Request Initiated')
+    data = request.get_json()
+    print(f'LOG: Update Password Data: {json.dumps(data, indent=4)}')
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    if not data.get('password'):
+      return jsonify({'success': False, 'message': 'Password is required'}), 400
+    if data.get('password') == 'null':
+      return jsonify({'success': False, 'message': 'Password is invalid/null'}), 400
+    if not data.get('old_password'):
+      return jsonify({'success': False, 'message': 'Old Password is required'}), 400
+    if data.get('old_password') == 'null':
+      return jsonify({'success': False, 'message': 'Old Password is invalid/null'}), 400
+    if not data.get('user_id'):
+      return jsonify({'success': False, 'message': 'User ID is required'}), 400
+
+    verified = verify_password(data.get('user_id'), data.get('old_password'))
+    if verified is True:
+      result = change_password(data.get('user_id'), data.get('password'))
+      if result.get('success'):
+        return jsonify({'success': True, 'message': result.get('message')})
+      else:
+        return jsonify({'success': False, 'message': result.get('message')}), 400
+    else:
+      return jsonify({'success': False, 'message': 'Invalid password'}), 400
+
+  except Exception as e:
+    return jsonify({'success': False, 'message': f'Error verifying password: {str(e)}'}), 500
+
 @app.route('/api/add-patent', methods=['POST'])
 def add_patent():
     """
@@ -973,6 +1136,13 @@ def add_patent():
         if not data:
             return jsonify({'success': False, 'message': 'No data provided'}), 400
 
+        data['created_by'] = user_id
+        data['created_date'] = dt.now().strftime('%Y-%m-%d')
+        current_id = data.get('_id')
+        if current_id is None:
+          data['_id'] = f"local_{str(uuid.uuid4())[:8]}"
+        if 'local_' not in current_id:
+          data['_id'] = f"local_{current_id}"
         result = create_patent(data)
         if result.get('success'):
             return jsonify(result)
@@ -980,6 +1150,19 @@ def add_patent():
             return jsonify(result), 400
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error adding patent: {str(e)}'}), 500
+
+@app.route('/api/update-patent', methods=['POST'])
+def update_patent():
+  try:
+    data = request.get_json()
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+    if not data.get('_id'):
+      return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
+    
+    return jsonify(update_case(data.get('_id'), data))
+  except Exception as e:
+    return jsonify({'success': False, 'message': f'Error updating patent: {str(e)}'}), 500
 
 @app.route('/api/upload-file-to-local-storage/<case_id>', methods=['POST'])
 def upload_file_to_local_storage(case_id):
@@ -1059,7 +1242,7 @@ def upload_file_to_local_storage(case_id):
       'file_name': file_name,
       'file_type': file_type,
       'file_size': len(file_as_blob),
-      'created_at': datetime.now().isoformat(),
+      'created_at': dt.now().isoformat(),
       'created_by': user_id,
       'case_id': case_id,
       'file_content': file_as_blob,
@@ -1264,7 +1447,7 @@ def trigger_similarity_analysis():
     newAlertId = create_alert(user_id, case_id, references)
     add_to_alerts(
         triggered_by=user_id, 
-        triggered_at=datetime.datetime.utcnow().isoformat(), 
+        triggered_at=dt.utcnow().isoformat(), 
         alert_users=[user_id], 
         title='HETEROJUNCTION BIPOLAR TRANSISTOR', 
         description='Patent Expired Due to NonPayment of Maintenance Fees Under 37 CFR 1.362')
@@ -1437,22 +1620,22 @@ def api_create_patent():
     # patent_data = data.get('patent_data')
 
     # Check if the patent already exists
-    patent_id = data.get('case_id')
+    patent_id = data.get('_id', None)
     if patent_id is not None:
-      patent_data = get_patent_by_id(patent_id)
+      patent_data = get_case_by_id(patent_id)
       if patent_data is not None:
         return jsonify({'success': False, 'message': 'Patent already exists'}), 400
 
     data['created_by'] = user_id
-    data['created_date'] = datetime.now().strftime('%Y-%m-%d')
-    created_patent = create_case(uspto_data)
+    data['created_date'] = dt.now().strftime('%Y-%m-%d')
+    created_patent = create_case(data)
     print('\nLOG: Created Patent: ', created_patent, '\n')
     
     returnVal = {
       'success': True, 
       'message': 'Patent created successfully', 
       'case_id': created_patent['case_id'],
-      'case_data': uspto_data
+      'case_data': data
       }
     return jsonify(returnVal), 200
   except Exception as e:
@@ -1557,7 +1740,6 @@ def fetch_patent_from_uspto():
     uspto_data = uspto_instance.get_complete_patent_info(patent_id)
     uspto_data['created_by'] = user_id
     uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-    # TODO: Get Keywords from USPTO Data
     print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
     if uspto_data is None:
       return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
@@ -1566,12 +1748,59 @@ def fetch_patent_from_uspto():
       'success': True, 
       'message': 'Patent data imported successfully', 
       'case_id': f"uspto_{patent_id}",
-      'keywords': uspto_data['keywords'],
+      'keywords': uspto_data.get('keywords', []),
       'case_data': uspto_data
       }), 200
   except Exception as e:
     print(f'\nError getting patent data from USPTO: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
+  # Try searching patent id using Google Patents
+  try:
+    google_patents = GooglePatents()
+    google_patents_details = google_patents.search_by_id(patent_id)
+    if google_patents_details is not None:
+      case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
+      if case_data is not None:
+        case_data['source'] = 'google_patents'
+        case_data['_id'] = f"googlepatents_{patent_id}"
+        case_data['created_by'] = user_id
+        if case_data.get('current_status', '') == '':
+          case_data['current_status'] = 'Granted'
+        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+        creationResult = create_case(case_data)
+        return jsonify({
+          'success': True, 
+          'message': 'Patent data imported successfully', 
+          'case_id': case_data.get('_id', ''),
+          'keywords': case_data.get('keywords', []),
+          'case_data': case_data
+          }), 200
+  except Exception as e:
+    print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
+  # Patent not found using Google Patents, try using Free Patents Online
+  # try:
+    free_patents = FreePatentsOnline()
+    free_patents_details = free_patents.search_by_id(patent_id)
+    if free_patents_details is not None:
+      case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
+      if case_data is not None:
+        case_data['source'] = 'free_patents_online'
+        case_data['_id'] = f"freepatentsonline_{patent_id}"
+        case_data['created_by'] = user_id
+        if case_data.get('current_status', '') == '':
+          case_data['current_status'] = 'Granted'
+        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+        creationResult = create_case(case_data)
+        return jsonify({
+          'success': True, 
+          'message': 'Patent data imported successfully', 
+          'case_id': case_data.get('_id', ''),
+          'keywords': case_data.get('keywords', []),
+          'case_data': case_data
+          }), 200
+  except Exception as e:
+    print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
+
+  return jsonify({'success': False, 'message': f"Failed to find patent with ID {patent_id}"}), 500
 
 @app.route('/api/get-claims/<case_id>', methods=['GET'])
 def get_claims_for_patent(case_id):
@@ -1796,15 +2025,13 @@ def live_similarity_analysis(case_id):
     print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
   
-  infringement_analysis_results = []
   start_time = time.time()
   update_case(case_id, {'infringement_analysis_status': 'Started'})
   # Perform Live Patent Search
   try:
     patentResults = searchPatentSources(keywords, country, ref_claims)
-    for result in tqdm(patentResults, desc="Serializing Patent Sources Results"):
-      infringement_analysis_results.append(result)
-    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Patent Sources Completed'})
+    update_infringements(case_id, patentResults)
+    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed'})
   except Exception as e:
     current_time = time.time()
     time_in_seconds = current_time - start_time
@@ -1817,32 +2044,24 @@ def live_similarity_analysis(case_id):
     return jsonify({
       'success': False, 
       'message': f'Error performing patent source infringement analysis: {str(e)}',
-      'search_results': infringement_analysis_results,
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 500
   
   # Perform Live Product Search
   try:
     product_details_list = searchProductSources(keywords, owners, ref_claims)
-    for item in tqdm(product_details_list, desc="Serializing Product Sources Results"):
-      if hasattr(item, 'model_dump'):
-        infringement_analysis_results.append(item.model_dump())
-      elif hasattr(item, 'dict'):
-        infringement_analysis_results.append(item.dict())
-      else:
-        infringement_analysis_results.append(item)
-    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Product Sources Completed'})
+    update_infringements(case_id, product_details_list)
+    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed'})
     current_time = time.time()
     time_in_seconds = current_time - start_time
     time_in_minutes = time_in_seconds // 60
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Completed'})
+    update_case(case_id, {'infringement_analysis_status': 'Completed'})
     return jsonify({
       'success': True, 
       'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
-      'infringement_analysis': infringement_analysis_results,
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 200
   except Exception as e:
@@ -2052,6 +2271,19 @@ def getInfringementChart(case_id):
   except Exception as e:
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting infringement chart for patent: {str(e)}'}), 500
+
+# @app.route('/api/test-new-infringement-analysis', methods=['POST'])
+# def test_new_infringement_analysis():
+#   data = request.get_json()
+#   if data is None:
+#     return jsonify({'success': False, 'message': 'No data provided'}), 400
+#   if 'keywords' not in data:
+#     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+#   if 'country' not in data:
+#     return jsonify({'success': False, 'message': 'Country is required'}), 400
+  
+  search_results = searchPatentSourcesNew(data['keywords'], data['country'], data['claims'], data['context'])
+  return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
 
 if __name__ == '__main__':
     port = app.config['PORT']

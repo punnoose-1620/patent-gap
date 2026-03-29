@@ -147,3 +147,57 @@ def is_blob_under_16mb(blob_or_size):
         except TypeError:
             return False
     return 0 <= size < size_limit_bytes
+
+def get_risk_level(infringement_percentage):
+    """
+    Get the risk level for a given infringement percentage
+    """
+    if infringement_percentage > 0.9:
+        return 'high'
+    elif infringement_percentage > 0.7:
+        return 'medium'
+    else:
+        return 'low'
+
+def calculate_average_infringement_percentage(case):
+    """
+    Calculate the average infringement percentage for a list of cases
+    """
+    total_infringement_percentage = 0
+    infringements_count = 0
+    infringements = case.get('infringements', [])
+    similar_claims = case.get('similar_claims', [])
+    try:
+        for infringement in infringements:
+            claims = infringement.get('similar_claims', [])
+            sum_infringement = 0
+            for claim in claims:
+                sum_infringement += claim.get('similarity_score', 0)
+            if len(claims) != 0:
+                avg_infringement = sum_infringement / len(claims)
+                total_infringement_percentage += avg_infringement
+                infringements_count += 1
+    except Exception as e:
+        print(f'Error calculating average infringement percentage for infringements: {str(e)}')
+        return 0
+    
+    try:
+        for infringement in similar_claims:
+            claims = infringement.get('similar_claims', [])
+            sum_infringement = 0
+            for claim in claims:
+                if type(claim) == dict:
+                    if (claim.get('claim', '').strip() != ''):
+                        sum_infringement += claim.get('similarity_score', 0)
+            if len(claims) != 0:
+                avg_infringement = sum_infringement / len(claims)
+                total_infringement_percentage += avg_infringement
+                infringements_count += 1
+    except Exception as e:
+        print(f'Error calculating average infringement percentage for similar claims: {str(e)}')
+        return 0
+
+    if infringements_count == 0:
+        return 0
+    return total_infringement_percentage / infringements_count
+        

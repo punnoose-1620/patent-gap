@@ -46,7 +46,6 @@ def get_all_cases():
     all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
     for case in all_cases:
         case = find_document_metadata(case)
-    print('TEST: All cases: ', all_cases)
     return all_cases
 
 def get_open_cases():
@@ -92,6 +91,22 @@ def create_case(case_data):
         'message': 'Failed to create case'
     }
 
+def update_infringements(case_id, fresh_infringements):
+    """
+    Update the infringements list for a specific case.
+    Meant to append infringements from each source without overall replacement
+    """
+    updated = updateListByIdAndKey(connect_to_database(), getCaseDatabaseName(), fresh_infringements, case_id, 'infringements')
+    if updated:
+        return {
+            'success': True,
+            'message': 'Infringements updated successfully'
+        }
+    return {
+        'success': False,
+        'message': 'Failed to update infringements'
+    }
+
 def update_case(case_id, update_data):
     """
     Update an existing case
@@ -103,9 +118,7 @@ def update_case(case_id, update_data):
     Returns:
         dict: Result containing success status
     """
-    case = get_case_by_id(case_id, show_password=True)
-    case.update(update_data)
-    updated = updateDataById(connect_to_database(), getCaseDatabaseName(), case)
+    updated = updateDataById(connect_to_database(), getCaseDatabaseName(), update_data, case_id)
     if updated:
         return {
             'success': True,
@@ -147,6 +160,12 @@ def get_case_by_id(case_id, show_password=False):
     Returns:
         dict: Case details or None if not found
     """
+    all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
+    for case in all_cases:
+        if (case.get('_id') == case_id) or (case.get('id') == case_id) or (case.get('case_id') == case_id):
+            case = find_document_metadata(case)
+            return case
+    return None
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     if case is not None:
         case = find_document_metadata(case)

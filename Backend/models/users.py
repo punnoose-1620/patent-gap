@@ -1,3 +1,7 @@
+import json
+from database import *
+from env_controller import getUserDatabaseName
+
 mock_users = [
     {
         "full_name": "Alice Johnson",
@@ -27,6 +31,47 @@ mock_users = [
     }
 ]
 
+def create_user(data):
+    """
+    Create a new user
+    
+    Args:
+        data (dict): User data
+    
+    Returns:
+    """
+    addedId = addDataById(connect_to_database(), getUserDatabaseName(), data)
+    if addedId is not None:
+        data['_id'] = addedId
+        return {
+            'success': True,
+            'message': 'User created successfully',
+            'user_id': data['_id']
+        }
+    return {
+        'success': False,
+        'message': 'Failed to create user'
+    }
+
+def update_user(data, user_id):
+    """
+    Update a user's information
+    
+    Args:
+        data (dict): User data
+    """
+    updated = updateDataById(connect_to_database(), getUserDatabaseName(), data, user_id)
+    if updated:
+        return {
+            'success': True,
+            'message': 'User updated successfully',
+            'user_id': data.get('_id', None)
+        }
+    return {
+        'success': False,
+        'message': 'Failed to update user'
+    }
+
 def login_user(email, password):
     """
     Authenticate user login
@@ -38,29 +83,48 @@ def login_user(email, password):
     Returns:
         dict: Result containing success status, message, and user_id if successful
     """
-    # TODO: Implement actual authentication logic
-    # For now, using mock authentication
     if not email or not password:
         return {
             'success': False,
             'message': 'Email and password are required'
         }
     
-    # Mock authentication - replace with actual database lookup
-    for user in mock_users:
+    users = getAllData(connect_to_database(), getUserDatabaseName())
+    for user in users:
+        print(f'LOG: User found: {json.dumps(user, indent=4)}')
         if user['email'] == email and user['password'] == password:
             return {
                 'success': True,
                 'message': 'Login successful',
-                'user_id': user.get('id', None),
+                'user_id': user.get('_id', None),
                 'email': email
+            }
+        elif user['email'] == email:
+            return {
+                'success': False,
+                'message': 'Invalid password'
             }
     return {
         'success': False,
-        'message': 'Invalid email or password'
+        'message': 'Login failed',
+        'user_id': user.get('_id', None),
+        'email': email
     }
 
-def get_user_profile(user_id):
+def does_user_exist(email):
+    """
+    Check if a user exists by email
+    
+    Args:
+        email (str): User's email address
+    """
+    users = getAllData(connect_to_database(), getUserDatabaseName())
+    for user in users:
+        if user['email'] == email:
+            return True
+    return False
+
+def get_user_profile(user_id, show_password=False):
     """
     Get user profile information
     
@@ -70,19 +134,12 @@ def get_user_profile(user_id):
     Returns:
         dict: User profile data
     """
-    for user in mock_users:
-        if '_id' in user.keys():
-            if (user['_id'] == user_id):
-                user_copy = user.copy()
-                if 'password' in user_copy:
-                    del user_copy['password']
-                return user_copy
-        if 'id' in user.keys():
-            if (user['id'] == user_id):
-                user_copy = user.copy()
-                if 'password' in user_copy:
-                    del user_copy['password']
-                return user_copy
+    user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
+    if user is not None:
+        user_copy = user.copy()
+        if 'password' in user_copy and not show_password:
+            del user_copy['password']
+        return user_copy
     return None
 
 def verify_password(user_id, entered_password):
@@ -96,9 +153,9 @@ def verify_password(user_id, entered_password):
     Returns:
         bool: True if password matches, False otherwise
     """
-    for user in mock_users:
-        if user['_id'] == user_id:
-            return user.get('password') == entered_password
+    user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
+    if user is not None:
+        return user.get('password') == entered_password
     return False
 
 def change_password(user_id, new_password):
@@ -112,13 +169,13 @@ def change_password(user_id, new_password):
     Returns:
         dict: Result containing success status and message
     """
-    for user in mock_users:
-        if user['_id'] == user_id:
-            user['password'] = new_password
-            return {
-                'success': True,
-                'message': 'Password updated successfully'
-            }
+    user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
+    if user is not None:
+        updateDataById(connect_to_database(), getUserDatabaseName(), {'password': new_password}, user_id)
+        return {
+            'success': True,
+            'message': 'Password updated successfully'
+        }
     return {
         'success': False,
         'message': 'User not found'

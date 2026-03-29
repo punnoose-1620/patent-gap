@@ -108,6 +108,7 @@ Return the results in the following format:
   ]
 }
 Do not include any other text or comments.
+The results should only be live products available for purchase/order. Do not include any other type of results.
 
 Here's is the search string to perform the google search:
 <search_string_replacement>
