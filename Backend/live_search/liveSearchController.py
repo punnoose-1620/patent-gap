@@ -383,7 +383,7 @@ def searchPatentSources(keywords:list[str], country:str, reference_claims:list[s
                 infringement_dict = infringement_analysis.dict()
             else:
                 infringement_dict = infringement_analysis
-            result['similar_claims'] = infringement_dict
+            result['infringements'] = infringement_dict
             infringement_analysis_results.append(result)
         return infringement_analysis_results
     except Exception as e:
@@ -399,6 +399,8 @@ def searchProductSources(keywords:list[str], owners:list[str], reference_claims:
     google_search_results = Gemini().perform_google_search(search_string)
     sites_searched = {}
     product_details_list = []
+    session = requests.Session()
+    session.headers.update(SESSION_HEADERS)
     # TODO: Change to all results when new version is ready
     # Iterate through Google Search Results
     for result in tqdm(google_search_results[:10], desc="Fetching Product Details from Google Search Results"):
@@ -409,8 +411,6 @@ def searchProductSources(keywords:list[str], owners:list[str], reference_claims:
         url = result.url
         # Get HTML Content for each URL from search results
         try:
-            session = requests.Session()
-            session.headers.update(SESSION_HEADERS)
             html_content = performSearch(url, session)
         except (ConnectionResetError, requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
             print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")

@@ -347,6 +347,49 @@ def logout():
         'redirect': '/'
     })
 
+@app.route('/api/stats')
+def get_case_stats():
+  user_id = get_user_id()
+  returnStats = {
+    'activeScans': 0,
+    'patentsAnalyzed': 0,
+    'highRiskMatches': 0,
+    'mediumRiskMatches': 0,
+    'lowRiskMatches': 0,
+    'clearedPatents': 0
+  }
+  if not user_id:
+    print('TEST: My Cases - Not authenticated')
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+  try:
+    cases = get_case_related_to_user(user_id)
+    for case in cases:
+      # Calculate Risk Counts
+      infringement_percentage = calculate_average_infringement_percentage(case)
+      risk_level = get_risk_level(infringement_percentage)
+      if risk_level == 'high':
+        returnStats['highRiskMatches'] += 1
+      elif risk_level == 'medium':
+        returnStats['mediumRiskMatches'] += 1
+      else:
+        returnStats['lowRiskMatches'] += 1
+      # Calculate Active Count
+      if case.get('current_status', '').strip().lower() == 'processing':
+        returnStats['activeScans'] += 1
+      # Calculate Analyzed Count
+      similar_claims = case.get('similar_claims', [])
+      infringement_analysis_flag = case.get('infringement_analysis_flag', '').strip().lower()
+      infringements = case.get('infringements', [])
+      if ('complete' in infringement_analysis_flag and len(similar_claims) > 0) or (len(infringements) > 0):
+        returnStats['patentsAnalyzed'] += 1
+      # Calculate Cleared Count
+      if (len(infringements) == 0) or ((len(similar_claims) == 0) and ('complete' not in infringement_analysis_flag)):
+        returnStats['clearedPatents'] += 1
+    return returnStats
+  except Exception as e:
+    print(f'Error getting case stats: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error getting case stats: {str(e)}'}), 500
+
 @app.route('/api/all-cases')
 def all_cases():
     # if 'user_id' not in session:
