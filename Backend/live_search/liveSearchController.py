@@ -378,12 +378,11 @@ def searchPatentSources(keywords:list[str], country:str, reference_claims:list[s
             )
             # Convert Pydantic model to plain dict so Flask/jsonify can serialize it
             if hasattr(infringement_analysis, "model_dump"):
-                infringement_dict = infringement_analysis.model_dump()
+                result['infringements'] = infringement_analysis.model_dump()
             elif hasattr(infringement_analysis, "dict"):
-                infringement_dict = infringement_analysis.dict()
+                result['infringements'] = infringement_analysis.dict()
             else:
-                infringement_dict = infringement_analysis
-            result['infringements'] = infringement_dict
+                result['infringements'] = infringement_analysis
             infringement_analysis_results.append(result)
         return infringement_analysis_results
     except Exception as e:

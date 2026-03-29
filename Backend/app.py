@@ -2030,6 +2030,7 @@ def live_similarity_analysis(case_id):
   # Perform Live Patent Search
   try:
     patentResults = searchPatentSources(keywords, country, ref_claims)
+    update_infringements(case_id, patentResults)
     update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed'})
   except Exception as e:
     current_time = time.time()
