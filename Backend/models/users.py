@@ -53,14 +53,14 @@ def create_user(data):
         'message': 'Failed to create user'
     }
 
-def update_user(data):
+def update_user(data, user_id):
     """
     Update a user's information
     
     Args:
         data (dict): User data
     """
-    updated = updateDataById(connect_to_database(), getUserDatabaseName(), data)
+    updated = updateDataById(connect_to_database(), getUserDatabaseName(), data, user_id)
     if updated:
         return {
             'success': True,
@@ -171,8 +171,7 @@ def change_password(user_id, new_password):
     """
     user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
     if user is not None:
-        user['password'] = new_password
-        updateDataById(connect_to_database(), getUserDatabaseName(), user)
+        updateDataById(connect_to_database(), getUserDatabaseName(), {'password': new_password}, user_id)
         return {
             'success': True,
             'message': 'Password updated successfully'

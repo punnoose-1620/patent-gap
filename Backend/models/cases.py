@@ -91,6 +91,22 @@ def create_case(case_data):
         'message': 'Failed to create case'
     }
 
+def update_infringements(case_id, fresh_infringements):
+    """
+    Update the infringements list for a specific case.
+    Meant to append infringements from each source without overall replacement
+    """
+    updated = updateListByIdAndKey(connect_to_database(), getCaseDatabaseName(), fresh_infringements, case_id, 'infringements')
+    if updated:
+        return {
+            'success': True,
+            'message': 'Infringements updated successfully'
+        }
+    return {
+        'success': False,
+        'message': 'Failed to update infringements'
+    }
+
 def update_case(case_id, update_data):
     """
     Update an existing case
@@ -102,14 +118,7 @@ def update_case(case_id, update_data):
     Returns:
         dict: Result containing success status
     """
-    case = get_case_by_id(case_id, show_password=True)
-    if case is None:
-        return {
-            'success': False,
-            'message': 'Case not found'
-        }
-    case.update(update_data)
-    updated = updateDataById(connect_to_database(), getCaseDatabaseName(), case)
+    updated = updateDataById(connect_to_database(), getCaseDatabaseName(), update_data, case_id)
     if updated:
         return {
             'success': True,

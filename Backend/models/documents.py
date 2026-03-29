@@ -20,7 +20,7 @@ def createDocument(document_data):
     }
 
 def updateDocument(document_id, update_data):
-    updated = updateDataById(connect_to_database(), getDocumentDatabaseName(), {'_id': document_id, **update_data})
+    updated = updateDataById(connect_to_database(), getDocumentDatabaseName(), update_data, document_id)
     if updated:
         return {
             'success': True,

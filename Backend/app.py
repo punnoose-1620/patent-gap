@@ -1038,16 +1038,18 @@ def api_update_attorney():
       return jsonify({'success': False, 'message': 'Email is required'}), 400
     if not data.get('full_name'):
       return jsonify({'success': False, 'message': 'Name is required'}), 400
+
+    user_id = get_user_id()
+    if not user_id:
+      return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     data['updated_date'] = dt.now().strftime('%Y-%m-%d')
     data['role'] = 'attorney'
 
-    existing_user = get_user_profile(data.get('_id'), show_password=True)
+    existing_user = get_user_profile(user_id, show_password=True)
     if not existing_user:
       return jsonify({'success': False, 'message': 'Attorney not found'}), 404
-    
-    password = existing_user.get('password')
-    data['password'] = password
-    return jsonify(update_user(data))
+
+    return jsonify(update_user(data, user_id))
   except Exception as e:
     return jsonify({'success': False, 'message': f'Error updating attorney: {str(e)}'}), 500
 
@@ -2023,15 +2025,12 @@ def live_similarity_analysis(case_id):
     print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
   
-  infringement_analysis_results = []
   start_time = time.time()
   update_case(case_id, {'infringement_analysis_status': 'Started'})
   # Perform Live Patent Search
   try:
     patentResults = searchPatentSources(keywords, country, ref_claims)
-    for result in tqdm(patentResults, desc="Serializing Patent Sources Results"):
-      infringement_analysis_results.append(result)
-    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Patent Sources Completed'})
+    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed'})
   except Exception as e:
     current_time = time.time()
     time_in_seconds = current_time - start_time
@@ -2044,32 +2043,24 @@ def live_similarity_analysis(case_id):
     return jsonify({
       'success': False, 
       'message': f'Error performing patent source infringement analysis: {str(e)}',
-      'search_results': infringement_analysis_results,
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 500
   
   # Perform Live Product Search
   try:
     product_details_list = searchProductSources(keywords, owners, ref_claims)
-    for item in tqdm(product_details_list, desc="Serializing Product Sources Results"):
-      if hasattr(item, 'model_dump'):
-        infringement_analysis_results.append(item.model_dump())
-      elif hasattr(item, 'dict'):
-        infringement_analysis_results.append(item.dict())
-      else:
-        infringement_analysis_results.append(item)
-    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Product Sources Completed'})
+    update_infringements(case_id, product_details_list)
+    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed'})
     current_time = time.time()
     time_in_seconds = current_time - start_time
     time_in_minutes = time_in_seconds // 60
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'similar_claims': infringement_analysis_results, 'infringement_analysis_status': 'Completed'})
+    update_case(case_id, {'infringement_analysis_status': 'Completed'})
     return jsonify({
       'success': True, 
       'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
-      'infringement_analysis': infringement_analysis_results,
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 200
   except Exception as e:

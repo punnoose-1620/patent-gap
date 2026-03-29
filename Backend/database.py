@@ -169,7 +169,22 @@ def getDataById(db, collectionName, entryId):
         print(f"Error fetching data by ID from {collectionName}: {e}")
         return None
 
-def updateDataById(db, collectionName, entryData):
+def updateListByIdAndKey(db, collectionName, update_list, entry_id, key):
+    """
+    Updates a specific entry in a Firestore collection by its ID and key.
+    """
+    try:
+        collection = db[collectionName]
+        result = collection.update_one(
+            {'_id': entry_id},
+            {'$push': {key: {'$each': update_list}}}
+        )
+        return result.modified_count > 0
+    except Exception as e:
+        print(f"Error updating list by ID and key in {collectionName}: {e}")
+        return False
+
+def updateDataById(db, collectionName, update_fields, entry_id):
     """
     Updates a specific entry in a Firestore collection by its ID.
     
@@ -182,16 +197,6 @@ def updateDataById(db, collectionName, entryData):
         bool: True if update was successful, False otherwise.
     """
     try:
-        entry_id = entryData.get('_id')
-        if not entry_id:
-            raise ValueError("entryData must include an '_id' key for the entry to update.")
-        
-        # Remove '_id' from the data to avoid overwriting the key itself
-        update_fields = {k: v for k, v in entryData.items() if k != '_id'}
-        if not update_fields:
-            # Nothing to update
-            return False
-        
         collection = db[collectionName]
         result = collection.update_one(
             {'_id': entry_id},
