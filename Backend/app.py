@@ -1632,8 +1632,8 @@ def api_create_patent():
     returnVal = {
       'success': True, 
       'message': 'Patent created successfully', 
-      'case_id': created_patent['_id'],
-      'case_data': uspto_data
+      'case_id': created_patent['case_id'],
+      'case_data': data
       }
     return jsonify(returnVal), 200
   except Exception as e:
@@ -1746,7 +1746,7 @@ def fetch_patent_from_uspto():
       'success': True, 
       'message': 'Patent data imported successfully', 
       'case_id': f"uspto_{patent_id}",
-      'keywords': uspto_data['keywords'],
+      'keywords': uspto_data.get('keywords', []),
       'case_data': uspto_data
       }), 200
   except Exception as e:
@@ -1768,8 +1768,8 @@ def fetch_patent_from_uspto():
         return jsonify({
           'success': True, 
           'message': 'Patent data imported successfully', 
-          'case_id': case_data['_id'],
-          'keywords': case_data['keywords'],
+          'case_id': case_data.get('_id', ''),
+          'keywords': case_data.get('keywords', []),
           'case_data': case_data
           }), 200
   except Exception as e:
@@ -1791,8 +1791,8 @@ def fetch_patent_from_uspto():
         return jsonify({
           'success': True, 
           'message': 'Patent data imported successfully', 
-          'case_id': case_data['_id'],
-          'keywords': case_data['keywords'],
+          'case_id': case_data.get('_id', ''),
+          'keywords': case_data.get('keywords', []),
           'case_data': case_data
           }), 200
   except Exception as e:
