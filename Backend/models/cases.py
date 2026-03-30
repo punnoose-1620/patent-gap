@@ -29,11 +29,11 @@ def string_fuzzy_similarity(s1, s2):
 def find_document_metadata(case_data):
     documents = case_data.get('documents', [])
     for entry in documents:
-        if entry['source'] == 'local':
-            url = entry['url']
+        if entry.get('source', '') == 'local':
+            url = entry.get('url', '')
             document_id = url.split('/')[-1].split('.')[0]
             document = getDocumentById(document_id)
-            if document['success']:
+            if document.get('success', False):
                 entry['title'] = document['document'].get('file_name', '')
                 entry['size'] = document['document'].get('file_size', '')
                 entry['type'] = document['document'].get('file_type', '')
