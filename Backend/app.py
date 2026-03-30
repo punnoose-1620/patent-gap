@@ -1256,11 +1256,10 @@ def upload_file_to_local_storage(case_id):
           'message': created_document.get('message')
           }), 400
       document_id = created_document.get('document_id')
-      document_source = created_document.get('document_source')
       document_url = f'documents/{document_id}'
       documentEntry = {
         'url': document_url,
-        'source': document_source
+        'source': 'local'
       }
       documents.append(documentEntry)
       updateData = {
@@ -1831,6 +1830,21 @@ def get_claims_for_patent(case_id):
     for document in document_urls:
       content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
       document_contents.append(content)
+
+    documents = case_data.get('documents', [])
+    for document in documents:
+      if document.get('source', '') == 'uspto':
+        content  = readDocumentFromUrl(document.get('url', ''), headers={"X-API-KEY": getEnvKey('uspto')})
+        document_contents.append(content)
+      elif document.get('source', '') == 'local':
+        doc_id = document.get('url', '').split('/')[-1].strip()
+        document_view = getDocumentById(doc_id)
+        if document_view.get('success', False):
+          document_blob = document_view.get('document', {}).get('file_content', '')
+          content = document_blob.decode('utf-8')
+          document_contents.append(content)
+      else:
+        document_contents.append(document.get('content', ''))
 
     if (len(document_contents) == 0) or (document_contents is None):
       return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
