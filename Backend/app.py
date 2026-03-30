@@ -1847,7 +1847,13 @@ def get_claims_for_patent(case_id):
         document_contents.append(document.get('content', ''))
 
     if (len(document_contents) == 0) or (document_contents is None):
-      return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+      return jsonify({
+        'success': False, 
+        'message': 'No viable document contents provided', 
+        'documents': {
+          'document_urls_key': document_urls,
+          'documents_key': document_contents
+        }}), 400
 
     complete_document_contents = ""
     for content in document_contents:
