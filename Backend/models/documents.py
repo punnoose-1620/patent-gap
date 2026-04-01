@@ -17,8 +17,8 @@ def createDocument(document_data):
     return {
         'success': False,
         'message': 'Failed to create document',
-        'input_data': document_data
-        'error': str(e)
+        'input_data': document_data,
+        'added_id': addedId
     }
 
 def updateDocument(document_id, update_data):
