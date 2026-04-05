@@ -26,7 +26,7 @@ from live_search.liveSearchController import *
 app = Flask(__name__, 
             static_folder='../Assets',
             template_folder='../Frontend')
-CORS(app)
+CORS(app, origins="*")
 
 # Set secret key for sessions
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
