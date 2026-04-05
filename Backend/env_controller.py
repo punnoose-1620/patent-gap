@@ -103,8 +103,8 @@ def getDocumentDatabaseName():
     if environment == production:
         return os.environ.get('DOCUMENTS_DATABASE_NAME_PROD')
     elif environment == development:
-        return os.environ.get('DOCUMENTS_DATABASE_NAME_PROD')
+        return os.environ.get('DOCUMENTS_DATABASE_NAME_DEV')
     elif environment == testing:
-        return os.environ.get('DOCUMENTS_DATABASE_NAME_PROD')
+        return os.environ.get('DOCUMENTS_DATABASE_NAME_TEST')
     else:
-        return os.environ.get('DOCUMENTS_DATABASE_NAME_PROD')
+        return os.environ.get('DOCUMENTS_DATABASE_NAME_DEV')
