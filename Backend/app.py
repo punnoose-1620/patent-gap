@@ -1283,12 +1283,12 @@ def upload_file_to_local_storage(case_id):
       })
     except Exception as e:
       print(f'LOG: Error uploading file: {str(e)}')
-        newEntryData['file_size_under12Mb'] = sizeFlag
-        return jsonify({
-          'success': False, 
-          'message': f'Failed to upload file: {str(e)}',
-          'newEntryData': newEntryData
-          }), 500
+      newEntryData['file_size_under12Mb'] = sizeFlag
+      return jsonify({
+        'success': False, 
+        'message': f'Failed to upload file: {str(e)}',
+        'newEntryData': newEntryData
+        }), 500
 
 @app.route('/api/alerts', methods=['GET'])
 def get_all_alerts():
