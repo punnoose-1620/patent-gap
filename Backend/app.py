@@ -1261,7 +1261,8 @@ def upload_file_to_local_storage(case_id):
         'url': document_url,
         'source': 'local'
       }
-      newEntryData['document_created_response'] = documentEntry
+      newEntryData['document_created_response'] = created_document
+      newEntryData['update_case_entry'] = documentEntry
       documents.append(documentEntry)
       updateData = {
         'documents': documents
