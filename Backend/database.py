@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime
 from google.cloud import storage
 from pymongo import MongoClient
@@ -247,9 +248,9 @@ def addDataById(db, collectionName, entryData):
         if not checkCollectionExists(db, collectionName):
             createCollection(db, collectionName)
         collection = db[collectionName]
-        allData = getAllData(db, collectionName)
+        # allData = getAllData(db, collectionName)
         if '_id' not in entryData.keys():
-            entryData['_id'] = str(int(datetime.now().timestamp()))
+            entryData['_id'] = str(uuid.uuid4())
         result = collection.insert_one(entryData)
         return str(result.inserted_id)
     except Exception as e:
