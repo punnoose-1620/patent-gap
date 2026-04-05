@@ -7,7 +7,7 @@ def getAllDocuments():
 
 def createDocument(document_data):
     addedId = addDataById(connect_to_database(), getDocumentDatabaseName(), document_data)
-    if addedId is not None:
+    if 'DocumentCreationError' not in addedId:
         document_data['_id'] = addedId
         return {
             'success': True,

@@ -1249,10 +1249,11 @@ def upload_file_to_local_storage(case_id):
 
     try:
       created_document = createDocument(newEntryData)
-      if not created_document.get('success', False):
+      if created_document.get('success', False)==False:
         return jsonify({
           'success': False, 
-          'message': created_document.get('message')
+          'message': created_document,
+          'newEntryData': newEntryData
           }), 400
       document_id = created_document.get('document_id')
       document_url = f'documents/{document_id}'
@@ -1270,10 +1271,11 @@ def upload_file_to_local_storage(case_id):
       else:
         updateResult = update_case(case_id, updateData)
       newEntryData['update_case_result'] = updateResult
-      if not updateResult.get('success', False):
+      if updateResult.get('success', False)==False:
         return jsonify({
           'success': False, 
-          'message': 'Unable to update document id to case entry'
+          'message': 'Unable to update document id to case entry',
+          'newEntryData': newEntryData
           }), 400
       return jsonify({
         'success': True,
