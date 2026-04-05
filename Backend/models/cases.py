@@ -107,6 +107,21 @@ def update_infringements(case_id, fresh_infringements):
         'message': 'Failed to update infringements'
     }
 
+def update_case_documents(case_id, update_data):
+    """
+    Update the documents list for a specific case.
+    """
+    updated = updateListByIdAndKey(connect_to_database(), getCaseDatabaseName(), update_data, case_id, 'documents')
+    if updated:
+        return {
+            'success': True,
+            'message': 'Case documents updated successfully'
+        }
+    return {
+        'success': False,
+        'message': 'Failed to update case documents'
+    }
+
 def update_case(case_id, update_data):
     """
     Update an existing case

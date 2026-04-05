@@ -1216,8 +1216,6 @@ def upload_file_to_local_storage(case_id):
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
 
-    print(f'LOG: {user_id} Upload File to Local Storage')
-
     caseData = get_case_by_id(case_id)
     if caseData is None:
         return jsonify({'success': False, 'message': 'Case not found'}), 404
@@ -1228,7 +1226,8 @@ def upload_file_to_local_storage(case_id):
         return jsonify({'success': False, 'message': 'No file part in the request'}), 400
 
     file_as_blob = request.files['file'].read()
-    if not is_blob_under_12mb(file_as_blob):
+    sizeFlag = is_blob_under_12mb(file_as_blob)
+    if not sizeFlag:
         return jsonify({'success': False, 'message': 'File is too large. Maximum size is 12MB'}), 400
 
     file_type = request.files['file'].content_type
@@ -1261,11 +1260,16 @@ def upload_file_to_local_storage(case_id):
         'url': document_url,
         'source': 'local'
       }
+      newEntryData['document_created_response'] = documentEntry
       documents.append(documentEntry)
       updateData = {
         'documents': documents
       }
-      updateResult = update_case(case_id, updateData)
+      if len(documents) > 1:
+        updateResult = update_case_documents(case_id, updateData)
+      else:
+        updateResult = update_case(case_id, updateData)
+      newEntryData['update_case_result'] = updateResult
       if not updateResult.get('success', False):
         return jsonify({
           'success': False, 
@@ -1278,9 +1282,12 @@ def upload_file_to_local_storage(case_id):
         'document_url': document_url
       })
     except Exception as e:
+      print(f'LOG: Error uploading file: {str(e)}')
+        newEntryData['file_size_under12Mb'] = sizeFlag
         return jsonify({
           'success': False, 
-          'message': f'Failed to upload file: {str(e)}'
+          'message': f'Failed to upload file: {str(e)}',
+          'newEntryData': newEntryData
           }), 500
 
 @app.route('/api/alerts', methods=['GET'])
