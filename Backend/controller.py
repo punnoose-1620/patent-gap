@@ -128,7 +128,7 @@ def getReferenceCase(case_id, user_id):
         # TODO: Get Embeddings for each case and check similarity with the reference case
         print(case)
 
-def is_blob_under_16mb(blob_or_size):
+def is_blob_under_12mb(blob_or_size):
     """
     Check if blob or size (in bytes) is under the 16MB document limit.
 
@@ -138,7 +138,7 @@ def is_blob_under_16mb(blob_or_size):
     Returns:
         bool: True if under 16 MB, False otherwise.
     """
-    size_limit_bytes = 16 * 1024 * 1024  # 16 MB
+    size_limit_bytes = 12 * 1024 * 1024  # 16 MB
     if isinstance(blob_or_size, (int, float)):
         size = int(blob_or_size)
     else:

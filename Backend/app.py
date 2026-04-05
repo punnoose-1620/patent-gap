@@ -1228,8 +1228,8 @@ def upload_file_to_local_storage(case_id):
         return jsonify({'success': False, 'message': 'No file part in the request'}), 400
 
     file_as_blob = request.files['file'].read()
-    if not is_blob_under_16mb(file_as_blob):
-        return jsonify({'success': False, 'message': 'File is too large. Maximum size is 16MB'}), 400
+    if not is_blob_under_12mb(file_as_blob):
+        return jsonify({'success': False, 'message': 'File is too large. Maximum size is 12MB'}), 400
 
     file_type = request.files['file'].content_type
     if file_type not in ['application/pdf', 'application/xml']:
