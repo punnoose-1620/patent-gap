@@ -1249,6 +1249,7 @@ def upload_file_to_local_storage(case_id):
 
     try:
       created_document = createDocument(newEntryData)
+      newEntryData.pop('file_content')
       if created_document.get('success', False)==False:
         return jsonify({
           'success': False, 
@@ -1286,6 +1287,7 @@ def upload_file_to_local_storage(case_id):
       })
     except Exception as e:
       print(f'LOG: Error uploading file: {str(e)}')
+      newEntryData.pop('file_content')
       newEntryData['file_size_under12Mb'] = sizeFlag
       return jsonify({
         'success': False, 
