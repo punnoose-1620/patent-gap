@@ -29,11 +29,11 @@ def string_fuzzy_similarity(s1, s2):
 def find_document_metadata(case_data):
     documents = case_data.get('documents', [])
     for entry in documents:
-        if entry['source'] == 'local':
-            url = entry['url']
+        if entry.get('source', '') == 'local':
+            url = entry.get('url', '')
             document_id = url.split('/')[-1].split('.')[0]
             document = getDocumentById(document_id)
-            if document['success']:
+            if document.get('success', False):
                 entry['title'] = document['document'].get('file_name', '')
                 entry['size'] = document['document'].get('file_size', '')
                 entry['type'] = document['document'].get('file_type', '')
@@ -105,6 +105,21 @@ def update_infringements(case_id, fresh_infringements):
     return {
         'success': False,
         'message': 'Failed to update infringements'
+    }
+
+def update_case_documents(case_id, update_data):
+    """
+    Update the documents list for a specific case.
+    """
+    updated = updateListByIdAndKey(connect_to_database(), getCaseDatabaseName(), update_data, case_id, 'documents')
+    if updated:
+        return {
+            'success': True,
+            'message': 'Case documents updated successfully'
+        }
+    return {
+        'success': False,
+        'message': 'Failed to update case documents'
     }
 
 def update_case(case_id, update_data):

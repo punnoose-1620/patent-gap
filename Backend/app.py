@@ -26,7 +26,7 @@ from live_search.liveSearchController import *
 app = Flask(__name__, 
             static_folder='../Assets',
             template_folder='../Frontend')
-CORS(app)
+CORS(app, origins="*")
 
 # Set secret key for sessions
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here')
@@ -1216,8 +1216,6 @@ def upload_file_to_local_storage(case_id):
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
 
-    print(f'LOG: {user_id} Upload File to Local Storage')
-
     caseData = get_case_by_id(case_id)
     if caseData is None:
         return jsonify({'success': False, 'message': 'Case not found'}), 404
@@ -1228,8 +1226,9 @@ def upload_file_to_local_storage(case_id):
         return jsonify({'success': False, 'message': 'No file part in the request'}), 400
 
     file_as_blob = request.files['file'].read()
-    if not is_blob_under_16mb(file_as_blob):
-        return jsonify({'success': False, 'message': 'File is too large. Maximum size is 16MB'}), 400
+    sizeFlag = is_blob_under_12mb(file_as_blob)
+    if not sizeFlag:
+        return jsonify({'success': False, 'message': 'File is too large. Maximum size is 12MB'}), 400
 
     file_type = request.files['file'].content_type
     if file_type not in ['application/pdf', 'application/xml']:
@@ -1250,27 +1249,35 @@ def upload_file_to_local_storage(case_id):
 
     try:
       created_document = createDocument(newEntryData)
-      if not created_document.get('success', False):
+      newEntryData.pop('file_content')
+      if created_document.get('success', False)==False:
         return jsonify({
           'success': False, 
-          'message': created_document.get('message')
+          'message': created_document,
+          'newEntryData': newEntryData
           }), 400
       document_id = created_document.get('document_id')
-      document_source = created_document.get('document_source')
       document_url = f'documents/{document_id}'
       documentEntry = {
         'url': document_url,
-        'source': document_source
+        'source': 'local'
       }
+      newEntryData['document_created_response'] = created_document
+      newEntryData['update_case_entry'] = documentEntry
       documents.append(documentEntry)
       updateData = {
         'documents': documents
       }
-      updateResult = update_case(case_id, updateData)
-      if not updateResult.get('success', False):
+      if len(documents) > 1:
+        updateResult = update_case_documents(case_id, updateData)
+      else:
+        updateResult = update_case(case_id, updateData)
+      newEntryData['update_case_result'] = updateResult
+      if updateResult.get('success', False)==False:
         return jsonify({
           'success': False, 
-          'message': 'Unable to update document id to case entry'
+          'message': 'Unable to update document id to case entry',
+          'newEntryData': newEntryData
           }), 400
       return jsonify({
         'success': True,
@@ -1279,10 +1286,14 @@ def upload_file_to_local_storage(case_id):
         'document_url': document_url
       })
     except Exception as e:
-        return jsonify({
-          'success': False, 
-          'message': f'Failed to upload file: {str(e)}'
-          }), 500
+      print(f'LOG: Error uploading file: {str(e)}')
+      newEntryData.pop('file_content')
+      newEntryData['file_size_under12Mb'] = sizeFlag
+      return jsonify({
+        'success': False, 
+        'message': f'Failed to upload file: {str(e)}',
+        'newEntryData': newEntryData
+        }), 500
 
 @app.route('/api/alerts', methods=['GET'])
 def get_all_alerts():
@@ -1832,8 +1843,29 @@ def get_claims_for_patent(case_id):
       content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
       document_contents.append(content)
 
+    documents = case_data.get('documents', [])
+    for document in documents:
+      if document.get('source', '') == 'uspto':
+        content  = readDocumentFromUrl(document.get('url', ''), headers={"X-API-KEY": getEnvKey('uspto')})
+        document_contents.append(content)
+      elif document.get('source', '') == 'local':
+        doc_id = document.get('url', '').split('/')[-1].strip()
+        document_view = getDocumentById(doc_id)
+        if document_view.get('success', False):
+          document_blob = document_view.get('document', {}).get('file_content', '')
+          content = document_blob.decode('utf-8')
+          document_contents.append(content)
+      else:
+        document_contents.append(document.get('content', ''))
+
     if (len(document_contents) == 0) or (document_contents is None):
-      return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
+      return jsonify({
+        'success': False, 
+        'message': 'No viable document contents provided', 
+        'documents': {
+          'document_urls_key': document_urls,
+          'documents_key': document_contents
+        }}), 400
 
     complete_document_contents = ""
     for content in document_contents:

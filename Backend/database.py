@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime
 from google.cloud import storage
 from pymongo import MongoClient
@@ -229,7 +230,7 @@ def deleteDataById(db, collectionName, entryId):
 
 def addDataById(db, collectionName, entryData):
     """
-    Adds a new entry to a Firestore collection.
+    Adds a new entry to a MongoDB collection.
     If '_id' is provided in entryData, uses that; otherwise MongoDB generates one.
     If entry data already exists under different '_id', one of the following happens:
     - if all the keys and values are the same, do nothing
@@ -247,14 +248,14 @@ def addDataById(db, collectionName, entryData):
         if not checkCollectionExists(db, collectionName):
             createCollection(db, collectionName)
         collection = db[collectionName]
-        allData = getAllData(db, collectionName)
+        # allData = getAllData(db, collectionName)
         if '_id' not in entryData.keys():
-            entryData['_id'] = str(int(datetime.now().timestamp()))
+            entryData['_id'] = str(uuid.uuid4())
         result = collection.insert_one(entryData)
         return str(result.inserted_id)
     except Exception as e:
         print(f"Error adding data to {collectionName}: {e}")
-        return None
+        return "DocumentCreationError: Collection(" + collectionName + ") not found: " + str(e)
 
 def insertOrUpdateDataById(db, collectionName, entryData):
     """
