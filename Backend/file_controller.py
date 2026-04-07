@@ -1,3 +1,17 @@
+from models.documents import *
+
+def pdf_to_text(document_data):
+    import io
+    import PyPDF2
+    pdf_bytes = io.BytesIO(document_data)
+    reader = PyPDF2.PdfReader(pdf_bytes)
+    text = ""
+    for page in reader.pages:
+        t = page.extract_text()
+        if t:
+            text += t
+    return text
+
 def xml_to_text(xml_content):
     """
     Converts XML content to plain text with error handling.
@@ -94,3 +108,21 @@ def readDocumentFromUrl(url:str, headers:dict=None, params:dict=None) -> str:
         return text_content
     elif url.endswith('.pdf'):
         return readFromPdfUrl(url, headers=headers, params=params)
+
+def readLocalDocument(document_id):
+    """
+    Read the content of a local document
+    """
+    document = getDocumentById(document_id)
+    if document.get('success', False):
+        document_data = document.get('document', {})
+        doc_content = document_data.get('file_content')
+        if doc_content is None:
+            return None
+        if document_data.get('file_type', '') == 'application/pdf':
+            return pdf_to_text(doc_content)
+        elif document_data.get('file_type', '') == 'application/xml':
+            return xml_to_text(doc_content)
+        else:
+            return None
+    return None

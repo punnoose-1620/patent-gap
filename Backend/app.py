@@ -1840,7 +1840,13 @@ def get_claims_for_patent(case_id):
     document_urls = case_data.get('document_urls', [])
     document_contents = []
     for document in document_urls:
-      content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+      if 'uspto' in document:
+        content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+      elif '/document/' in document:
+        doc_id = document.split('/')[-1].strip()
+        content = readLocalDocument(doc_id)
+      else:
+        content = readDocumentFromUrl(document)
       document_contents.append(content)
 
     documents = case_data.get('documents', [])
