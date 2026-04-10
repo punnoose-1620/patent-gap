@@ -2044,6 +2044,7 @@ def live_similarity_analysis(case_id):
   ref_claims = data.get('claims', [])
   country = data.get('country', '')
   context = data.get('context', '')
+  search_limitations = data.get('search_limitations', {})
   
   if case_id is None:
     print(f'\nERROR: LiveSearch: Case ID is required for user: {user_id}')
@@ -2087,7 +2088,7 @@ def live_similarity_analysis(case_id):
   
   # Perform Live Product Search
   try:
-    product_details_list = searchProductSources(keywords, owners, ref_claims)
+    product_details_list = searchProductSources(keywords, owners, ref_claims, search_limitations)
     update_infringements(case_id, product_details_list)
     update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed'})
     current_time = time.time()
@@ -2310,15 +2311,15 @@ def getInfringementChart(case_id):
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting infringement chart for patent: {str(e)}'}), 500
 
-# @app.route('/api/test-new-infringement-analysis', methods=['POST'])
-# def test_new_infringement_analysis():
-#   data = request.get_json()
-#   if data is None:
-#     return jsonify({'success': False, 'message': 'No data provided'}), 400
-#   if 'keywords' not in data:
-#     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
-#   if 'country' not in data:
-#     return jsonify({'success': False, 'message': 'Country is required'}), 400
+@app.route('/api/test-new-infringement-analysis', methods=['POST'])
+def test_new_infringement_analysis():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'keywords' not in data:
+    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  if 'country' not in data:
+    return jsonify({'success': False, 'message': 'Country is required'}), 400
   
   search_results = searchPatentSourcesNew(data['keywords'], data['country'], data['claims'], data['context'])
   return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200

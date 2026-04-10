@@ -162,10 +162,16 @@ class Gemini:
         self, 
         keywords: list[str], 
         owners: list[str], 
+        search_limitations: dict,
         model_name:str = 'gemini-2.5-flash'
         ):
+        
+        companies = search_limitations.get('companies', [])
+        websites = search_limitations.get('urls', [])
         final_prompt = SEARCH_STRING_GENERATOR.replace("<keywords_replacement>", "\n".join(keywords))
         final_prompt = final_prompt.replace("<owners_replacement>", "\n".join(owners))
+        final_prompt = final_prompt.replace("<search_limitations_companies>", "\n".join(companies))
+        final_prompt = final_prompt.replace("<search_limitations_websites>", "\n".join(websites))
         response = self._client.models.generate_content(
             model=model_name,
             contents=final_prompt,

@@ -390,9 +390,9 @@ def searchPatentSources(keywords:list[str], country:str, reference_claims:list[s
         raise e
     return []
 
-def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str]):
+def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str], search_limitations:dict):
     # Generate Search String using Gemini
-    search_string = Gemini().get_search_string(keywords, owners)
+    search_string = Gemini().get_search_string(keywords, owners, search_limitations)
     print(f"LOG: Search String: {search_string}")
     # Perform Google Search
     google_search_results = Gemini().perform_google_search(search_string)
