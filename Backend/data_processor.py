@@ -462,10 +462,13 @@ def isolateDataFromUSPTOResults(result):
     mailingAddresses = []
     filingUser = None
     filingDate = None
+    applicant_name = None
+    current_assignee = []
     try:
         correspondenceAddressBag = result.get('correspondenceAddressBag')
         recordAttorney = result.get('recordAttorney')
         applicationMetaData = result.get('applicationMetaData')
+        assignmentBag = result.get('assignmentBag', [])
 
         if result.get('applicationNumberText') is not None:
             applicationNumber = f"uspto_{result.get('applicationNumberText')}"
@@ -476,6 +479,7 @@ def isolateDataFromUSPTOResults(result):
             titleData = applicationMetaData.get('inventionTitle')
             filingDate = applicationMetaData.get('filingDate')
             tempInventors = applicationMetaData.get('inventorBag')
+            applicantBag = applicationMetaData.get('applicantBag', [])
             currentStatusCode = applicationMetaData.get('applicationStatusCode')
             currentStatusDate = applicationMetaData.get('applicationStatusDate')
             currentStatusData = applicationMetaData.get('applicationStatusDescriptionText')
@@ -486,6 +490,11 @@ def isolateDataFromUSPTOResults(result):
                 if type(tempInventorAddresses) is list:
                     for address in tempInventorAddresses:
                         mailingAddresses.append(processAddressLineText(address))
+             # Extract applicant name from applicantBag
+            if len(applicantBag) > 0:
+                applicant_name = applicantBag[0].get('applicantNameText', '')
+            elif applicationMetaData.get('firstApplicantName'):
+                applicant_name = applicationMetaData.get('firstApplicantName', '')
         if type(correspondenceAddressBag) is list:
             for address in correspondenceAddressBag:
                 mailingAddresses.append(processAddressLineText(address))
@@ -510,6 +519,15 @@ def isolateDataFromUSPTOResults(result):
                             'registrationNumber': tempAttorney.get('registrationNumber'),
                             'contact': contactNumbers
                         })
+        # From assignmentBag, get the current assignee
+        if len(assignmentBag) > 0:
+            # Get the most recent assignment (last in list) for current assignee
+            latest_assignment = assignmentBag[-1]
+            assigneeBag = latest_assignment.get('assigneeBag', [])
+            for assignee in assigneeBag:
+                name = assignee.get('assigneeNameText', '').strip()
+                if name and name not in current_assignee:
+                    current_assignee.append(name)
 
         finalResult = {
             '_id': applicationNumber,
@@ -520,6 +538,8 @@ def isolateDataFromUSPTOResults(result):
             'currentStatusDate': currentStatusDate,
             'attorneys': attorneys,    # Name, Registration Number, Contact
             'inventors': inventors,    # List of names
+            'applicant': applicant_name if applicant_name else '',
+            'current_assignee': current_assignee if current_assignee else [],
             'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
             'created_by': filingUser,
             'created_date': datetime.datetime.utcnow().isoformat(),

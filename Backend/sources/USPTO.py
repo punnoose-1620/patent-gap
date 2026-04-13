@@ -737,6 +737,8 @@ class USPTOPatentAPI:
         currentStatusDate = None
         attorneys = []
         inventors = []
+        applicant_name = ''
+        current_assignee = []
         mailingAddresses = []
         documents = []
         filingUser = None           # To be populated with User_Id from endpoint
@@ -750,7 +752,7 @@ class USPTOPatentAPI:
         # transactions = self.get_transactions(application_number)
         # patentTermAdjustment = self.get_patent_term_adjustment(application_number)
         attorneyAgent = self.get_attorney_agent_info(application_number)
-        # assignments = self.get_assignments(application_number)
+        assignments = self.get_assignments(application_number)
         # foreignPriority = self.get_foreign_priority(application_number)
 
         # Process Metadata and get all other relevant information 
@@ -770,6 +772,12 @@ class USPTOPatentAPI:
                     currentStatusDate = metaData.get('applicationStatusDate', '')
                     currentStatusData = metaData.get('applicationStatusDescriptionText', '')
                     applicantBag = metaData.get('applicantBag', [])
+                    
+                    if len(applicantBag) > 0:
+                        applicant_name = applicantBag[0].get('applicantNameText', '')
+                    elif metaData.get('firstApplicantName'):
+                        applicant_name = metaData.get('firstApplicantName', '')
+
                     if len(applicantBag) > 0:
                         for person in applicantBag:
                             addressData = person.get('correspondenceAddressBag', [])
@@ -884,6 +892,18 @@ class USPTOPatentAPI:
                                 processedAddress = self.processAddress(addressData)
                                 if (processedAddress is not None) and (processedAddress not in mailingAddresses):
                                     mailingAddresses.append(processedAddress)
+        # Extract current assignee from assignments
+        if assignments and 'patentFileWrapperDataBag' in assignments:
+            for wrapperData in assignments['patentFileWrapperDataBag']:
+                assignmentBagList = wrapperData.get('assignmentBag', [])
+                if len(assignmentBagList) > 0:
+                    # Get the most recent assignment (last in list)
+                    latest_assignment = assignmentBagList[-1]
+                    assigneeBag = latest_assignment.get('assigneeBag', [])
+                    for assignee in assigneeBag:
+                        name = assignee.get('assigneeNameText', '').strip()
+                        if name and name not in current_assignee:
+                            current_assignee.append(name)
 
         returnVal = {
             '_id': applicationNumber,
@@ -894,6 +914,8 @@ class USPTOPatentAPI:
             'currentStatusDate': currentStatusDate,
             'attorneys': attorneys,    # Name, Registration Number, Contact
             'inventors': inventors,    # List of names
+            'applicant': applicant_name if applicant_name else '',
+            'current_assignee': current_assignee if current_assignee else [],
             'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
             'created_by': filingUser,
             'created_date': datetime.utcnow().isoformat(),

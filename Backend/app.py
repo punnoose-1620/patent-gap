@@ -14,6 +14,7 @@ from models.documents import *
 from sources.USPTO import *
 from sources.Gemini import *
 from sources.OpenAlex import *
+from sources.Sources import *
 
 from database import *
 from controller import *
@@ -21,6 +22,7 @@ from llm_processor import *
 from data_processor import *
 from env_controller import *
 from live_search.liveSearchController import *
+from file_controller import *
 
 
 app = Flask(__name__, 
@@ -162,13 +164,14 @@ def infringement_details_page():
 # API Endpoints
 @app.route('/api/source-stats')
 def get_source_stats():
+  sources = Sources()
   """Get source stats"""
   return jsonify({
     'success': True,
     'source_stats': {
-      'remaining_sources': len(getRemainingSources()),
-      'integrated_sources': len(getIntegratedSourceTitles()),
-      'covered_jurisdictions': len(getCoveredJurisdictions())
+      'remaining_sources': len(sources.getRemainingSources()),
+      'integrated_sources': len(sources.getIntegratedSourceTitles()),
+      'covered_jurisdictions': len(sources.getCoveredJurisdictions())
     }
   })
 

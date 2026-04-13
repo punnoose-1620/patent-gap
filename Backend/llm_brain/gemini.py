@@ -105,6 +105,8 @@ class Gemini:
             "claims": [],
             "attorneys": [],
             "inventors": [],
+            "applicant": "",
+            "current_assignee": [],
         }
         for key, default in _defaults.items():
             if key not in data or data[key] is None:

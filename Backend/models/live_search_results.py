@@ -28,6 +28,8 @@ class LiveSearchResults(BaseModel):
     # Set Infringements to an empty list
     attorneys: list[AttorneysData]
     inventors: list[str]
+    applicant: str = None
+    current_assignee: list[str]=[]
     # Set Mailing Addresses to an empty list
 
     def created(self, creator: str):

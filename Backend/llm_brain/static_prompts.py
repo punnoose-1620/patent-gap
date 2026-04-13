@@ -26,6 +26,8 @@ The fields to extract are:
 - `claims`: List of claims of the patent (you may extract them here in addition to any separate claims call).
 - `attorneys`: List of `AttorneysData` objects for any attorneys/agents of record.
 - `inventors`: List of inventor names.
+- `applicant`: For Google Patents, extract from the timeline/event 'Application filed by [entity]'. For Free Patents Online, extract only if applicant is explicitly present. if not present, return an empty string `""` in both cases.
+- `current_assignee`: For Google Patents, List of 'Current Assignee' from the current assignee section. For Free Patents Online, list of assignee if the field present. if not present, return an empty list `[]` for both cases.
 
 `DocumentsData` is a dictionary with the following keys:
 - `url`: URL of the document.
