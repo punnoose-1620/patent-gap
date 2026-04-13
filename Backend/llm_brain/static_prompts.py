@@ -92,6 +92,10 @@ Return the search string in the following format:
 Keywords: <keywords_replacement>
 
 Owners: <owners_replacement>
+
+Companies to focus search on: <search_limitations_companies>
+
+Websites to focus search on: <search_limitations_websites>
 Do not include any other text or comments.
 """
 
