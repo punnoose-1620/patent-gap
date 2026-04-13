@@ -2021,6 +2021,7 @@ def similarity_analysis_gemini():
     'similar_infringements': similar_infringements
     }), 200
 
+# NOTE: Current implementation. Need to be updated with new one later after testing.
 @app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
 def live_similarity_analysis(case_id):
   data = request.get_json()
@@ -2118,7 +2119,7 @@ def live_similarity_analysis(case_id):
     return jsonify({
       'success': False, 
       'message': f'Error performing product sourceinfringement analysis: {str(e)}',
-      'search_results': searchResults,
+      'search_results': product_details_list,
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 500
 
@@ -2133,12 +2134,40 @@ def get_document(document_id):
   document = getDocumentById(document_id)
 
   if document['success']:
-    return Response(
-        stream_with_context(chunk_generator(pdf_bytes)),
+    doc = document['document']
+    raw = doc.get('file_content', None)
+    if raw is None:
+      return jsonify({'success': False, 'message': 'No raw data found'}), 400
+    file_bytes = bytes(raw)
+
+    file_type = doc.get('file_type', 'application/octet-stream')
+    if not doc.get('file_name'):
+      if file_type == 'application/pdf':
+        file_name = 'local_document.pdf'
+      elif file_type in ('application/xml', 'text/xml'):
+        file_name = 'local_document.xml'
+      else:
+        file_name = 'document.bin'
+    else:
+      file_name = doc.get('file_name')
+
+    if file_type == 'application/pdf':
+      return Response(
+        stream_with_context(chunk_generator(file_bytes)),
+        mimetype='application/pdf',
+        headers={'Content-Disposition': f'inline; filename="{file_name}"'}
+      ), 200
+    if file_type in ('application/xml', 'text/xml'):
+      return Response(
+        stream_with_context(chunk_generator(file_bytes)),
         mimetype=file_type,
         headers={'Content-Disposition': f'inline; filename="{file_name}"'}
+      ), 200
+    return Response(
+      stream_with_context(chunk_generator(file_bytes)),
+      mimetype=file_type,
+      headers={'Content-Disposition': f'attachment; filename="{file_name}"'}
     ), 200
-    # return jsonify({'success': True, 'message': 'Document retrieved successfully', 'document': document['document']}), 200
   else:
     print(f"\nERROR: Error getting document: {document['message']}")
     return jsonify({'success': False, 'message': document['message']}), 400
