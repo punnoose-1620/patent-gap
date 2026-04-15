@@ -918,6 +918,7 @@ def generateReports(case_id):
         summaryReport = getReportSummary(fullReport)
         case_data['report'] = fullReport
         case_data['summary'] = summaryReport
+        case_data['last_updated'] = datetime.datetime.utcnow().isoformat()
         update_case(case_id, case_data)
         return fullReport, summaryReport
     return None, None

@@ -178,7 +178,7 @@ def updateListByIdAndKey(db, collectionName, update_list, entry_id, key):
         collection = db[collectionName]
         result = collection.update_one(
             {'_id': entry_id},
-            {'$push': {key: {'$each': update_list}}}
+            {'$push': {key: {'$each': update_list}}, '$set': {'last_updated': datetime.now()}}
         )
         return result.modified_count > 0
     except Exception as e:
@@ -199,6 +199,7 @@ def updateDataById(db, collectionName, update_fields, entry_id):
     """
     try:
         collection = db[collectionName]
+        update_fields['last_updated'] = datetime.now()
         result = collection.update_one(
             {'_id': entry_id},
             {'$set': update_fields}
@@ -277,6 +278,7 @@ def insertOrUpdateDataById(db, collectionName, entryData):
             raise ValueError("entryData must include an '_id' key.")
         
         collection = db[collectionName]
+        entryData['last_updated'] = datetime.now()
         collection.replace_one(
             {'_id': entry_id},
             entryData,

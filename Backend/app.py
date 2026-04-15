@@ -701,6 +701,7 @@ def update_case_details(case_id):
             return jsonify({'success': False, 'message': 'No update data provided'}), 400
 
         # Assume update_case is a function that updates the case and returns the updated case or None if not found
+        update_data['last_updated'] = dt.now()
         result = update_case(case_id, update_data)
         if result.get('success'):
             updated_case = get_case_by_id(case_id)
@@ -784,6 +785,7 @@ def update_case_status(case_id):
         if not update_data or not isinstance(update_data, dict):
             return jsonify({'success': False, 'message': 'Invalid input data'}), 400
 
+        update_data['last_updated'] = dt.now()
         result = update_case(case_id, update_data)
         if result.get('success'):
             updated_case = get_case_by_id(case_id)
@@ -1163,6 +1165,7 @@ def update_patent():
     if not data.get('_id'):
       return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
     
+    data['last_updated'] = dt.now()
     return jsonify(update_case(data.get('_id'), data))
   except Exception as e:
     return jsonify({'success': False, 'message': f'Error updating patent: {str(e)}'}), 500
@@ -1269,7 +1272,8 @@ def upload_file_to_local_storage(case_id):
       newEntryData['update_case_entry'] = documentEntry
       documents.append(documentEntry)
       updateData = {
-        'documents': documents
+        'documents': documents, 
+        'last_updated': dt.now()
       }
       if len(documents) > 1:
         updateResult = update_case_documents(case_id, updateData)
@@ -1456,6 +1460,7 @@ def trigger_similarity_analysis():
     case_data = get_case_by_id(case_id)
     case_data['report'] = fullReport
     case_data['summary'] = summaryReport
+    case_data['last_updated'] = dt.now()
     update_case(case_id, case_data)
     
     newAlertId = create_alert(user_id, case_id, references)
@@ -1894,7 +1899,7 @@ def get_claims_for_patent(case_id):
         return jsonify({'success': False, 'message': claims[0]}), 400
 
     # Update Claims in Case Data
-    result = update_case(case_id, {'claims': claims})
+    result = update_case(case_id, {'claims': claims, 'last_updated': dt.now()})
     if result['success']:
       return jsonify({'success': True, 'message': 'Claims updated successfully', 'claims': claims}), 200
     else:
@@ -2069,12 +2074,12 @@ def live_similarity_analysis(case_id):
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
   
   start_time = time.time()
-  update_case(case_id, {'infringement_analysis_status': 'Started'})
+  update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
   # Perform Live Patent Search
   try:
     patentResults = searchPatentSources(keywords, country, ref_claims)
     update_infringements(case_id, patentResults)
-    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed'})
+    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed', 'last_updated': dt.now()})
   except Exception as e:
     current_time = time.time()
     time_in_seconds = current_time - start_time
@@ -2082,7 +2087,7 @@ def live_similarity_analysis(case_id):
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources'})
+    update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources', 'last_updated': dt.now()})
     print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
     return jsonify({
       'success': False, 
@@ -2094,14 +2099,14 @@ def live_similarity_analysis(case_id):
   try:
     product_details_list = searchProductSources(keywords, owners, ref_claims, search_limitations)
     update_infringements(case_id, product_details_list)
-    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed'})
+    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed', 'last_updated': dt.now()})
     current_time = time.time()
     time_in_seconds = current_time - start_time
     time_in_minutes = time_in_seconds // 60
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Completed'})
+    update_case(case_id, {'infringement_analysis_status': 'Completed', 'last_updated': dt.now()})
     return jsonify({
       'success': True, 
       'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
@@ -2114,7 +2119,7 @@ def live_similarity_analysis(case_id):
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources'})
+    update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources', 'last_updated': dt.now()})
     print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
     return jsonify({
       'success': False, 
@@ -2315,7 +2320,7 @@ def generate_patent_description(case_id):
   summary = get_patent_summary(complete_document_contents)
   
   # Update Case Data for the Generated Description
-  result = update_case(case_id, {'description': summary})
+  result = update_case(case_id, {'description': summary, 'last_updated': dt.now()})
   print('TEST 6: Result')
   return jsonify({
     'success': True, 
