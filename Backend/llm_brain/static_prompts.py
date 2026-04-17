@@ -28,6 +28,36 @@ The fields to extract are:
 - `inventors`: List of inventor names.
 - `applicant`: For Google Patents, extract from the timeline/event 'Application filed by [entity]'. For Free Patents Online, extract only if applicant is explicitly present. if not present, return an empty string `""` in both cases.
 - `current_assignee`: For Google Patents, List of 'Current Assignee' from the current assignee section. For Free Patents Online, list of assignee if the field present. if not present, return an empty list `[]` for both cases.
+- `other_ids`: List of grouped key patent identifiers and classification codes found in Google Patents or Free Patents Online text/HTML.
+
+Each entry must be:
+- `title`: one of the allowed labels below.
+- `value`: a list of exact identifier/code strings for that title.
+
+Allowed `title` values:
+- `"Publication Number"` — main publication or granted patent number, e.g. `US20230377260A1`, `US8204847B2`, `20230377260`.
+- `"Application Claiming Priority"` — application/serial number for the current patent, e.g. `US13/106,379`, `09/751781`.
+- `"Provisional Application Number"` — U.S. provisional application number, e.g. `63/344,283`, `60/623,323`.
+- `"Parent Application Number"` — parent application, parent series, continuation parent, or parent case number.
+- `"Priority Application Number"` — priority application number for the current patent.
+- `"Child/Family Application Number"` — application number listed under Applications Claiming Priority, Related Child Applications, or Family Applications, only when connected to the current patent.
+- `"International/PCT Application Number"` — PCT/international application number, e.g. `PCT/US96/14404`.
+- `"Classification Code"` — all CPC, IPC, USPC, Primary Class, International Class, or Other Class codes, e.g. `G06T17/05`, `G06F15/00`, `706/62`.
+
+Strict rules:
+- Group all values with the same title into one object.
+- Do not create multiple objects with the same title.
+- `value` must always be a list, even if there is only one value.
+- Extract only identifiers directly tied to the current patent.
+- Do not extract citation patents, cited-by patents, prior-art references, unrelated family-country publications, inventor names, assignee names, dates, URLs, or status text.
+- If an ID appears under Parent Case Data, Parent Applications, Parent Series, or continuation parent, place it under `"Parent Application Number"`.
+- If an ID appears under Priority Applications or priority claim, place it under `"Priority Application Number"`.
+- If an ID appears under provisional application data, place it under `"Provisional Application Number"`.
+- If an ID appears under Applications Claiming Priority, Related Child Applications, or Family Applications, place it under `"Child/Family Application Number"`.
+- If an ID appears under PCT or International Patent Application No., place it under `"International/PCT Application Number"`.
+- If a value is a CPC, IPC, USPC, Primary Class, International Class, or Other Class code, place it under `"Classification Code"`.
+- Remove duplicate values inside each `value` list.
+- If none are found, return `[]`.
 
 `DocumentsData` is a dictionary with the following keys:
 - `url`: URL of the document.
