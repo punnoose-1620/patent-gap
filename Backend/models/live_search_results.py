@@ -1,5 +1,9 @@
 from pydantic import BaseModel
 
+class OtherIdData(BaseModel):
+    title: str
+    value: list[str]
+
 class DocumentsData(BaseModel):
     url: str
     source: str
@@ -30,6 +34,7 @@ class LiveSearchResults(BaseModel):
     inventors: list[str]
     applicant: str = None
     current_assignee: list[str]=[]
+    other_ids: list[OtherIdData] = []
     # Set Mailing Addresses to an empty list
 
     def created(self, creator: str):

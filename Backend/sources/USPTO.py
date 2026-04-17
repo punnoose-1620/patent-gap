@@ -741,8 +741,19 @@ class USPTOPatentAPI:
         current_assignee = []
         mailingAddresses = []
         documents = []
+        other_ids_map = {}  # title -> list of values, deduplicated
         filingUser = None           # To be populated with User_Id from endpoint
         filingDate = None
+
+        def _add_id(title, value):
+            """Add a value under the given title, deduplicating within each group."""
+            value = str(value).strip()
+            if not value:
+                return
+            if title not in other_ids_map:
+                other_ids_map[title] = []
+            if value not in other_ids_map[title]:
+                other_ids_map[title].append(value)
 
         # applicationData = self.get_application_data(application_number)
         applicationMetaData = self.get_application_metadata(application_number)
@@ -763,6 +774,7 @@ class USPTOPatentAPI:
             for patentWrapperData in patentFileWrapperDataBag:
                 if 'applicationNumberText' in patentWrapperData.keys():
                     applicationNumber = f"uspto_{patentWrapperData.get('applicationNumberText', '')}"
+                    _add_id('Application Number', patentWrapperData.get('applicationNumberText', ''))
                 if 'applicationMetaData' in patentWrapperData.keys():
                     metaData = patentWrapperData.get('applicationMetaData', {})
                     titleData = metaData.get('inventionTitle', '')
@@ -772,7 +784,19 @@ class USPTOPatentAPI:
                     currentStatusDate = metaData.get('applicationStatusDate', '')
                     currentStatusData = metaData.get('applicationStatusDescriptionText', '')
                     applicantBag = metaData.get('applicantBag', [])
-                    
+
+                    # Capture patent grant number
+                    _add_id('Patent Number', metaData.get('patentNumber', ''))
+
+                    # Capture publication numbers (earliest + full sequence bag)
+                    _add_id('Publication Number', metaData.get('earliestPublicationNumber', ''))
+                    for pub_num in metaData.get('publicationSequenceNumberBag', []):
+                        _add_id('Publication Number', pub_num)
+
+                    # Capture CPC classifications (Publication Classification section)
+                    for cpc in metaData.get('cpcClassificationBag', []):
+                        _add_id('CPC Classification', cpc)
+
                     if len(applicantBag) > 0:
                         applicant_name = applicantBag[0].get('applicantNameText', '')
                     elif metaData.get('firstApplicantName'):
@@ -797,6 +821,22 @@ class USPTOPatentAPI:
                                 processedAddress = self.processAddress(addressData)
                                 if (processedAddress is not None) and (processedAddress not in mailingAddresses):
                                     mailingAddresses.append(processedAddress)
+
+                # Capture parent continuity application numbers
+                for parent in patentWrapperData.get('parentContinuityBag', []):
+                    claim_type = parent.get('claimParentageTypeCodeDescriptionText', '')
+                    id_title = 'Provisional Application Number' if 'provisional' in claim_type.lower() else 'Parent Application Number'
+                    _add_id(id_title, parent.get('parentApplicationNumberText', ''))
+                    _add_id('Patent Number', parent.get('parentpatentNumber', ''))
+
+                # Capture child continuity application numbers
+                for child in patentWrapperData.get('childContinuityBag', []):
+                    _add_id('Child/Family Application Number', child.get('childApplicationNumberText', ''))
+                    _add_id('Patent Number', child.get('childPatentNumber', ''))
+
+                # Capture foreign priority application numbers
+                for foreign in patentWrapperData.get('foreignPriorityBag', []):
+                    _add_id('Priority Application Number', foreign.get('applicationNumberText', ''))
         # Process all available documents and add url with source to documents
         if 'documentBag' in documentsList.keys():
             documentBag = documentsList.get('documentBag', [])
@@ -917,6 +957,7 @@ class USPTOPatentAPI:
             'applicant': applicant_name if applicant_name else '',
             'current_assignee': current_assignee if current_assignee else [],
             'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
+            'other_ids': [{'title': t, 'value': v} for t, v in other_ids_map.items()],
             'created_by': filingUser,
             'created_date': datetime.utcnow().isoformat(),
             'filing_date': filingDate,
