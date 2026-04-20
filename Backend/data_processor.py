@@ -460,55 +460,38 @@ def isolateDataFromUSPTOResults(result):
     attorneys = []
     inventors = []
     mailingAddresses = []
-    other_ids_map = {}  # title -> list of values, deduplicated
+    other_ids = {}  
     filingUser = None
     filingDate = None
     applicant_name = None
     current_assignee = []
 
     def _add_id(title, value):
-        """Add a value under the given title, deduplicating within each group."""
+        """Add a value under the title, with not."""
         value = str(value).strip()
         if not value:
             return
-        if title not in other_ids_map:
-            other_ids_map[title] = []
-        if value not in other_ids_map[title]:
-            other_ids_map[title].append(value)
+        if title not in other_ids:
+            other_ids[title] = []
+        if value not in other_ids[title]:
+            other_ids[title].append(value)
 
     try:
         correspondenceAddressBag = result.get('correspondenceAddressBag')
         recordAttorney = result.get('recordAttorney')
         applicationMetaData = result.get('applicationMetaData')
         assignmentBag = result.get('assignmentBag', [])
-
-        if result.get('applicationNumberText') is not None:
-            applicationNumber = f"uspto_{result.get('applicationNumberText')}"
-            _add_id('Application Number', result.get('applicationNumberText'))
-        else:
-            applicationNumber = f"uspto_{uuid.uuid4().hex}"
+        continuity_bag = result.get('parentContinuityBag') or []
 
         if applicationMetaData is not None:
             titleData = applicationMetaData.get('inventionTitle')
             filingDate = applicationMetaData.get('filingDate')
             tempInventors = applicationMetaData.get('inventorBag')
             applicantBag = applicationMetaData.get('applicantBag', [])
+            classificationBag = applicationMetaData.get('cpcClassificationBag', [])
             currentStatusCode = applicationMetaData.get('applicationStatusCode')
             currentStatusDate = applicationMetaData.get('applicationStatusDate')
             currentStatusData = applicationMetaData.get('applicationStatusDescriptionText')
-
-            # Capture patent grant number
-            _add_id('Patent Number', applicationMetaData.get('patentNumber', ''))
-
-            # Capture publication numbers (earliest + full sequence bag)
-            _add_id('Publication Number', applicationMetaData.get('earliestPublicationNumber', ''))
-            for pub_num in applicationMetaData.get('publicationSequenceNumberBag', []):
-                _add_id('Publication Number', pub_num)
-
-            # Capture CPC classifications (Publication Classification section)
-            for cpc in applicationMetaData.get('cpcClassificationBag', []):
-                _add_id('CPC Classification', cpc)
-
             if type(tempInventors) is list:
                 for inventor in tempInventors:
                     inventors.append(inventor.get('inventorNameText'))
@@ -516,27 +499,72 @@ def isolateDataFromUSPTOResults(result):
                 if type(tempInventorAddresses) is list:
                     for address in tempInventorAddresses:
                         mailingAddresses.append(processAddressLineText(address))
-             # Extract applicant name from applicantBag
+            # Extract applicant name from applicantBag
             if len(applicantBag) > 0:
                 applicant_name = applicantBag[0].get('applicantNameText', '')
             elif applicationMetaData.get('firstApplicantName'):
                 applicant_name = applicationMetaData.get('firstApplicantName', '')
 
-        # Capture parent continuity application numbers
-        for parent in result.get('parentContinuityBag', []):
-            claim_type = parent.get('claimParentageTypeCodeDescriptionText', '')
-            id_title = 'Provisional Application Number' if 'provisional' in str(claim_type).lower() else 'Parent Application Number'
-            _add_id(id_title, parent.get('parentApplicationNumberText', ''))
-            _add_id('Patent Number', parent.get('parentpatentNumber', ''))
+        if result.get('applicationNumberText') is not None:
+            applicationNumber = f"uspto_{result.get('applicationNumberText')}"
+            _add_id('Application Number', str(result.get('applicationNumberText')).strip())
+        else:
+            applicationNumber = f"uspto_{uuid.uuid4().hex}"
+ 
+        if applicationMetaData is not None:
 
-        # Capture child continuity application numbers
-        for child in result.get('childContinuityBag', []):
-            _add_id('Child/Family Application Number', child.get('childApplicationNumberText', ''))
-            _add_id('Patent Number', child.get('childPatentNumber', ''))
+            # Patent Number
+            patent_num = str(applicationMetaData.get('patentNumber', '') or '').strip()
+            if patent_num:
+                _add_id('Patent Number', patent_num)
 
-        # Capture foreign priority application numbers
-        for foreign in result.get('foreignPriorityBag', []):
-            _add_id('Priority Application Number', foreign.get('applicationNumberText', ''))
+            # Publication Number
+            publication_num = str(applicationMetaData.get('earliestPublicationNumber', '') or '').strip()
+            if publication_num:
+                _add_id('Publication Number', publication_num)
+
+            # CPC Classifications
+            if len(classificationBag) > 0:
+                for cpc in classificationBag:
+                    if cpc and str(cpc).strip():
+                        _add_id('CPC Classification', str(cpc).strip())
+
+        if len(continuity_bag) > 0:
+            first_entry = continuity_bag[0]
+            last_entry = continuity_bag[-1]
+            first_claim_code = str(first_entry.get('claimParentageTypeCode', '') or '').strip().upper()
+            last_claim_code = str(last_entry.get('claimParentageTypeCode', '') or '').strip().upper()
+
+            if first_claim_code != 'PRO':
+                parent_app_num = str(first_entry.get('parentApplicationNumberText', '') or '').strip()
+                if parent_app_num:
+                    _add_id('Parent Application Number', parent_app_num)
+
+                parent_patent_num = str(first_entry.get('parentPatentNumber', '') or first_entry.get('parentpatentNumber', '') or '').strip()
+                if parent_patent_num:
+                    _add_id('Patent Number', parent_patent_num)
+
+            # Provisional Application Number
+            if last_claim_code == 'PRO':
+                provisional_num = str(last_entry.get('parentApplicationNumberText', '') or '').strip()
+                if provisional_num:
+                    _add_id('Provisional Application Number', provisional_num)
+
+            # Continuity Application Data
+            continuity_parents = []
+            continuity_children = []
+            for entry in continuity_bag:
+                p_num = str(entry.get('parentApplicationNumberText', '') or '').strip()
+                c_num = str(entry.get('childApplicationNumberText', '') or '').strip()
+                if p_num and p_num not in continuity_parents:
+                    continuity_parents.append(p_num)
+                if c_num and c_num not in continuity_children:
+                    continuity_children.append(c_num)
+            if continuity_parents or continuity_children:
+                other_ids['Continuity Application Data'] = {
+                    'parent_application_numbers': continuity_parents,
+                    'child_application_numbers': continuity_children
+                }
 
         if type(correspondenceAddressBag) is list:
             for address in correspondenceAddressBag:
@@ -584,7 +612,7 @@ def isolateDataFromUSPTOResults(result):
             'applicant': applicant_name if applicant_name else '',
             'current_assignee': current_assignee if current_assignee else [],
             'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
-            'other_ids': [{'title': t, 'value': v} for t, v in other_ids_map.items()],
+            'other_ids': [{'title': t, 'value': v} for t, v in other_ids.items()],
             'created_by': filingUser,
             'created_date': datetime.datetime.utcnow().isoformat(),
             'filing_date': filingDate,
