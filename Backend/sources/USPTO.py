@@ -741,7 +741,7 @@ class USPTOPatentAPI:
         current_assignee = []
         mailingAddresses = []
         documents = []
-        other_ids_map = {}  # title -> list of values, deduplicated
+        other_ids = {}  
         filingUser = None           # To be populated with User_Id from endpoint
         filingDate = None
 
@@ -750,14 +750,14 @@ class USPTOPatentAPI:
             value = str(value).strip()
             if not value:
                 return
-            if title not in other_ids_map:
-                other_ids_map[title] = []
-            if value not in other_ids_map[title]:
-                other_ids_map[title].append(value)
+            if title not in other_ids:
+                other_ids[title] = []
+            if value not in other_ids[title]:
+                other_ids[title].append(value)
 
         # applicationData = self.get_application_data(application_number)
         applicationMetaData = self.get_application_metadata(application_number)
-        # continuity = self.get_continuity_data(application_number)
+        continuity = self.get_continuity_data(application_number)
         documentsList = self.get_documents(application_number)
         associatedDocuments = self.get_associated_documents(application_number)
         # transactions = self.get_transactions(application_number)
@@ -768,13 +768,11 @@ class USPTOPatentAPI:
 
         # Process Metadata and get all other relevant information 
         # [ applicationNumber, titleData, filingDate, descriptionData, currentStatusCode, 
-        #   currentStatusDate, currentStatusData, mailingAddresses, inventors  ]
+        #   currentStatusDate, currentStatusData, mailingAddresses, inventors, other_ids  ]
         if 'patentFileWrapperDataBag' in applicationMetaData.keys():
             patentFileWrapperDataBag = applicationMetaData.get('patentFileWrapperDataBag', [])
+
             for patentWrapperData in patentFileWrapperDataBag:
-                if 'applicationNumberText' in patentWrapperData.keys():
-                    applicationNumber = f"uspto_{patentWrapperData.get('applicationNumberText', '')}"
-                    _add_id('Application Number', patentWrapperData.get('applicationNumberText', ''))
                 if 'applicationMetaData' in patentWrapperData.keys():
                     metaData = patentWrapperData.get('applicationMetaData', {})
                     titleData = metaData.get('inventionTitle', '')
@@ -784,18 +782,7 @@ class USPTOPatentAPI:
                     currentStatusDate = metaData.get('applicationStatusDate', '')
                     currentStatusData = metaData.get('applicationStatusDescriptionText', '')
                     applicantBag = metaData.get('applicantBag', [])
-
-                    # Capture patent grant number
-                    _add_id('Patent Number', metaData.get('patentNumber', ''))
-
-                    # Capture publication numbers (earliest + full sequence bag)
-                    _add_id('Publication Number', metaData.get('earliestPublicationNumber', ''))
-                    for pub_num in metaData.get('publicationSequenceNumberBag', []):
-                        _add_id('Publication Number', pub_num)
-
-                    # Capture CPC classifications (Publication Classification section)
-                    for cpc in metaData.get('cpcClassificationBag', []):
-                        _add_id('CPC Classification', cpc)
+                    classificationBag = metaData.get('cpcClassificationBag', [])
 
                     if len(applicantBag) > 0:
                         applicant_name = applicantBag[0].get('applicantNameText', '')
@@ -821,22 +808,73 @@ class USPTOPatentAPI:
                                 processedAddress = self.processAddress(addressData)
                                 if (processedAddress is not None) and (processedAddress not in mailingAddresses):
                                     mailingAddresses.append(processedAddress)
+                    
+                    # Application Number
+                    if 'applicationNumberText' in patentWrapperData.keys():
+                        applicationNumber = f"uspto_{patentWrapperData.get('applicationNumberText', '')}"
+                        _add_id('Application Number', str(patentWrapperData.get('applicationNumberText', '')).strip())
 
-                # Capture parent continuity application numbers
-                for parent in patentWrapperData.get('parentContinuityBag', []):
-                    claim_type = parent.get('claimParentageTypeCodeDescriptionText', '')
-                    id_title = 'Provisional Application Number' if 'provisional' in claim_type.lower() else 'Parent Application Number'
-                    _add_id(id_title, parent.get('parentApplicationNumberText', ''))
-                    _add_id('Patent Number', parent.get('parentpatentNumber', ''))
+                    # Patent Number
+                    patent_num = str(metaData.get('patentNumber', '') or '').strip()
+                    if patent_num:
+                        _add_id('Patent Number', patent_num)
+                    
+                    # Publication Number
+                    publication_num = str(metaData.get('earliestPublicationNumber', '') or '').strip()
+                    if publication_num:
+                        _add_id('Publication Number', publication_num)
 
-                # Capture child continuity application numbers
-                for child in patentWrapperData.get('childContinuityBag', []):
-                    _add_id('Child/Family Application Number', child.get('childApplicationNumberText', ''))
-                    _add_id('Patent Number', child.get('childPatentNumber', ''))
+                    # CPC Classifications
+                    if len(classificationBag) > 0:
+                        for cpc in classificationBag:
+                            if cpc and str(cpc).strip():
+                                _add_id('CPC Classification', str(cpc).strip())
+            
+        raw_continuity_bag = []
+        if continuity and 'patentFileWrapperDataBag' in continuity:
+            wrapper_bag = continuity.get('patentFileWrapperDataBag') or []
+            if len(wrapper_bag) > 0:
+                raw_continuity_bag = wrapper_bag[0].get('parentContinuityBag') or []
+        continuity_bag = raw_continuity_bag
 
-                # Capture foreign priority application numbers
-                for foreign in patentWrapperData.get('foreignPriorityBag', []):
-                    _add_id('Priority Application Number', foreign.get('applicationNumberText', ''))
+        if len(continuity_bag) > 0:
+            first_entry = continuity_bag[0]
+            last_entry = continuity_bag[-1]
+            first_claim_code = str(first_entry.get('claimParentageTypeCode', '') or '').strip().upper()
+            last_claim_code = str(last_entry.get('claimParentageTypeCode', '') or '').strip().upper()
+
+            # Parent Application Number
+            if first_claim_code != 'PRO':
+                parent_app_num = str(first_entry.get('parentApplicationNumberText', '') or '').strip()
+                if parent_app_num:
+                    _add_id('Parent Application Number', parent_app_num)
+
+                parent_patent_num = str(first_entry.get('parentPatentNumber', '') or first_entry.get('parentpatentNumber', '') or '').strip()
+                if parent_patent_num:
+                    _add_id('Patent Number', parent_patent_num)
+
+            # Provisional Application Number
+            if last_claim_code == 'PRO':
+                provisional_num = str(last_entry.get('parentApplicationNumberText', '') or '').strip()
+                if provisional_num:
+                    _add_id('Provisional Application Number', provisional_num)
+
+            # Continuity Application Data
+            continuity_parents = []
+            continuity_children = []
+            for entry in continuity_bag:
+                p_num = str(entry.get('parentApplicationNumberText', '') or '').strip()
+                c_num = str(entry.get('childApplicationNumberText', '') or '').strip()
+                if p_num and p_num not in continuity_parents:
+                    continuity_parents.append(p_num)
+                if c_num and c_num not in continuity_children:
+                    continuity_children.append(c_num)
+            if continuity_parents or continuity_children:
+                other_ids['Continuity Application Data'] = {
+                    'parent_application_numbers': continuity_parents,
+                    'child_application_numbers': continuity_children
+                }
+
         # Process all available documents and add url with source to documents
         if 'documentBag' in documentsList.keys():
             documentBag = documentsList.get('documentBag', [])
@@ -957,7 +995,7 @@ class USPTOPatentAPI:
             'applicant': applicant_name if applicant_name else '',
             'current_assignee': current_assignee if current_assignee else [],
             'mailingAddresses': mailingAddresses,  # cityName, geographicRegionName, geographicRegionCode, countryCode, postalCode, addressLineText
-            'other_ids': [{'title': t, 'value': v} for t, v in other_ids_map.items()],
+            'other_ids': [{'title': t, 'value': v} for t, v in other_ids.items()],
             'created_by': filingUser,
             'created_date': datetime.utcnow().isoformat(),
             'filing_date': filingDate,
