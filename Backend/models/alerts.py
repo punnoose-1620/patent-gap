@@ -69,6 +69,7 @@ def create_alert(user_id, case_id, references):
     print('Case data: ', case_data)
     if (case_data is not None) and (case_data is not {}):
       case_data['references'] = references
+      case_data['last_updated'] = datetime.now().isoformat()
       update_case(case_id, case_data)
       print('References updated')
       case_keys = case_data.keys()

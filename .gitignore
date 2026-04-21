@@ -19,3 +19,4 @@ env
 *.log
 logs/
 Backend/.env
+Backend/.env

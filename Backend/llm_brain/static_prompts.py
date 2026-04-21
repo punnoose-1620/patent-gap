@@ -26,6 +26,76 @@ The fields to extract are:
 - `claims`: List of claims of the patent (you may extract them here in addition to any separate claims call).
 - `attorneys`: List of `AttorneysData` objects for any attorneys/agents of record.
 - `inventors`: List of inventor names.
+- `applicant`: For Google Patents, extract from the timeline/event 'Application filed by [entity]'. For Free Patents Online, extract only if applicant is explicitly present. if not present, return an empty string `""` in both cases.
+- `current_assignee`: For Google Patents, List of 'Current Assignee' from the current assignee section. For Free Patents Online, list of assignee if the field present. if not present, return an empty list `[]` for both cases.
+- other_ids: List of grouped key patent identifiers and classification codes. 
+  Every entry is:
+  - title: one of the allowed labels below.
+  - value: a list of exact identifier/code strings for that label.
+
+  Allowed title values and what to place under each:
+
+  - `"Application Number"` — the current patent's own application/serial number.
+      Google Patents: text of the top-level <dd itemprop="applicationNumber">.
+      FPO: value div following label "Application Number:".
+
+  - `"Patent Number"` — the granted patent number if the application has been issued as a patent.
+      Google Patents: text of <span itemprop="representativePublication"> OR any
+        granted patent number (e.g. US12579744B2) found in <dd itemprop="directAssociations">.
+      FPO: value div following label "Patent Number:" if present.
+      Do NOT put publication numbers (A1, A2 kind codes) here — those go under "Publication Number".
+
+  - `"Publication Number"` — the main pre-grant publication number, e.g. `US20230377260A1`.
+      Google Patents: text of the top-level <dd itemprop="publicationNumber">.
+      FPO: hidden <input name="number"> value, or from the document type heading line.
+
+  - `"Provisional Application Number"` — U.S. provisional application number, e.g. `63/344,283`.
+      Google Patents: inside <tr itemprop="appsClaimingPriority"> rows where the
+        applicationNumber ends with "P" OR filing date equals priority date.
+      FPO: from value div following label "Parent Case Data:" — only numbers described as "provisional".
+
+  - `"Parent Application Number"` — parent, continuation, continuation-in-part, or division parent.
+      Google Patents: inside <tr itemprop="priorityApps"> rows — collect
+        <span itemprop="applicationNumber"> text, EXCLUDING the current patent's own application number.
+      FPO: from value div following label "Parent Case Data:" — non-provisional parent numbers
+        (described as continuation, continuation-in-part, division of, etc.).
+
+  - `"Priority Application Number"` — the application from which the current patent claims priority,
+      where the priority date is strictly earlier than the current patent's own filing date.
+      Google Patents: same priorityApps rows as above, filtered to those where priorityDate < filingDate.
+      FPO: value div following label "Priority Application:" or any equivalent priority claim label.
+
+  - `"Child/Family Application Number"` — applications or patents that claim priority FROM the current
+      patent (children), or related family members.
+      Google Patents: inside <dd itemprop="directAssociations">, collect
+        <span itemprop="publicationNumber"> text (these are child/continuation applications).
+        Also collect from <tr itemprop="applications"> inside <section itemprop="family">.
+      FPO: value div following label "Related Child Applications:" or "Applications Claiming Priority:"
+        if present.
+
+  - `"International/PCT Application Number"` — PCT or international application number, e.g. `PCT/US2023/023096`.
+      Google Patents: inside <li itemprop="application"> nested under <li itemprop="applicationsByYear">,
+        collect <span itemprop="applicationNumber"> where sibling <span itemprop="countryCode"> is "WO"
+        OR the number begins with "PCT/".
+      FPO: value div following any label containing "PCT" or "International Application".
+
+  - `"Classification Code"` — all CPC, IPC, USPC, Primary Class, International Class, or Other Class codes,
+      e.g. `G06T17/05`, `G06F15/00`, `706/62`.
+      Google Patents: inside each <li itemprop="classifications">, collect <span itemprop="Code"> text.
+        ONLY include codes that are 5 or more characters (leaf codes). Skip broad parent codes like
+        "G", "G06", "G06T" (fewer than 5 characters).
+      FPO: combine values from ALL of these labels into one list:
+        "Primary Classes:", "Other Classes:", "International Classes:", "CPC Classes:", "IPC Classes:".
+
+  Strict rules for other_ids:
+  - Group all values with the same title into one object. Never create two objects with the same title.
+  - value must always be a list of strings.
+  - Extract ONLY identifiers directly tied to the current patent.
+  - Do NOT place in other_ids: cited patents, cited-by patents, prior art references, unrelated family
+    country publications, inventor names, assignee names, dates, URLs, or status text.
+  - Remove duplicate values within each value list.
+  - The other_ids list must always contain all 9 title entries, even if value is [].
+  - If none are found for a title, return [].
 
 `DocumentsData` is a dictionary with the following keys:
 - `url`: URL of the document.
@@ -90,6 +160,10 @@ Return the search string in the following format:
 Keywords: <keywords_replacement>
 
 Owners: <owners_replacement>
+
+Companies to focus search on: <search_limitations_companies>
+
+Websites to focus search on: <search_limitations_websites>
 Do not include any other text or comments.
 """
 

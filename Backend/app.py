@@ -14,6 +14,7 @@ from models.documents import *
 from sources.USPTO import *
 from sources.Gemini import *
 from sources.OpenAlex import *
+from sources.Sources import *
 
 from database import *
 from controller import *
@@ -21,6 +22,7 @@ from llm_processor import *
 from data_processor import *
 from env_controller import *
 from live_search.liveSearchController import *
+from file_controller import *
 
 
 app = Flask(__name__, 
@@ -162,13 +164,14 @@ def infringement_details_page():
 # API Endpoints
 @app.route('/api/source-stats')
 def get_source_stats():
+  sources = Sources()
   """Get source stats"""
   return jsonify({
     'success': True,
     'source_stats': {
-      'remaining_sources': len(getRemainingSources()),
-      'integrated_sources': len(getIntegratedSourceTitles()),
-      'covered_jurisdictions': len(getCoveredJurisdictions())
+      'remaining_sources': len(sources.getRemainingSources()),
+      'integrated_sources': len(sources.getIntegratedSourceTitles()),
+      'covered_jurisdictions': len(sources.getCoveredJurisdictions())
     }
   })
 
@@ -698,6 +701,7 @@ def update_case_details(case_id):
             return jsonify({'success': False, 'message': 'No update data provided'}), 400
 
         # Assume update_case is a function that updates the case and returns the updated case or None if not found
+        update_data['last_updated'] = dt.now()
         result = update_case(case_id, update_data)
         if result.get('success'):
             updated_case = get_case_by_id(case_id)
@@ -781,6 +785,7 @@ def update_case_status(case_id):
         if not update_data or not isinstance(update_data, dict):
             return jsonify({'success': False, 'message': 'Invalid input data'}), 400
 
+        update_data['last_updated'] = dt.now()
         result = update_case(case_id, update_data)
         if result.get('success'):
             updated_case = get_case_by_id(case_id)
@@ -1160,6 +1165,7 @@ def update_patent():
     if not data.get('_id'):
       return jsonify({'success': False, 'message': 'Patent ID is required'}), 400
     
+    data['last_updated'] = dt.now()
     return jsonify(update_case(data.get('_id'), data))
   except Exception as e:
     return jsonify({'success': False, 'message': f'Error updating patent: {str(e)}'}), 500
@@ -1266,7 +1272,8 @@ def upload_file_to_local_storage(case_id):
       newEntryData['update_case_entry'] = documentEntry
       documents.append(documentEntry)
       updateData = {
-        'documents': documents
+        'documents': documents, 
+        'last_updated': dt.now()
       }
       if len(documents) > 1:
         updateResult = update_case_documents(case_id, updateData)
@@ -1453,6 +1460,7 @@ def trigger_similarity_analysis():
     case_data = get_case_by_id(case_id)
     case_data['report'] = fullReport
     case_data['summary'] = summaryReport
+    case_data['last_updated'] = dt.now()
     update_case(case_id, case_data)
     
     newAlertId = create_alert(user_id, case_id, references)
@@ -1840,7 +1848,13 @@ def get_claims_for_patent(case_id):
     document_urls = case_data.get('document_urls', [])
     document_contents = []
     for document in document_urls:
-      content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+      if 'uspto' in document:
+        content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+      elif '/document/' in document:
+        doc_id = document.split('/')[-1].strip()
+        content = readLocalDocument(doc_id)
+      else:
+        content = readDocumentFromUrl(document)
       document_contents.append(content)
 
     documents = case_data.get('documents', [])
@@ -1885,7 +1899,7 @@ def get_claims_for_patent(case_id):
         return jsonify({'success': False, 'message': claims[0]}), 400
 
     # Update Claims in Case Data
-    result = update_case(case_id, {'claims': claims})
+    result = update_case(case_id, {'claims': claims, 'last_updated': dt.now()})
     if result['success']:
       return jsonify({'success': True, 'message': 'Claims updated successfully', 'claims': claims}), 200
     else:
@@ -2012,6 +2026,7 @@ def similarity_analysis_gemini():
     'similar_infringements': similar_infringements
     }), 200
 
+# NOTE: Current implementation. Need to be updated with new one later after testing.
 @app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
 def live_similarity_analysis(case_id):
   data = request.get_json()
@@ -2038,6 +2053,7 @@ def live_similarity_analysis(case_id):
   ref_claims = data.get('claims', [])
   country = data.get('country', '')
   context = data.get('context', '')
+  search_limitations = data.get('search_limitations', {})
   
   if case_id is None:
     print(f'\nERROR: LiveSearch: Case ID is required for user: {user_id}')
@@ -2058,12 +2074,12 @@ def live_similarity_analysis(case_id):
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
   
   start_time = time.time()
-  update_case(case_id, {'infringement_analysis_status': 'Started'})
+  update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
   # Perform Live Patent Search
   try:
     patentResults = searchPatentSources(keywords, country, ref_claims)
     update_infringements(case_id, patentResults)
-    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed'})
+    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed', 'last_updated': dt.now()})
   except Exception as e:
     current_time = time.time()
     time_in_seconds = current_time - start_time
@@ -2071,7 +2087,7 @@ def live_similarity_analysis(case_id):
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources'})
+    update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources', 'last_updated': dt.now()})
     print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
     return jsonify({
       'success': False, 
@@ -2081,16 +2097,16 @@ def live_similarity_analysis(case_id):
   
   # Perform Live Product Search
   try:
-    product_details_list = searchProductSources(keywords, owners, ref_claims)
+    product_details_list = searchProductSources(keywords, owners, ref_claims, search_limitations)
     update_infringements(case_id, product_details_list)
-    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed'})
+    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed', 'last_updated': dt.now()})
     current_time = time.time()
     time_in_seconds = current_time - start_time
     time_in_minutes = time_in_seconds // 60
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Completed'})
+    update_case(case_id, {'infringement_analysis_status': 'Completed', 'last_updated': dt.now()})
     return jsonify({
       'success': True, 
       'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
@@ -2103,12 +2119,12 @@ def live_similarity_analysis(case_id):
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources'})
+    update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources', 'last_updated': dt.now()})
     print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
     return jsonify({
       'success': False, 
       'message': f'Error performing product sourceinfringement analysis: {str(e)}',
-      'search_results': searchResults,
+      'search_results': product_details_list,
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 500
 
@@ -2123,12 +2139,40 @@ def get_document(document_id):
   document = getDocumentById(document_id)
 
   if document['success']:
-    return Response(
-        stream_with_context(chunk_generator(pdf_bytes)),
+    doc = document['document']
+    raw = doc.get('file_content', None)
+    if raw is None:
+      return jsonify({'success': False, 'message': 'No raw data found'}), 400
+    file_bytes = bytes(raw)
+
+    file_type = doc.get('file_type', 'application/octet-stream')
+    if not doc.get('file_name'):
+      if file_type == 'application/pdf':
+        file_name = 'local_document.pdf'
+      elif file_type in ('application/xml', 'text/xml'):
+        file_name = 'local_document.xml'
+      else:
+        file_name = 'document.bin'
+    else:
+      file_name = doc.get('file_name')
+
+    if file_type == 'application/pdf':
+      return Response(
+        stream_with_context(chunk_generator(file_bytes)),
+        mimetype='application/pdf',
+        headers={'Content-Disposition': f'inline; filename="{file_name}"'}
+      ), 200
+    if file_type in ('application/xml', 'text/xml'):
+      return Response(
+        stream_with_context(chunk_generator(file_bytes)),
         mimetype=file_type,
         headers={'Content-Disposition': f'inline; filename="{file_name}"'}
+      ), 200
+    return Response(
+      stream_with_context(chunk_generator(file_bytes)),
+      mimetype=file_type,
+      headers={'Content-Disposition': f'attachment; filename="{file_name}"'}
     ), 200
-    # return jsonify({'success': True, 'message': 'Document retrieved successfully', 'document': document['document']}), 200
   else:
     print(f"\nERROR: Error getting document: {document['message']}")
     return jsonify({'success': False, 'message': document['message']}), 400
@@ -2276,7 +2320,7 @@ def generate_patent_description(case_id):
   summary = get_patent_summary(complete_document_contents)
   
   # Update Case Data for the Generated Description
-  result = update_case(case_id, {'description': summary})
+  result = update_case(case_id, {'description': summary, 'last_updated': dt.now()})
   print('TEST 6: Result')
   return jsonify({
     'success': True, 
@@ -2304,15 +2348,15 @@ def getInfringementChart(case_id):
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting infringement chart for patent: {str(e)}'}), 500
 
-# @app.route('/api/test-new-infringement-analysis', methods=['POST'])
-# def test_new_infringement_analysis():
-#   data = request.get_json()
-#   if data is None:
-#     return jsonify({'success': False, 'message': 'No data provided'}), 400
-#   if 'keywords' not in data:
-#     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
-#   if 'country' not in data:
-#     return jsonify({'success': False, 'message': 'Country is required'}), 400
+@app.route('/api/test-new-infringement-analysis', methods=['POST'])
+def test_new_infringement_analysis():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'keywords' not in data:
+    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
+  if 'country' not in data:
+    return jsonify({'success': False, 'message': 'Country is required'}), 400
   
   search_results = searchPatentSourcesNew(data['keywords'], data['country'], data['claims'], data['context'])
   return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
