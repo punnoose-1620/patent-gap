@@ -1263,7 +1263,7 @@ def upload_file_to_local_storage(case_id):
           'newEntryData': newEntryData
           }), 400
       document_id = created_document.get('document_id')
-      document_url = f'documents/{document_id}'
+      document_url = f'document/{document_id}'
       documentEntry = {
         'url': document_url,
         'source': 'local'
@@ -1651,6 +1651,8 @@ def api_create_patent():
     data['created_by'] = user_id
     data['created_date'] = dt.now().strftime('%Y-%m-%d')
     created_patent = create_case(data)
+    if 'DocumentCreationError' in created_patent['case_id']:
+      return jsonify({'success': False, 'message': created_patent['case_id']}), 400
     print('\nLOG: Created Patent: ', created_patent, '\n')
     
     returnVal = {
@@ -1788,11 +1790,15 @@ def fetch_patent_from_uspto():
         if case_data.get('current_status', '') == '':
           case_data['current_status'] = 'Granted'
         case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+        created_id = case_data.get('_id', '')
         creationResult = create_case(case_data)
+        created_id = case_data.get('_id', '')
+        if 'DocumentCreationError' in created_id:
+          return jsonify({'success': False, 'message': created_id}), 400
         return jsonify({
           'success': True, 
           'message': 'Patent data imported successfully', 
-          'case_id': f"googlepatents_{user_id}_{patent_id}",
+          'case_id': created_id,
           'keywords': case_data.get('keywords', []),
           'case_data': case_data
           }), 200
@@ -1812,10 +1818,13 @@ def fetch_patent_from_uspto():
           case_data['current_status'] = 'Granted'
         case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
         creationResult = create_case(case_data)
+        created_id = case_data.get('_id', '')
+        if 'DocumentCreationError' in created_id:
+          return jsonify({'success': False, 'message': created_id}), 400
         return jsonify({
           'success': True, 
           'message': 'Patent data imported successfully', 
-          'case_id': f"freepatentsonline_{user_id}_{patent_id}",
+          'case_id': created_id,
           'keywords': case_data.get('keywords', []),
           'case_data': case_data
           }), 200

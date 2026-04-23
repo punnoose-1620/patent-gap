@@ -20,3 +20,4 @@ env
 logs/
 Backend/.env
 Backend/.env
+.cursor/settings.json
