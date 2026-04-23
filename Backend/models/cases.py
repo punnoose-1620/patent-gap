@@ -81,6 +81,11 @@ def create_case(case_data):
     if addedId is not None:
         case_data['_id'] = addedId
         print(f'LOG: Case created successfully: {case_data["_id"]}')
+        if 'DocumentCreationError' in case_data['_id']:
+            return {
+                'success': False,
+                'message': 'Document creation error'
+            }
         return {
             'success': True,
             'message': 'Case created successfully',
