@@ -1263,7 +1263,7 @@ def upload_file_to_local_storage(case_id):
           'newEntryData': newEntryData
           }), 400
       document_id = created_document.get('document_id')
-      document_url = f'documents/{document_id}'
+      document_url = f'document/{document_id}'
       documentEntry = {
         'url': document_url,
         'source': 'local'
