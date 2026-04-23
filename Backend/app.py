@@ -1768,7 +1768,7 @@ def fetch_patent_from_uspto():
     return jsonify({
       'success': True, 
       'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{patent_id}",
+      'case_id': f"uspto_{user_id}_{patent_id}",
       'keywords': uspto_data.get('keywords', []),
       'case_data': uspto_data
       }), 200
@@ -1782,7 +1782,7 @@ def fetch_patent_from_uspto():
       case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
       if case_data is not None:
         case_data['source'] = 'google_patents'
-        case_data['_id'] = f"googlepatents_{patent_id}"
+        case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
         case_data['created_by'] = user_id
         if case_data.get('current_status', '') == '':
           case_data['current_status'] = 'Granted'
@@ -1809,7 +1809,7 @@ def fetch_patent_from_uspto():
       case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
       if case_data is not None:
         case_data['source'] = 'free_patents_online'
-        case_data['_id'] = f"freepatentsonline_{patent_id}"
+        case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
         case_data['created_by'] = user_id
         if case_data.get('current_status', '') == '':
           case_data['current_status'] = 'Granted'
