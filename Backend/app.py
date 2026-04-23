@@ -1579,6 +1579,9 @@ def api_import_patent_from_uspto():
       schema:
         $ref: '#/definitions/ErrorResponse'
   """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
   data = request.get_json()
   if data is None:
     print('\nNo Data provided')
@@ -1609,7 +1612,7 @@ def api_import_patent_from_uspto():
     return jsonify({
       'success': True, 
       'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{patent_id}",
+      'case_id': f"uspto_{user_id}_{patent_id}",
       'keywords': uspto_data['keywords'],
       'case_data': uspto_data
       }), 200
@@ -1766,7 +1769,7 @@ def fetch_patent_from_uspto():
     return jsonify({
       'success': True, 
       'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{patent_id}",
+      'case_id': f"uspto_{user_id}_{patent_id}",
       'keywords': uspto_data.get('keywords', []),
       'case_data': uspto_data
       }), 200
@@ -1789,7 +1792,7 @@ def fetch_patent_from_uspto():
         return jsonify({
           'success': True, 
           'message': 'Patent data imported successfully', 
-          'case_id': case_data.get('_id', ''),
+          'case_id': f"googlepatents_{user_id}_{patent_id}",
           'keywords': case_data.get('keywords', []),
           'case_data': case_data
           }), 200
@@ -1812,7 +1815,7 @@ def fetch_patent_from_uspto():
         return jsonify({
           'success': True, 
           'message': 'Patent data imported successfully', 
-          'case_id': case_data.get('_id', ''),
+          'case_id': f"freepatentsonline_{user_id}_{patent_id}",
           'keywords': case_data.get('keywords', []),
           'case_data': case_data
           }), 200
