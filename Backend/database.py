@@ -6,16 +6,13 @@ from pymongo import MongoClient
 from typing import Optional, Dict, Any, List
 from env_controller import getDatabaseConnectionString
 
-import firebase_admin
-from firebase_admin import credentials, firestore
-
 # Module-level variable to store MongoDB database instance
 _mongodb_client = None
 _mongodb_db = None
 
 def connect_to_database():
     """
-    Connects to Firestore using MongoDB connection string from environment variables.
+    Connects to Database using MongoDB connection string from environment variables.
     Returns the MongoDB database client.
     
     The connection string should be in the format:
