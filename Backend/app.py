@@ -21,6 +21,7 @@ from controller import *
 from llm_processor import *
 from data_processor import *
 from env_controller import *
+from background_analysis import run_infringement_analysis_for_case
 from live_search.liveSearchController import *
 from file_controller import *
 
@@ -2036,97 +2037,27 @@ def live_similarity_analysis(case_id):
   if not user_id:
     print('\nERROR: LiveSearch: User ID is not in session')
     return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-  if 'keywords' not in data:
-    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
-  if 'country' not in data:
-    print(f'\nERROR: LiveSearch: Country is required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Country is required'}), 400
-  if 'claims' not in data:
-    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Claims are required'}), 400
-  if 'owners' not in data:
-    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Owners are required'}), 400
-  keywords = data.get('keywords', [])
-  owners = data.get('owners', [])
-  ref_claims = data.get('claims', [])
-  country = data.get('country', '')
-  context = data.get('context', '')
-  search_limitations = data.get('search_limitations', {})
   
-  if case_id is None:
-    print(f'\nERROR: LiveSearch: Case ID is required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Case ID is required'}), 400
-  case_data = get_case_by_id(case_id)
-  if case_data is None:
-    print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Case not found'}), 404
-  keywords = case_data.get('keywords', [])
-  if (len(keywords) == 0) or (keywords is None):
-    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
-  if (len(ref_claims) == 0) or (ref_claims is None):
-    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Claims are required'}), 400
-  if (len(owners) == 0) or (owners is None):
-    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Owners are required'}), 400
-  
-  start_time = time.time()
-  update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
-  # Perform Live Patent Search
-  try:
-    patentResults = searchPatentSources(keywords, country, ref_claims)
-    update_infringements(case_id, patentResults)
-    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed', 'last_updated': dt.now()})
-  except Exception as e:
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources', 'last_updated': dt.now()})
-    print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
+  result, status_code = run_infringement_analysis_for_case(case_id, data)
+  return jsonify(result), status_code
+
+@app.route('/api/background/infringement-analysis/run', methods=['POST'])
+def run_background_infringement_analysis():
+  cron_token = request.headers.get('X-Cron-Token', '')
+  expected_token = os.environ.get('CRON_SECRET_TOKEN', '')
+  if expected_token == '' or cron_token != expected_token:
+    return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+  data = request.get_json() or {}
+  case_id = data.get('case_id')
+  if not case_id:
     return jsonify({
-      'success': False, 
-      'message': f'Error performing patent source infringement analysis: {str(e)}',
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 500
-  
-  # Perform Live Product Search
-  try:
-    product_details_list = searchProductSources(keywords, owners, ref_claims, search_limitations)
-    update_infringements(case_id, product_details_list)
-    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed', 'last_updated': dt.now()})
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Completed', 'last_updated': dt.now()})
-    return jsonify({
-      'success': True, 
-      'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 200
-  except Exception as e:
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources', 'last_updated': dt.now()})
-    print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
-    return jsonify({
-      'success': False, 
-      'message': f'Error performing product sourceinfringement analysis: {str(e)}',
-      'search_results': product_details_list,
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 500
+      'success': True,
+      'message': 'Background infringement analysis placeholder is ready. Provide case_id to run one case.'
+    }), 200
+
+  result, status_code = run_infringement_analysis_for_case(case_id, data)
+  return jsonify(result), status_code
 
 @app.route('/api/document/<document_id>', methods=['GET'])
 def get_document(document_id):
