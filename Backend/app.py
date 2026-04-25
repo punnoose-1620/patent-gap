@@ -10,6 +10,7 @@ from models.cases import *
 from models.users import *
 from models.alerts import *
 from models.documents import *
+from models.search_history import *
 
 from sources.USPTO import *
 from sources.Gemini import *
@@ -2372,6 +2373,58 @@ def test_new_infringement_analysis():
   
   search_results = searchPatentSourcesNew(data['keywords'], data['country'], data['claims'], data['context'])
   return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
+
+@app.route('/api/search-history', methods=['GET'])
+def get_search_history():
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+  search_history = get_search_history(user_id)
+  return jsonify({'success': True, 'message': 'Search history retrieved successfully', 'search_history': search_history}), 200
+
+@app.route('/api/search', methods=['POST'])
+def search():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'search_query' not in data:
+    return jsonify({'success': False, 'message': 'Search query is required'}), 400
+  
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  search_query = data.get('search_query', '')
+  search_results = search_cases(search_query, user_id)
+  return jsonify({
+    'success': True, 
+    'message': 'Search completed successfully', 
+    'search_results': search_results
+    }), 200
+
+@app.route('/api/add-search-history', methods=['POST'])
+def add_search_history():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'search_query' not in data:
+    return jsonify({'success': False, 'message': 'Search query is required'}), 400
+  if 'search_results' not in data:
+    return jsonify({'success': False, 'message': 'Search results are required'}), 400
+  
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  search_query = data.get('search_query', '')
+  search_results = data.get('search_results', [])
+  if (len(search_results) == 0) or (search_results is None):
+    return jsonify({'success': False, 'message': 'No search results provided'}), 400
+    
+  added = add_search_history(user_id, search_query, search_results)
+  if not added:
+    return jsonify({'success': False, 'message': 'Failed to add search history'}), 400
+  return jsonify({'success': True, 'message': 'Search history added successfully', 'search_results': search_results}), 200
 
 if __name__ == '__main__':
     port = app.config['PORT']

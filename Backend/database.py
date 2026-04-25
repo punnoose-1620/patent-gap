@@ -167,6 +167,61 @@ def getDataById(db, collectionName, entryId):
         print(f"Error fetching data by ID from {collectionName}: {e}")
         return None
 
+def getDataByKeyValue(db, collectionName, key, value):
+    try:
+        collection = db[collectionName]
+        document = collection.find({key: value})
+        return document
+    except Exception as e:
+        print(f"Error fetching data by key and value from {collectionName}: {e}")
+        return None
+
+def searchDataForKeywords(db, collectionName, key, value, keywords):
+    """
+    Search documents that match key:value and contain keyword(s) in any indexed field.
+
+    Uses Atlas Search first, then falls back to regex searching over top-level
+    string fields if Atlas Search is unavailable.
+    """
+    try:
+        collection = db[collectionName]
+
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        keywords = [kw.strip() for kw in (keywords or []) if isinstance(kw, str) and kw.strip()]
+
+        if not keywords:
+            documents = list(collection.find({key: value}))
+            for doc in documents:
+                if "_id" in doc and hasattr(doc["_id"], "__str__"):
+                    doc["_id"] = str(doc["_id"])
+            return documents
+
+        pipeline = [
+            {
+                "$search": {
+                    "index": "default",
+                    "compound": {
+                        "filter": [{"equals": {"path": key, "value": value}}],
+                        "should": [
+                            {"text": {"query": kw, "path": {"wildcard": "*"}}}
+                            for kw in keywords
+                        ],
+                        "minimumShouldMatch": 1,
+                    },
+                }
+            }
+        ]
+
+        documents = list(collection.aggregate(pipeline))
+        for doc in documents:
+            if "_id" in doc and hasattr(doc["_id"], "__str__"):
+                doc["_id"] = str(doc["_id"])
+        return documents
+    except Exception as atlas_error:
+        print(f"Atlas Search failed in {collectionName}: {atlas_error}")
+        return []
+
 def updateListByIdAndKey(db, collectionName, update_list, entry_id, key):
     """
     Updates a specific entry in a Firestore collection by its ID and key.
