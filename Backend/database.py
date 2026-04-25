@@ -112,7 +112,7 @@ def getAllData(db, collectionName):
     try:
         collection = db[collectionName]
         # Convert ObjectId to string for JSON serialization
-        documents = list(collection.find({}))
+        documents = list(collection.find({}, max_time_ms=120000))
         # Convert _id from ObjectId to string if present
         for doc in documents:
             if '_id' in doc and hasattr(doc['_id'], '__str__'):
@@ -152,7 +152,7 @@ def getDataById(db, collectionName, entryId):
         collection = db[collectionName]
         document = collection.find_one({'_id': entryId})
         if document is None:
-            allDocs = collection.find({})
+            allDocs = collection.find({}, max_time_ms=120000)
             for doc in allDocs:
                 if doc['_id'] == entryId or doc['id'] == entryId:
                     document = doc
@@ -170,7 +170,7 @@ def getDataById(db, collectionName, entryId):
 def getDataByKeyValue(db, collectionName, key, value):
     try:
         collection = db[collectionName]
-        document = collection.find({key: value})
+        document = collection.find({key: value}, max_time_ms=120000)
         return document
     except Exception as e:
         print(f"Error fetching data by key and value from {collectionName}: {e}")
@@ -191,7 +191,7 @@ def searchDataForKeywords(db, collectionName, key, value, keywords):
         keywords = [kw.strip() for kw in (keywords or []) if isinstance(kw, str) and kw.strip()]
 
         if not keywords:
-            documents = list(collection.find({key: value}))
+            documents = list(collection.find({key: value}, max_time_ms=120000))
             for doc in documents:
                 if "_id" in doc and hasattr(doc["_id"], "__str__"):
                     doc["_id"] = str(doc["_id"])
