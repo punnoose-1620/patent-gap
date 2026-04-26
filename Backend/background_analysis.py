@@ -76,12 +76,14 @@ def run_infringement_analysis_for_case(case_id, data):
 
   try:
     patent_results = searchPatentSources(keywords, country, ref_claims)
-    update_infringements(case_id, patent_results)
-    update_case(case_id, {
+    infringement_update = update_infringements(case_id, patent_results)
+    print(f"LOG: BackgroundAnalysis: Patent infringement update result: {infringement_update}")
+    case_update = update_case(case_id, {
       'infringements': patent_results,
       'infringement_analysis_status': 'Patent Sources Completed',
       'last_updated': dt.now()
     })
+    print(f"LOG: BackgroundAnalysis: Patent status update result: {case_update}")
   except Exception as e:
     update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources', 'last_updated': dt.now()})
     print(f'\nERROR: BackgroundAnalysis: Error performing patent source infringement analysis: {str(e)}')
@@ -93,12 +95,15 @@ def run_infringement_analysis_for_case(case_id, data):
 
   try:
     product_details_list = searchProductSources(keywords, owners, ref_claims, search_limitations)
-    update_infringements(case_id, product_details_list)
-    update_case(case_id, {
+    infringement_update = update_infringements(case_id, product_details_list)
+    print(f"LOG: BackgroundAnalysis: Product infringement update result: {infringement_update}")
+    case_update = update_case(case_id, {
       'infringement_analysis_status': 'Product Sources Completed',
       'last_updated': dt.now()
     })
-    update_case(case_id, {'infringement_analysis_status': 'Completed', 'last_updated': dt.now()})
+    print(f"LOG: BackgroundAnalysis: Product status update result: {case_update}")
+    completed_update = update_case(case_id, {'infringement_analysis_status': 'Completed', 'last_updated': dt.now()})
+    print(f"LOG: BackgroundAnalysis: Completed status update result: {completed_update}")
     return {
       'success': True,
       'message': 'Infringement analysis completed - Product Sources, Patent Sources',
