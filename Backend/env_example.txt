@@ -3,6 +3,10 @@ SECRET_KEY=your-secret-key-here
 PORT=5000
 DEBUG=True
 
+# Render Cron Job Configuration
+# ANALYSIS_PAYLOAD should contain the full one-line JSON payload used by Backend/run_background_analysis.py.
+ANALYSIS_PAYLOAD={"case_id":"example_case_id","keywords":["example"],"country":"United States","claims":["example claim"],"owners":["example owner"],"context":"example context","search_limitations":{"companies":["example owner"],"urls":[]}}
+
 # OpenAI API Configuration (for text embeddings)
 # OPENAI_API_KEY=sk-your-key-here
 

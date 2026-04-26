@@ -2,7 +2,6 @@ import os
 import requests
 from flask_cors import CORS
 from datetime import datetime as dt
-from dotenv import load_dotenv
 from swagger import initialize_swagger
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, Response, stream_with_context
 
@@ -2044,12 +2043,6 @@ def live_similarity_analysis(case_id):
 
 @app.route('/api/background/infringement-analysis/run', methods=['POST'])
 def run_background_infringement_analysis():
-  cron_token = request.headers.get('X-Cron-Token', '')
-  load_dotenv()
-  expected_token = os.environ.get('CRON_SECRET_TOKEN', '')
-  if expected_token == '' or cron_token != expected_token:
-    return jsonify({'success': False, 'message': 'Unauthorized'}), 401
-
   data = request.get_json(silent=True) or {}
   case_id = data.get('case_id')
   if not case_id:
