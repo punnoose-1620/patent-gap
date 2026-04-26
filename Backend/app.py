@@ -2041,19 +2041,6 @@ def live_similarity_analysis(case_id):
   result, status_code = run_infringement_analysis_for_case(case_id, data)
   return jsonify(result), status_code
 
-@app.route('/api/background/infringement-analysis/run', methods=['POST'])
-def run_background_infringement_analysis():
-  data = request.get_json(silent=True) or {}
-  case_id = data.get('case_id')
-  if not case_id:
-    return jsonify({
-      'success': True,
-      'message': 'Background infringement analysis placeholder is ready. Provide case_id to run one case.'
-    }), 200
-
-  result, status_code = run_infringement_analysis_for_case(case_id, data)
-  return jsonify(result), status_code
-
 @app.route('/api/document/<document_id>', methods=['GET'])
 def get_document(document_id):
   user_id = get_user_id()
