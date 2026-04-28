@@ -19,16 +19,31 @@ def add_to_alerts(triggered_by, triggered_at, alert_users, title, description):
     addDataById(connect_to_database(), getAlertDatabaseName(), newAlert)
     return newAlert['_id']
 
-def get_alerts():
-    return getAllData(connect_to_database(), getAlertDatabaseName())
-    return alerts
+def get_alerts(page=1):
+    return paginateDataByQuery(connect_to_database(), getAlertDatabaseName(), page=page)
 
-def get_alerts_for_user(user_id):
+def get_alerts_for_user(user_id, page=1):
     user_alerts = []
-    my_cases = get_case_related_to_user(user_id)
+    my_cases_result = get_case_related_to_user(user_id, page=1)
+    my_cases = my_cases_result.get('items', [])
+    paged_alerts = {
+        'pagination': {
+            'page': page,
+            'page_size': PAGE_SIZE,
+            'total': 0,
+            'total_pages': 0,
+            'has_next': False
+        }
+    }
     # Isolate Alerts that are related to the user
     try:
-        for alert in getAllData(connect_to_database(), getAlertDatabaseName()):
+        paged_alerts = paginateDataByQuery(
+            connect_to_database(),
+            getAlertDatabaseName(),
+            query={'alert_users': user_id},
+            page=page
+        )
+        for alert in paged_alerts.get('items', []):
             if user_id in alert['alert_users']:
                 # Get Embeddings for reference case from alert's 'triggered_by' case
                 triggered_by_case = get_case_by_id(alert['triggered_by'])
@@ -54,10 +69,19 @@ def get_alerts_for_user(user_id):
                         max_similarity_case = case['_id']
                     alert['similar_case'] = max_similarity_case
                     alert['similarity_score'] = max_similarity
-            user_alerts.append(alert)
+                user_alerts.append(alert)
     except Exception as e:
         print(f"Error in get_alerts_for_user: {str(e)}")
-    return user_alerts
+    return {
+        'items': user_alerts,
+        'pagination': paged_alerts.get('pagination', {
+            'page': page,
+            'page_size': PAGE_SIZE,
+            'total': len(user_alerts),
+            'total_pages': 1,
+            'has_next': False
+        })
+    }
 
 def trigger_alert(alert_users):
     # TODO: Implement actual alert triggering logic to send alerts to the users

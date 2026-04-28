@@ -42,25 +42,45 @@ def find_document_metadata(case_data):
     case_data['documents'] = documents
     return case_data
 
-def get_all_cases():
-    all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
+def get_all_cases(page=1, paginated=False):
+    if not paginated:
+        all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
+        for case in all_cases:
+            case = find_document_metadata(case)
+        return all_cases
+    paged = paginateDataByQuery(connect_to_database(), getCaseDatabaseName(), page=page)
+    all_cases = paged.get('items', [])
     for case in all_cases:
         case = find_document_metadata(case)
-    return all_cases
+    paged['items'] = all_cases
+    return paged
 
-def get_open_cases():
+def get_open_cases(page=1, paginated=False):
     """
     Get all open cases available for assignment
     
     Returns:
         list: List of open cases
     """
-    open_cases = []
-    for case in getAllData(connect_to_database(), getCaseDatabaseName()):
-        if case['status'] != 'Completed':
-            case = find_document_metadata(case)
-            open_cases.append(case)
-    return open_cases
+    if not paginated:
+        open_cases = []
+        for case in getAllData(connect_to_database(), getCaseDatabaseName()):
+            if case['status'] != 'Completed':
+                case = find_document_metadata(case)
+                open_cases.append(case)
+        return open_cases
+
+    paged = paginateDataByQuery(
+        connect_to_database(),
+        getCaseDatabaseName(),
+        query={'status': {'$ne': 'Completed'}},
+        page=page
+    )
+    open_cases = paged.get('items', [])
+    for case in open_cases:
+        case = find_document_metadata(case)
+    paged['items'] = open_cases
+    return paged
 
 def create_case(case_data):
     """
@@ -192,7 +212,7 @@ def get_case_by_id(case_id, show_password=False):
         return case
     return None
 
-def get_case_related_to_user(user_id):
+def get_case_related_to_user(user_id, page=1, paginated=False):
     """
     Get cases related to a specific user (assigned to, accepted by, created by)
     
@@ -202,26 +222,44 @@ def get_case_related_to_user(user_id):
     Returns:
         list: List of user's cases
     """
-    # TODO: Implement actual database query
-    user_cases = []
-    for case in getAllData(connect_to_database(), getCaseDatabaseName()):
-        keys = case.keys()
-        if ('assigned_to' in keys):
-            if (case['assigned_to'] == user_id):
-                case = find_document_metadata(case)
-                user_cases.append(case)
-                continue
-        if ('accepted_by' in keys):
-            if (case['accepted_by'] == user_id):
-                case = find_document_metadata(case)
-                user_cases.append(case)
-                continue
-        if ('created_by' in keys):
-            if (case['created_by'] == user_id):
-                case = find_document_metadata(case)
-                user_cases.append(case)
-                continue
-    return user_cases
+    if not paginated:
+        user_cases = []
+        for case in getAllData(connect_to_database(), getCaseDatabaseName()):
+            keys = case.keys()
+            if ('assigned_to' in keys):
+                if (case['assigned_to'] == user_id):
+                    case = find_document_metadata(case)
+                    user_cases.append(case)
+                    continue
+            if ('accepted_by' in keys):
+                if (case['accepted_by'] == user_id):
+                    case = find_document_metadata(case)
+                    user_cases.append(case)
+                    continue
+            if ('created_by' in keys):
+                if (case['created_by'] == user_id):
+                    case = find_document_metadata(case)
+                    user_cases.append(case)
+                    continue
+        return user_cases
+
+    paged = paginateDataByQuery(
+        connect_to_database(),
+        getCaseDatabaseName(),
+        query={
+            '$or': [
+                {'assigned_to': user_id},
+                {'accepted_by': user_id},
+                {'created_by': user_id}
+            ]
+        },
+        page=page
+    )
+    user_cases = paged.get('items', [])
+    for case in user_cases:
+        case = find_document_metadata(case)
+    paged['items'] = user_cases
+    return paged
 
 def get_documents_from_case(case_id):
     """

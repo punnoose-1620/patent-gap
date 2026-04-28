@@ -401,13 +401,16 @@ def all_cases():
     #     return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     # user_id = session['user_id']
     # print(f'LOG: {user_id} Get My Cases')
+    page = request.args.get('page', 1, type=int)
     try:
-        cases = get_all_cases()
+        results = get_all_cases(page=page, paginated=True)
+        cases = results.get('items', [])
         ids = [case.get('_id') for case in cases]
         print(f'LOG: All Cases({len(cases)}): {ids}')
         return jsonify({
             'success': True,
-            'cases': cases
+            'items': cases,
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         print('Error fetching cases: ', str(e))
@@ -456,12 +459,14 @@ def my_cases():
       print('TEST: My Cases - Not authenticated')
       return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     print(f'LOG: {user_id} Get My Cases')
+    page = request.args.get('page', 1, type=int)
     try:
         print('User ID: ', user_id)
-        cases = get_case_related_to_user(user_id)
+        results = get_case_related_to_user(user_id, page=page, paginated=True)
         return jsonify({
             'success': True,
-            'cases': cases
+            'items': results.get('items', []),
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         print('Error fetching cases: ', str(e))
@@ -503,11 +508,13 @@ def open_cases():
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     print(f'LOG: {user_id} Get Open Cases')
+    page = request.args.get('page', 1, type=int)
     try:
-        cases = get_open_cases()
+        results = get_open_cases(page=page, paginated=True)
         return jsonify({
             'success': True,
-            'cases': cases
+            'items': results.get('items', []),
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         return jsonify({
@@ -1331,11 +1338,13 @@ def get_all_alerts():
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     print(f'LOG: {user_id} Get All Alerts')
 
+    page = request.args.get('page', 1, type=int)
     try:
-        alerts = get_alerts()
+        results = get_alerts(page=page)
         return jsonify({
             'success': True,
-            'alerts': alerts
+            'items': results.get('items', []),
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error getting all alerts: {str(e)}'}), 500
@@ -1373,11 +1382,13 @@ def get_user_alerts():
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     print(f'LOG: {user_id} Get User Alerts')
+    page = request.args.get('page', 1, type=int)
     try:
-        user_alerts = get_alerts_for_user(user_id)
+        results = get_alerts_for_user(user_id, page=page)
         return jsonify({
             'success': True,
-            'alerts': user_alerts
+            'items': results.get('items', []),
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error getting all alerts: {str(e)}'}), 500
@@ -2375,12 +2386,18 @@ def test_new_infringement_analysis():
   return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
 
 @app.route('/api/search-history', methods=['GET'])
-def get_search_history():
+def get_search_history_route():
   user_id = get_user_id()
   if not user_id:
     return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-  search_history = get_search_history(user_id)
-  return jsonify({'success': True, 'message': 'Search history retrieved successfully', 'search_history': search_history}), 200
+  page = request.args.get('page', 1, type=int)
+  search_history = get_search_history(user_id, page=page)
+  return jsonify({
+      'success': True,
+      'message': 'Search history retrieved successfully',
+      'items': search_history.get('items', []),
+      'pagination': search_history.get('pagination', {})
+  }), 200
 
 @app.route('/api/search', methods=['POST'])
 def search():
@@ -2395,11 +2412,13 @@ def search():
     return jsonify({'success': False, 'message': 'Not authenticated'}), 401
 
   search_query = data.get('search_query', '')
-  search_results = search_cases(search_query, user_id)
+  page = request.args.get('page', 1, type=int)
+  search_results = search_cases(search_query, user_id, page=page)
   return jsonify({
     'success': True, 
     'message': 'Search completed successfully', 
-    'search_results': search_results
+    'items': search_results.get('items', []),
+    'pagination': search_results.get('pagination', {})
     }), 200
 
 @app.route('/api/add-search-history', methods=['POST'])
