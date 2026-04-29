@@ -229,7 +229,11 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
     for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
-            resultCasesList.append(_live_result_to_dict(caseData))
+            caseDataDict = _live_result_to_dict(caseData)
+            caseDataDict['case_id'] = str(caseDataUrl.split('/')[-1]).split('.')[0]
+            caseDataDict['url'] = caseDataUrl
+            caseDataDict['source'] = 'free_patents_online'
+            resultCasesList.append(caseDataDict)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
@@ -296,7 +300,14 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
     for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
-            resultCasesList.append(_live_result_to_dict(caseData))
+            caseDataDict = _live_result_to_dict(caseData)
+            if '/en' in caseDataUrl:
+                caseDataDict['case_id'] = str(caseDataUrl.split('/')[-2])
+            else:
+                caseDataDict['case_id'] = str(caseDataUrl.split('/')[-1])
+            caseDataDict['url'] = caseDataUrl
+            caseDataDict['source'] = 'google_patents'
+            resultCasesList.append(caseDataDict)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
