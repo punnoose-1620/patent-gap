@@ -91,7 +91,7 @@ def login_user(email, password):
     
     users = getAllData(connect_to_database(), getUserDatabaseName())
     for user in users:
-        print(f'LOG: User found: {json.dumps(user, indent=4)}')
+        print(f'LOG: User found: {user}')
         if user['email'] == email and user['password'] == password:
             return {
                 'success': True,
@@ -107,7 +107,6 @@ def login_user(email, password):
     return {
         'success': False,
         'message': 'Login failed',
-        'user_id': user.get('_id', None),
         'email': email
     }
 
