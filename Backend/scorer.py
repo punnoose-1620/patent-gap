@@ -1,6 +1,6 @@
 import hashlib
 from datetime import datetime, timezone
-
+from itertools import product
 
 SCORE_METHOD = "embedding_cosine"
 SCORE_VERSION = "v1"
@@ -21,95 +21,181 @@ def build_scoring_input_hash(ref_claim, infringing_claim, method=SCORE_METHOD, v
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def has_cached_score(infringement_obj, expected_hash, method=SCORE_METHOD, version=SCORE_VERSION):
-    if not isinstance(infringement_obj, dict):
+def _row_cache_map(existing_infringements):
+    out = {}
+    if not isinstance(existing_infringements, list):
+        return out
+    for row in existing_infringements:
+        if not isinstance(row, dict):
+            continue
+        h = row.get("scoring_input_hash")
+        if not h:
+            continue
+        out[h] = row
+    return out
+
+
+def _cached_row_valid(row, expected_hash):
+    if row.get("scoring_input_hash") != expected_hash:
         return False
-    if not _clean_claim_text(infringement_obj.get("ref_claim", "")):
+    if row.get("score_method") != SCORE_METHOD:
         return False
-    cached_score = infringement_obj.get("calculated_similarity_score")
-    if not isinstance(cached_score, (int, float)):
+    if row.get("score_version") != SCORE_VERSION:
         return False
-    if infringement_obj.get("score_method") != method:
-        return False
-    if infringement_obj.get("score_version") != version:
-        return False
-    if infringement_obj.get("scoring_input_hash") != expected_hash:
+    if not isinstance(row.get("calculated_similarity_score"), (int, float)):
         return False
     return True
 
 
-def find_best_reference_claim(reference_claims, infringing_claim):
+def _chart_row_from_storage(row):
+    inf = _clean_claim_text(row.get("claim", ""))
+    return {
+        "ref_claim": _clean_claim_text(row.get("ref_claim", "")),
+        "infringing_claim": inf,
+        "similarity_score": float(row["calculated_similarity_score"]),
+        "evaluation_method": SCORE_METHOD,
+        "last_evaluated": row.get("last_scored_at"),
+    }
+
+
+def _pair_scores_matrix_openai(ref_list, inf_list):
+    """Return dict (ref, inf) -> score, or None if embeddings not uniform."""
     from data_processor import getPatentEmbedding, getSimilarityScore
 
-    clean_infringing_claim = _clean_claim_text(infringing_claim)
-    if not clean_infringing_claim:
-        return None, -1
-
-    infringing_embedding = getPatentEmbedding(clean_infringing_claim)
-    if infringing_embedding is None:
-        return None, -1
-
-    best_ref_claim = None
-    best_score = -1
-
-    for ref_claim in reference_claims:
-        clean_ref_claim = _clean_claim_text(ref_claim)
-        if not clean_ref_claim:
-            continue
-
-        reference_embedding = getPatentEmbedding(clean_ref_claim)
-        if reference_embedding is None:
-            continue
-
-        score = getSimilarityScore(reference_embedding, infringing_embedding)
-        if isinstance(score, (int, float)) and score > best_score:
-            best_score = float(score)
-            best_ref_claim = clean_ref_claim
-
-    return best_ref_claim, best_score
-
-
-def score_infringement_entry(reference_claims, infringement_obj, threshold=0.5):
-    if not isinstance(infringement_obj, dict):
+    ref_embs = []
+    for r in ref_list:
+        e = getPatentEmbedding(r)
+        ref_embs.append(e)
+    inf_embs = []
+    for t in inf_list:
+        e = getPatentEmbedding(t)
+        inf_embs.append(e)
+    if any(e is None for e in ref_embs + inf_embs):
+        return None
+    dim = len(ref_embs[0])
+    if any(len(e) != dim for e in ref_embs + inf_embs):
         return None
 
-    infringing_claim = _clean_claim_text(infringement_obj.get("claim", ""))
-    if not infringing_claim:
+    scores = {}
+    for i, ref in enumerate(ref_list):
+        for j, inf in enumerate(inf_list):
+            s = getSimilarityScore(ref_embs[i], inf_embs[j])
+            if not isinstance(s, (int, float)) or s < 0:
+                return None
+            scores[(ref, inf)] = float(s)
+    return scores
+
+
+def _pair_scores_matrix_tfidf(ref_list, inf_list):
+    """Single vector space for all claims in this matrix (same row length)."""
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        all_docs = ref_list + inf_list
+        v = TfidfVectorizer(min_df=1)
+        X = v.fit_transform(all_docs)
+        n_ref = len(ref_list)
+        ref_X = X[:n_ref]
+        inf_X = X[n_ref:]
+        scores = {}
+        for i, ref in enumerate(ref_list):
+            for j, inf in enumerate(inf_list):
+                s = float(cosine_similarity(ref_X[i], inf_X[j])[0][0])
+                if s < 0:
+                    s = abs(s)
+                scores[(ref, inf)] = float(min(1.0, max(0.0, s)))
+        return scores
+    except Exception:
         return None
 
-    existing_ref_claim = _clean_claim_text(infringement_obj.get("ref_claim", ""))
-    ref_for_hash = existing_ref_claim if existing_ref_claim else ""
-    expected_hash = build_scoring_input_hash(ref_for_hash, infringing_claim)
 
-    if has_cached_score(infringement_obj, expected_hash):
-        cached_score = float(infringement_obj.get("calculated_similarity_score"))
-        if cached_score > threshold:
-            return {
-                "ref_claim": existing_ref_claim,
-                "infringing_claim": infringing_claim,
-                "similarity_score": cached_score,
-                "evaluation_method": SCORE_METHOD,
-                "last_evaluated": infringement_obj.get("last_scored_at"),
-            }
+def _pair_scores_matrix(ref_list, inf_list):
+    scores = _pair_scores_matrix_openai(ref_list, inf_list)
+    if scores is not None:
+        return scores
+    return _pair_scores_matrix_tfidf(ref_list, inf_list)
+
+
+def _fully_cached_matrix(ref_list, inf_list, existing_infringements, cache, threshold):
+    """If every (ref, inf) pair has a valid cached row, return (stored, chart) without re-embedding."""
+    if not isinstance(existing_infringements, list):
         return None
+    stored_rows = []
+    chart_rows = []
+    for ref, inf in product(ref_list, inf_list):
+        h = build_scoring_input_hash(ref, inf)
+        if h not in cache or not _cached_row_valid(cache[h], h):
+            return None
+        row = cache[h]
+        calc = float(row["calculated_similarity_score"])
+        if calc > threshold:
+            stored_rows.append(row)
+            chart_rows.append(_chart_row_from_storage(row))
+    return stored_rows, chart_rows
 
-    best_ref_claim, best_score = find_best_reference_claim(reference_claims, infringing_claim)
-    if (not best_ref_claim) or (not isinstance(best_score, (int, float))) or (best_score <= threshold):
-        return None
 
+def score_infringement_matrix_entry(reference_claims, infringing_claims, existing_infringements, threshold=0.5):
+    """
+    Full matrix: each parent claim x each infringing claim. Stores only pairs with
+    calculated_similarity_score > threshold.
+
+    existing_infringements may be a legacy Gemini dict, a list of scored rows, or None.
+
+    Returns:
+        (stored_rows: list | None, chart_rows: list)
+        stored_rows is None if there is nothing to persist (no infringing claims).
+    """
+    ref_list = [_clean_claim_text(c) for c in (reference_claims or []) if _clean_claim_text(c)]
+    inf_list = [_clean_claim_text(c) for c in (infringing_claims or []) if _clean_claim_text(c)]
+    if not ref_list or not inf_list:
+        return None, []
+
+    cache = _row_cache_map(existing_infringements if isinstance(existing_infringements, list) else [])
+    full_cache = _fully_cached_matrix(ref_list, inf_list, existing_infringements, cache, threshold)
+    if full_cache is not None:
+        return full_cache
+
+    pair_scores = _pair_scores_matrix(ref_list, inf_list)
+    if pair_scores is None:
+        return None, []
+
+    stored_rows = []
+    chart_rows = []
     now_iso = _utc_now_iso()
-    final_hash = build_scoring_input_hash(best_ref_claim, infringing_claim)
-    infringement_obj["ref_claim"] = best_ref_claim
-    infringement_obj["calculated_similarity_score"] = float(best_score)
-    infringement_obj["score_method"] = SCORE_METHOD
-    infringement_obj["score_version"] = SCORE_VERSION
-    infringement_obj["scoring_input_hash"] = final_hash
-    infringement_obj["last_scored_at"] = now_iso
 
-    return {
-        "ref_claim": best_ref_claim,
-        "infringing_claim": infringing_claim,
-        "similarity_score": float(best_score),
-        "evaluation_method": SCORE_METHOD,
-        "last_evaluated": now_iso,
-    }
+    for ref, inf in product(ref_list, inf_list):
+        h = build_scoring_input_hash(ref, inf)
+        if h in cache and _cached_row_valid(cache[h], h):
+            row = cache[h]
+            calc = float(row["calculated_similarity_score"])
+            if calc > threshold:
+                stored_rows.append(row)
+                chart_rows.append(_chart_row_from_storage(row))
+            continue
+
+        score = float(pair_scores[(ref, inf)])
+        if score <= threshold:
+            continue
+
+        row = {
+            "ref_claim": ref,
+            "claim": inf,
+            "calculated_similarity_score": score,
+            "score_method": SCORE_METHOD,
+            "score_version": SCORE_VERSION,
+            "scoring_input_hash": h,
+            "last_scored_at": now_iso,
+        }
+        stored_rows.append(row)
+        chart_rows.append(
+            {
+                "ref_claim": ref,
+                "infringing_claim": inf,
+                "similarity_score": score,
+                "evaluation_method": SCORE_METHOD,
+                "last_evaluated": now_iso,
+            }
+        )
+
+    return stored_rows, chart_rows

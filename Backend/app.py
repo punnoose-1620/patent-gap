@@ -2246,8 +2246,11 @@ def getInfringementChart(case_id):
   description: |
     Returns chart rows computed from case claims and stored infringing claims.
     Requires an authenticated session (user_id in session) and a case_id path parameter.
-    The endpoint computes embedding cosine scores, stores calculated scoring metadata in
-    `infringements[i].infringements`, and returns normalized chart rows.
+    The endpoint computes embedding cosine scores for every (parent claim × infringing
+    patent claim) pair, keeps pairs with score above the threshold, and stores them in
+    `infringements[i].infringements` as an array of objects. A prior Gemini single-object
+    analysis is copied to `gemini_infringement` when present. The response lists flatten
+    all pairs into `chart_data`.
   security:
     - session: []
   parameters:
@@ -2298,7 +2301,7 @@ def getInfringementChart(case_id):
   print(f'LOG: {user_id} Getting Infringement Chart for Case: {case_id}')
   try:
     infringement_chart = get_case_infringement_chart(case_id)
-    print('LOG: Infringement Chart: ', infringement_chart)
+    print(f'LOG: Infringement Chart rows: {len(infringement_chart) if infringement_chart else 0}')
     if infringement_chart is None:
       return jsonify({'success': False, 'message': 'No infringement chart found. Please check Claims and Infringements'}), 400
     return jsonify({

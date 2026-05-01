@@ -3,7 +3,7 @@ from database import *
 from models.documents import getDocumentById
 from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
-from scorer import score_infringement_entry
+from scorer import score_infringement_matrix_entry
 
 def string_fuzzy_similarity(s1, s2):
     """
@@ -330,24 +330,36 @@ def get_infringement_chart(case_id):
     for infringement_entry in infringements:
         if not isinstance(infringement_entry, dict):
             continue
-        infringement_obj = infringement_entry.get('infringements')
-        if not isinstance(infringement_obj, dict):
-            continue
-        before_ref_claim = infringement_obj.get('ref_claim')
-        before_calc_score = infringement_obj.get('calculated_similarity_score')
-        before_hash = infringement_obj.get('scoring_input_hash')
-        before_scored_at = infringement_obj.get('last_scored_at')
 
-        row = score_infringement_entry(claims, infringement_obj, threshold=0.5)
-        if row is None:
+        inf_claims = [
+            c.strip()
+            for c in infringement_entry.get('claims', [])
+            if isinstance(c, str) and c.strip() != ''
+        ]
+        existing = infringement_entry.get('infringements')
+
+        if not inf_claims and isinstance(existing, dict):
+            legacy_claim = existing.get('claim')
+            if isinstance(legacy_claim, str) and legacy_claim.strip() != '':
+                inf_claims = [legacy_claim.strip()]
+
+        if not inf_claims:
             continue
-        chart_data.append(row)
-        if (
-            before_ref_claim != infringement_obj.get('ref_claim')
-            or before_calc_score != infringement_obj.get('calculated_similarity_score')
-            or before_hash != infringement_obj.get('scoring_input_hash')
-            or before_scored_at != infringement_obj.get('last_scored_at')
-        ):
+
+        if isinstance(existing, dict) and not infringement_entry.get('gemini_infringement'):
+            infringement_entry['gemini_infringement'] = dict(existing)
+
+        before = existing
+        stored_rows, entry_chart_rows = score_infringement_matrix_entry(
+            claims, inf_claims, existing, threshold=0.5
+        )
+        if stored_rows is None:
+            continue
+
+        infringement_entry['infringements'] = stored_rows
+        chart_data.extend(entry_chart_rows)
+
+        if before != stored_rows:
             has_updates = True
 
     if len(chart_data) == 0:
