@@ -3,6 +3,7 @@ from database import *
 from models.documents import getDocumentById
 from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
+from scorer import score_infringement_entry
 
 def string_fuzzy_similarity(s1, s2):
     """
@@ -315,46 +316,44 @@ def get_case_creator(case_id):
 
 def get_infringement_chart(case_id):
     caseData = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
-    claims = caseData.get('claims', [])
+    if caseData is None:
+        return None
+
+    claims = [claim for claim in caseData.get('claims', []) if isinstance(claim, str) and claim.strip() != '']
     infringements = caseData.get('infringements', [])
-    print('TEST 1: Claims')
-    # If Claims and Infringements are not available, return None
     if (len(claims) == 0) or (len(infringements) == 0):
         return None
-    # Let's remove the non-claims part of the claims list, like headings and such
-    for claim in claims:
-        if 'claim' not in claim:
-            claims.remove(claim)
-    print('TEST 2: Claims')
-    # Now let's create a map of claims to their infringements
-    returnVals = {}
-    for infringement in infringements:
-        entryId = infringement.get('entry_id', '')
-        similarClaims = infringement.get('similar_claims', [])
-        print('TEST 3: Similar Claims')
-        for similarClaim in similarClaims:
-            infringing_claim = similarClaim.get('claim', '')
-            similarityScore = similarClaim.get('similarity_score', 0)
-            found = False
-            for c in claims:
-                c = str(c).split('. ')[1].strip()
-                print('\nTEST 4: Claim Comparison: \n', c, '\n', infringing_claim, '\n', c==infringing_claim, '\n', string_fuzzy_similarity(c, infringing_claim), '\n', similarityScore)
-                if c==infringing_claim:
-                    found = True
-                if string_fuzzy_similarity(c, infringing_claim) >= (similarityScore-0.1):
-                    found = True
-            if not found:
-                continue
-            print('TEST 5: Claim')
-            claimIndex = claims.index(claim)
-            returnIndexKeys = returnVals.keys()
-            if claimIndex not in returnIndexKeys:
-                returnVals[claimIndex] = []
-            returnVals[claimIndex].append({
-                'entry_id': entryId,
-                'similarity_score': similarityScore
-            })
-    # If Map is Empty, return None
-    if returnVals=={}:
+
+    chart_data = []
+    has_updates = False
+
+    for infringement_entry in infringements:
+        if not isinstance(infringement_entry, dict):
+            continue
+        infringement_obj = infringement_entry.get('infringements')
+        if not isinstance(infringement_obj, dict):
+            continue
+        before_ref_claim = infringement_obj.get('ref_claim')
+        before_calc_score = infringement_obj.get('calculated_similarity_score')
+        before_hash = infringement_obj.get('scoring_input_hash')
+        before_scored_at = infringement_obj.get('last_scored_at')
+
+        row = score_infringement_entry(claims, infringement_obj, threshold=0.5)
+        if row is None:
+            continue
+        chart_data.append(row)
+        if (
+            before_ref_claim != infringement_obj.get('ref_claim')
+            or before_calc_score != infringement_obj.get('calculated_similarity_score')
+            or before_hash != infringement_obj.get('scoring_input_hash')
+            or before_scored_at != infringement_obj.get('last_scored_at')
+        ):
+            has_updates = True
+
+    if len(chart_data) == 0:
         return None
-    return returnVals
+
+    if has_updates:
+        update_case(case_id, {'infringements': infringements})
+
+    return chart_data

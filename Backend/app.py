@@ -2237,20 +2237,73 @@ def generate_patent_description(case_id):
 
 @app.route('/api/infringement-chart/<case_id>', methods=['GET'])
 def getInfringementChart(case_id):
+  """
+  Get infringement chart rows for a case.
+  ---
+  tags:
+    - Infringements
+  summary: Build chart data for parent-vs-infringing claims
+  description: |
+    Returns chart rows computed from case claims and stored infringing claims.
+    Requires an authenticated session (user_id in session) and a case_id path parameter.
+    The endpoint computes embedding cosine scores, stores calculated scoring metadata in
+    `infringements[i].infringements`, and returns normalized chart rows.
+  security:
+    - session: []
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+      description: Unique case identifier.
+  responses:
+    200:
+      description: Chart data retrieved successfully.
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: true
+          chart_data:
+            type: array
+            items:
+              type: object
+              properties:
+                ref_claim:
+                  type: string
+                  example: "1. A device comprising..."
+                infringing_claim:
+                  type: string
+                  example: "A semiconductor device including..."
+                similarity_score:
+                  type: number
+                  format: float
+                  example: 0.81
+                evaluation_method:
+                  type: string
+                  example: embedding_cosine
+                last_evaluated:
+                  type: string
+                  example: "2026-05-01T15:30:00Z"
+    400:
+      description: Missing user session or no chart data found.
+    500:
+      description: Internal server error while generating chart data.
+  """
   user_id = get_user_id()
   if not user_id:
     print('\nERROR:User ID is not in session')
     return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
   print(f'LOG: {user_id} Getting Infringement Chart for Case: {case_id}')
   try:
-    infringement_chart = get_infringement_chart(case_id)
+    infringement_chart = get_case_infringement_chart(case_id)
     print('LOG: Infringement Chart: ', infringement_chart)
     if infringement_chart is None:
       return jsonify({'success': False, 'message': 'No infringement chart found. Please check Claims and Infringements'}), 400
     return jsonify({
       'success': True, 
-      'message': 'Infringement chart retrieved successfully', 
-      'infringement_chart': infringement_chart
+      'chart_data': infringement_chart
       }), 200
   except Exception as e:
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')

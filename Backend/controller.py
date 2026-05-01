@@ -200,4 +200,11 @@ def calculate_average_infringement_percentage(case):
     if infringements_count == 0:
         return 0
     return total_infringement_percentage / infringements_count
+
+
+def get_case_infringement_chart(case_id):
+    """
+    Retrieve chart-ready infringement rows for a case by case_id.
+    """
+    return get_infringement_chart(case_id)
         
