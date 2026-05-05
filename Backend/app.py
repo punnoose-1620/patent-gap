@@ -1970,9 +1970,13 @@ def live_similarity_analysis(case_id):
   if case_data is None:
     print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
     return jsonify({'success': False, 'message': 'Case not found'}), 404
+  
   keywords = case_data.get('keywords', [])
   ref_case_title = case_data.get('title', '')
   ref_case_id = case_data.get('_id', '').split('_')[-1]
+  titles_to_avoid = case_data.get('excluded_case_titles', [])
+  ids_to_avoid = case_data.get('excluded_case_ids', [])
+
   if (len(keywords) == 0) or (keywords is None):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400

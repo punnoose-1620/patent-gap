@@ -344,10 +344,17 @@ def alreadyExists(patent:dict, merged_results:list[dict]):
             return True
     return False
 
-def performLiveSearch(keywords:list[str], country:str, ref_case_title: str = '', ref_case_id: str = ''):
+def performLiveSearch(
+    keywords:list[str], 
+    country:str, 
+    ref_case_title: str = '', 
+    ref_case_id: str = '',
+    titles: list[str] = [],
+    ids: list[str] = [],
+    ):
     free_patents_results = []
-    titles = [ref_case_title]
-    ids = [ref_case_id]
+    titles.append(ref_case_title)
+    ids.append(ref_case_id)
     try:
         free_patents_results = searchFreePatentsOnline(keywords)
         for result in free_patents_results:
@@ -399,7 +406,15 @@ def alreadyExistsInProductDetailsList(product_detail, product_details_list: list
 
 # Final Search Functions
 
-def searchPatentSources(keywords:list[str], country:str, reference_claims:list[str], ref_case_title: str = '', ref_case_id: str = ''):
+def searchPatentSources(
+    keywords:list[str], 
+    country:str, 
+    reference_claims:list[str], 
+    ref_case_title: str = '', 
+    ref_case_id: str = '',
+    titles_to_avoid: list[str] = [],
+    ids_to_avoid: list[str] = [],
+    ):
     searchResults = []
     infringement_analysis_results = []
     # Perform Live Patent Search
@@ -408,7 +423,9 @@ def searchPatentSources(keywords:list[str], country:str, reference_claims:list[s
             keywords, 
             country=country, 
             ref_case_title=ref_case_title, 
-            ref_case_id=ref_case_id
+            ref_case_id=ref_case_id,
+            titles=titles_to_avoid,
+            ids=ids_to_avoid,
             )
         for result in results:
             searchResults.append(result)
