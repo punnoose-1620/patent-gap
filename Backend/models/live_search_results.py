@@ -14,7 +14,7 @@ class AttorneysData(BaseModel):
     contact: list[str]
 
 class LiveSearchResults(BaseModel):
-    _id: str
+    _id: str                # Format : source_userid_patentid
     title: str
     status: str
     description: str

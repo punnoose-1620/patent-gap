@@ -1971,6 +1971,8 @@ def live_similarity_analysis(case_id):
     print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
     return jsonify({'success': False, 'message': 'Case not found'}), 404
   keywords = case_data.get('keywords', [])
+  ref_case_title = case_data.get('title', '')
+  ref_case_id = case_data.get('_id', '').split('_')[-1]
   if (len(keywords) == 0) or (keywords is None):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
@@ -1985,7 +1987,7 @@ def live_similarity_analysis(case_id):
   update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
   # Perform Live Patent Search
   try:
-    patentResults = searchPatentSources(keywords, country, ref_claims)
+    patentResults = searchPatentSources(keywords, country, ref_claims, ref_case_title, ref_case_id)
     update_infringements(case_id, patentResults)
     update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed', 'last_updated': dt.now()})
   except Exception as e:
