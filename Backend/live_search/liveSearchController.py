@@ -4,6 +4,8 @@ import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
 from file_controller import readFromXmlUrl, readFromPdfUrl
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 from llm_brain.gemini import Gemini
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
@@ -12,6 +14,7 @@ from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResult
 from web_scraper.free_patents_online import FreePatentsOnline
 from web_scraper.google_patents import GooglePatents
 
+TITLE_SIMILARITY_THRESHOLD = 0.85
 SEARCH_TIMEOUT = 10
 SESSION_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -67,6 +70,19 @@ SOURCES = [
         'use_gemini_for_details': True
     }
 ]
+
+def calculate_cosine_similarity(text1: str, text2: str) -> float:
+    """Calculate cosine similarity between two text strings."""
+    vectorizer = TfidfVectorizer()
+    vectors = vectorizer.fit_transform([text1, text2])
+    return cosine_similarity(vectors[0], vectors[1])[0][0]
+
+def checkSimilarTitleExists(title1:str, references: list[str]):
+    for reference in references:
+        similarity = calculate_cosine_similarity(title1, reference)
+        if similarity > TITLE_SIMILARITY_THRESHOLD:
+            return True
+    return False
 
 def _live_result_to_dict(obj):
     """Convert LiveSearchResults (or similar) to a JSON-serializable dict for API and alreadyExists()."""
@@ -229,7 +245,11 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
     for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
-            resultCasesList.append(_live_result_to_dict(caseData))
+            caseDataDict = _live_result_to_dict(caseData)
+            caseDataDict['case_id'] = str(caseDataUrl.split('/')[-1]).split('.')[0]
+            caseDataDict['url'] = caseDataUrl
+            caseDataDict['source'] = 'free_patents_online'
+            resultCasesList.append(caseDataDict)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
@@ -296,7 +316,14 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
     for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
-            resultCasesList.append(_live_result_to_dict(caseData))
+            caseDataDict = _live_result_to_dict(caseData)
+            if '/en' in caseDataUrl:
+                caseDataDict['case_id'] = str(caseDataUrl.split('/')[-2])
+            else:
+                caseDataDict['case_id'] = str(caseDataUrl.split('/')[-1])
+            caseDataDict['url'] = caseDataUrl
+            caseDataDict['source'] = 'google_patents'
+            resultCasesList.append(caseDataDict)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
@@ -317,10 +344,27 @@ def alreadyExists(patent:dict, merged_results:list[dict]):
             return True
     return False
 
-def performLiveSearch(keywords:list[str], country:str):
+def performLiveSearch(
+    keywords:list[str], 
+    country:str, 
+    ref_case_title: str = '', 
+    ref_case_id: str = '',
+    titles: list[str] = [],
+    ids: list[str] = [],
+    ):
     free_patents_results = []
+    titles.append(ref_case_title)
+    ids.append(ref_case_id)
     try:
         free_patents_results = searchFreePatentsOnline(keywords)
+        for result in free_patents_results:
+            title = result['title'].strip()
+            case_id = result.get('case_id', '').strip().split('_')[-1]
+            if (title in titles) or (case_id in ids) or checkSimilarTitleExists(title, titles):
+                free_patents_results.remove(result)
+                continue
+            titles.append(title)
+            ids.append(case_id)
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Free Patents Online search failed after retries: {str(e)}")
     except Exception as e:
@@ -329,6 +373,14 @@ def performLiveSearch(keywords:list[str], country:str):
     google_patents_results = []
     try:
         google_patents_results = searchGooglePatents(keywords)
+        for result in google_patents_results:
+            title = result['title'].strip()
+            case_id = result.get('case_id', '').strip().split('_')[-1]
+            if (title in titles) or (case_id in ids) or checkSimilarTitleExists(title, titles):
+                google_patents_results.remove(result)
+                continue
+            titles.append(title)
+            ids.append(case_id)
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Google Patents search failed after retries: {str(e)}")
     except Exception as e:
@@ -354,12 +406,27 @@ def alreadyExistsInProductDetailsList(product_detail, product_details_list: list
 
 # Final Search Functions
 
-def searchPatentSources(keywords:list[str], country:str, reference_claims:list[str]):
+def searchPatentSources(
+    keywords:list[str], 
+    country:str, 
+    reference_claims:list[str], 
+    ref_case_title: str = '', 
+    ref_case_id: str = '',
+    titles_to_avoid: list[str] = [],
+    ids_to_avoid: list[str] = [],
+    ):
     searchResults = []
     infringement_analysis_results = []
     # Perform Live Patent Search
     try:
-        results = performLiveSearch(keywords, country=country)
+        results = performLiveSearch(
+            keywords, 
+            country=country, 
+            ref_case_title=ref_case_title, 
+            ref_case_id=ref_case_id,
+            titles=titles_to_avoid,
+            ids=ids_to_avoid,
+            )
         for result in results:
             searchResults.append(result)
     except Exception as e:

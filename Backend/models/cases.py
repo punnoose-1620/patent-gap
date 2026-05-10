@@ -3,6 +3,9 @@ from database import *
 from models.documents import getDocumentById
 from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
+from scorer import score_infringement_matrix_entry
+
+CLAIM_SIMILARITY_THRESHOLD = 0.1
 
 def string_fuzzy_similarity(s1, s2):
     """
@@ -42,25 +45,45 @@ def find_document_metadata(case_data):
     case_data['documents'] = documents
     return case_data
 
-def get_all_cases():
-    all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
+def get_all_cases(page=1, paginated=False):
+    if not paginated:
+        all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
+        for case in all_cases:
+            case = find_document_metadata(case)
+        return all_cases
+    paged = paginateDataByQuery(connect_to_database(), getCaseDatabaseName(), page=page)
+    all_cases = paged.get('items', [])
     for case in all_cases:
         case = find_document_metadata(case)
-    return all_cases
+    paged['items'] = all_cases
+    return paged
 
-def get_open_cases():
+def get_open_cases(page=1, paginated=False):
     """
     Get all open cases available for assignment
     
     Returns:
         list: List of open cases
     """
-    open_cases = []
-    for case in getAllData(connect_to_database(), getCaseDatabaseName()):
-        if case['status'] != 'Completed':
-            case = find_document_metadata(case)
-            open_cases.append(case)
-    return open_cases
+    if not paginated:
+        open_cases = []
+        for case in getAllData(connect_to_database(), getCaseDatabaseName()):
+            if case['status'] != 'Completed':
+                case = find_document_metadata(case)
+                open_cases.append(case)
+        return open_cases
+
+    paged = paginateDataByQuery(
+        connect_to_database(),
+        getCaseDatabaseName(),
+        query={'status': {'$ne': 'Completed'}},
+        page=page
+    )
+    open_cases = paged.get('items', [])
+    for case in open_cases:
+        case = find_document_metadata(case)
+    paged['items'] = open_cases
+    return paged
 
 def create_case(case_data):
     """
@@ -81,6 +104,11 @@ def create_case(case_data):
     if addedId is not None:
         case_data['_id'] = addedId
         print(f'LOG: Case created successfully: {case_data["_id"]}')
+        if 'DocumentCreationError' in case_data['_id']:
+            return {
+                'success': False,
+                'message': 'Document creation error'
+            }
         return {
             'success': True,
             'message': 'Case created successfully',
@@ -187,7 +215,7 @@ def get_case_by_id(case_id, show_password=False):
         return case
     return None
 
-def get_case_related_to_user(user_id):
+def get_case_related_to_user(user_id, page=1, paginated=False):
     """
     Get cases related to a specific user (assigned to, accepted by, created by)
     
@@ -197,26 +225,44 @@ def get_case_related_to_user(user_id):
     Returns:
         list: List of user's cases
     """
-    # TODO: Implement actual database query
-    user_cases = []
-    for case in getAllData(connect_to_database(), getCaseDatabaseName()):
-        keys = case.keys()
-        if ('assigned_to' in keys):
-            if (case['assigned_to'] == user_id):
-                case = find_document_metadata(case)
-                user_cases.append(case)
-                continue
-        if ('accepted_by' in keys):
-            if (case['accepted_by'] == user_id):
-                case = find_document_metadata(case)
-                user_cases.append(case)
-                continue
-        if ('created_by' in keys):
-            if (case['created_by'] == user_id):
-                case = find_document_metadata(case)
-                user_cases.append(case)
-                continue
-    return user_cases
+    if not paginated:
+        user_cases = []
+        for case in getAllData(connect_to_database(), getCaseDatabaseName()):
+            keys = case.keys()
+            if ('assigned_to' in keys):
+                if (case['assigned_to'] == user_id):
+                    case = find_document_metadata(case)
+                    user_cases.append(case)
+                    continue
+            if ('accepted_by' in keys):
+                if (case['accepted_by'] == user_id):
+                    case = find_document_metadata(case)
+                    user_cases.append(case)
+                    continue
+            if ('created_by' in keys):
+                if (case['created_by'] == user_id):
+                    case = find_document_metadata(case)
+                    user_cases.append(case)
+                    continue
+        return user_cases
+
+    paged = paginateDataByQuery(
+        connect_to_database(),
+        getCaseDatabaseName(),
+        query={
+            '$or': [
+                {'assigned_to': user_id},
+                {'accepted_by': user_id},
+                {'created_by': user_id}
+            ]
+        },
+        page=page
+    )
+    user_cases = paged.get('items', [])
+    for case in user_cases:
+        case = find_document_metadata(case)
+    paged['items'] = user_cases
+    return paged
 
 def get_documents_from_case(case_id):
     """
@@ -271,47 +317,81 @@ def get_case_creator(case_id):
     return case.get('created_by')
 
 def get_infringement_chart(case_id):
+    """
+    Build chart-ready infringement rows for a case.
+
+    Returns a tuple ``(chart_data, error_code)``:
+
+    - ``(rows, None)`` on success with a non-empty list.
+    - ``([], 'NO_MATCHES_ABOVE_THRESHOLD')`` when claims and infringement claims
+      were both present and scored, but no pair met the similarity threshold.
+      Any newly computed scored rows are still persisted to the case document.
+    - ``(None, 'CASE_NOT_FOUND')`` when no case exists for ``case_id``.
+    - ``(None, 'NO_PARENT_CLAIMS')`` when the case has no usable parent claims.
+    - ``(None, 'NO_INFRINGEMENTS')`` when the case has no infringements saved.
+    - ``(None, 'INFRINGEMENT_CLAIMS_MISSING')`` when infringements exist but
+      none of them carries any claims to compare against.
+    """
     caseData = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
-    claims = caseData.get('claims', [])
+    if caseData is None:
+        return None, 'CASE_NOT_FOUND'
+
+    claims = [claim for claim in caseData.get('claims', []) if isinstance(claim, str) and claim.strip() != '']
+    if len(claims) == 0:
+        return None, 'NO_PARENT_CLAIMS'
+
     infringements = caseData.get('infringements', [])
-    print('TEST 1: Claims')
-    # If Claims and Infringements are not available, return None
-    if (len(claims) == 0) or (len(infringements) == 0):
-        return None
-    # Let's remove the non-claims part of the claims list, like headings and such
-    for claim in claims:
-        if 'claim' not in claim:
-            claims.remove(claim)
-    print('TEST 2: Claims')
-    # Now let's create a map of claims to their infringements
-    returnVals = {}
-    for infringement in infringements:
-        entryId = infringement.get('entry_id', '')
-        similarClaims = infringement.get('similar_claims', [])
-        print('TEST 3: Similar Claims')
-        for similarClaim in similarClaims:
-            infringing_claim = similarClaim.get('claim', '')
-            similarityScore = similarClaim.get('similarity_score', 0)
-            found = False
-            for c in claims:
-                c = str(c).split('. ')[1].strip()
-                print('\nTEST 4: Claim Comparison: \n', c, '\n', infringing_claim, '\n', c==infringing_claim, '\n', string_fuzzy_similarity(c, infringing_claim), '\n', similarityScore)
-                if c==infringing_claim:
-                    found = True
-                if string_fuzzy_similarity(c, infringing_claim) >= (similarityScore-0.1):
-                    found = True
-            if not found:
-                continue
-            print('TEST 5: Claim')
-            claimIndex = claims.index(claim)
-            returnIndexKeys = returnVals.keys()
-            if claimIndex not in returnIndexKeys:
-                returnVals[claimIndex] = []
-            returnVals[claimIndex].append({
-                'entry_id': entryId,
-                'similarity_score': similarityScore
-            })
-    # If Map is Empty, return None
-    if returnVals=={}:
-        return None
-    return returnVals
+    if len(infringements) == 0:
+        return None, 'NO_INFRINGEMENTS'
+
+    chart_data = []
+    has_updates = False
+    entries_with_claims = 0
+
+    for infringement_entry in infringements:
+        if not isinstance(infringement_entry, dict):
+            continue
+
+        inf_claims = [
+            c.strip()
+            for c in infringement_entry.get('claims', [])
+            if isinstance(c, str) and c.strip() != ''
+        ]
+        existing = infringement_entry.get('infringements')
+
+        if not inf_claims and isinstance(existing, dict):
+            legacy_claim = existing.get('claim')
+            if isinstance(legacy_claim, str) and legacy_claim.strip() != '':
+                inf_claims = [legacy_claim.strip()]
+
+        if not inf_claims:
+            continue
+
+        entries_with_claims += 1
+
+        if isinstance(existing, dict) and not infringement_entry.get('gemini_infringement'):
+            infringement_entry['gemini_infringement'] = dict(existing)
+
+        before = existing
+        stored_rows, entry_chart_rows = score_infringement_matrix_entry(
+            claims, inf_claims, existing, threshold=CLAIM_SIMILARITY_THRESHOLD
+        )
+        if stored_rows is None:
+            continue
+
+        infringement_entry['infringements'] = stored_rows
+        chart_data.extend(entry_chart_rows)
+
+        if before != stored_rows:
+            has_updates = True
+
+    if entries_with_claims == 0:
+        return None, 'INFRINGEMENT_CLAIMS_MISSING'
+
+    if has_updates:
+        update_case(case_id, {'infringements': infringements})
+
+    if len(chart_data) == 0:
+        return [], 'NO_MATCHES_ABOVE_THRESHOLD'
+
+    return chart_data, None

@@ -10,6 +10,7 @@ from models.cases import *
 from models.users import *
 from models.alerts import *
 from models.documents import *
+from models.search_history import *
 
 from sources.USPTO import *
 from sources.Gemini import *
@@ -400,13 +401,16 @@ def all_cases():
     #     return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     # user_id = session['user_id']
     # print(f'LOG: {user_id} Get My Cases')
+    page = request.args.get('page', 1, type=int)
     try:
-        cases = get_all_cases()
+        results = get_all_cases(page=page, paginated=True)
+        cases = results.get('items', [])
         ids = [case.get('_id') for case in cases]
         print(f'LOG: All Cases({len(cases)}): {ids}')
         return jsonify({
             'success': True,
-            'cases': cases
+            'items': cases,
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         print('Error fetching cases: ', str(e))
@@ -455,12 +459,14 @@ def my_cases():
       print('TEST: My Cases - Not authenticated')
       return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     print(f'LOG: {user_id} Get My Cases')
+    page = request.args.get('page', 1, type=int)
     try:
         print('User ID: ', user_id)
-        cases = get_case_related_to_user(user_id)
+        results = get_case_related_to_user(user_id, page=page, paginated=True)
         return jsonify({
             'success': True,
-            'cases': cases
+            'items': results.get('items', []),
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         print('Error fetching cases: ', str(e))
@@ -502,11 +508,13 @@ def open_cases():
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     print(f'LOG: {user_id} Get Open Cases')
+    page = request.args.get('page', 1, type=int)
     try:
-        cases = get_open_cases()
+        results = get_open_cases(page=page, paginated=True)
         return jsonify({
             'success': True,
-            'cases': cases
+            'items': results.get('items', []),
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         return jsonify({
@@ -1263,7 +1271,7 @@ def upload_file_to_local_storage(case_id):
           'newEntryData': newEntryData
           }), 400
       document_id = created_document.get('document_id')
-      document_url = f'documents/{document_id}'
+      document_url = f'document/{document_id}'
       documentEntry = {
         'url': document_url,
         'source': 'local'
@@ -1330,11 +1338,13 @@ def get_all_alerts():
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     print(f'LOG: {user_id} Get All Alerts')
 
+    page = request.args.get('page', 1, type=int)
     try:
-        alerts = get_alerts()
+        results = get_alerts(page=page)
         return jsonify({
             'success': True,
-            'alerts': alerts
+            'items': results.get('items', []),
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error getting all alerts: {str(e)}'}), 500
@@ -1372,11 +1382,13 @@ def get_user_alerts():
     if not user_id:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     print(f'LOG: {user_id} Get User Alerts')
+    page = request.args.get('page', 1, type=int)
     try:
-        user_alerts = get_alerts_for_user(user_id)
+        results = get_alerts_for_user(user_id, page=page)
         return jsonify({
             'success': True,
-            'alerts': user_alerts
+            'items': results.get('items', []),
+            'pagination': results.get('pagination', {})
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error getting all alerts: {str(e)}'}), 500
@@ -1579,6 +1591,9 @@ def api_import_patent_from_uspto():
       schema:
         $ref: '#/definitions/ErrorResponse'
   """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
   data = request.get_json()
   if data is None:
     print('\nNo Data provided')
@@ -1609,7 +1624,7 @@ def api_import_patent_from_uspto():
     return jsonify({
       'success': True, 
       'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{patent_id}",
+      'case_id': f"uspto_{user_id}_{patent_id}",
       'keywords': uspto_data['keywords'],
       'case_data': uspto_data
       }), 200
@@ -1648,6 +1663,8 @@ def api_create_patent():
     data['created_by'] = user_id
     data['created_date'] = dt.now().strftime('%Y-%m-%d')
     created_patent = create_case(data)
+    if 'DocumentCreationError' in created_patent['case_id']:
+      return jsonify({'success': False, 'message': created_patent['case_id']}), 400
     print('\nLOG: Created Patent: ', created_patent, '\n')
     
     returnVal = {
@@ -1766,7 +1783,7 @@ def fetch_patent_from_uspto():
     return jsonify({
       'success': True, 
       'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{patent_id}",
+      'case_id': f"uspto_{user_id}_{patent_id}",
       'keywords': uspto_data.get('keywords', []),
       'case_data': uspto_data
       }), 200
@@ -1780,16 +1797,20 @@ def fetch_patent_from_uspto():
       case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
       if case_data is not None:
         case_data['source'] = 'google_patents'
-        case_data['_id'] = f"googlepatents_{patent_id}"
+        case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
         case_data['created_by'] = user_id
         if case_data.get('current_status', '') == '':
           case_data['current_status'] = 'Granted'
         case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+        created_id = case_data.get('_id', '')
         creationResult = create_case(case_data)
+        created_id = case_data.get('_id', '')
+        if 'DocumentCreationError' in created_id:
+          return jsonify({'success': False, 'message': created_id}), 400
         return jsonify({
           'success': True, 
           'message': 'Patent data imported successfully', 
-          'case_id': case_data.get('_id', ''),
+          'case_id': created_id,
           'keywords': case_data.get('keywords', []),
           'case_data': case_data
           }), 200
@@ -1803,16 +1824,19 @@ def fetch_patent_from_uspto():
       case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
       if case_data is not None:
         case_data['source'] = 'free_patents_online'
-        case_data['_id'] = f"freepatentsonline_{patent_id}"
+        case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
         case_data['created_by'] = user_id
         if case_data.get('current_status', '') == '':
           case_data['current_status'] = 'Granted'
         case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
         creationResult = create_case(case_data)
+        created_id = case_data.get('_id', '')
+        if 'DocumentCreationError' in created_id:
+          return jsonify({'success': False, 'message': created_id}), 400
         return jsonify({
           'success': True, 
           'message': 'Patent data imported successfully', 
-          'case_id': case_data.get('_id', ''),
+          'case_id': created_id,
           'keywords': case_data.get('keywords', []),
           'case_data': case_data
           }), 200
@@ -1910,122 +1934,6 @@ def get_claims_for_patent(case_id):
     print(f'\nERROR:Error getting claims data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting claims for patent: {str(e)}'}), 500
 
-@app.route('/api/gemini-infringement-analysis/<case_id>', methods=['GET'])
-def infringement_analysis_gemini(case_id):
-  #TODO: Add function information to swagger
-  user_id = get_user_id()
-  if not user_id:
-    print('\nUser ID is not in session')
-    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-  print(f'LOG: {user_id} Getting Infringement Analysis for Case: {case_id}')
-  
-  try:
-    case_data = get_case_by_id(case_id)
-    if case_data is None:
-      return jsonify({'success': False, 'message': 'Case not found'}), 404
-
-    existing_claims = case_data.get('claims', [])
-    if (len(existing_claims) == 0) or (existing_claims is None):
-      print(f'\nERROR: Error getting infringement analysis: Claims not available in case data')
-      return jsonify({'success': True, 'message': 'Claims not available in case data'}), 200
-
-    similar_infringements = get_complete_infringements(existing_claims)
-    if (similar_infringements is None) or (len(similar_infringements) == 0):
-      return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
-    if (similar_infringements[0] == 'Rate Exceeded Error') or (similar_infringements[0] == 'Access Forbidden Error') or (similar_infringements[0] == 'Authentication Error') or (similar_infringements[0] == 'Bad Request Error'):
-      return jsonify({'success': False, 'message': similar_infringements[0]}), 400
-    
-    for infringement in similar_infringements:
-      infringement['same_as_patent'] = areSimilarStrings(case_data.get('title', ''), infringement.get('entry_title', ''))
-    return jsonify({
-      'success': True, 
-      'message': 'Similarity analysis completed', 
-      'claims': existing_claims,
-      'similar_infringements': similar_infringements
-      }), 200
-  except Exception as e:
-    print(f'\nERROR:Error getting infringement analysis data: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting infringement analysis for patent: {str(e)}'}), 500
-
-@app.route('/api/similarity-analysis-gemini', methods=['POST'])
-def similarity_analysis_gemini():
-  """
-  Endpoint to perform similarity analysis on a set of document URLs using the Gemini analysis engine.
-
-  This endpoint receives a POST request containing a JSON payload with a list of document URLs.
-  It retrieves the content from each URL, concatenates them, and then performs a similarity/infringement analysis
-  using a specialized function. The analysis results are returned in the response.
-
-  Request JSON Example:
-    {
-      "document_urls": [
-        "https://example.com/document1.txt",
-        "https://example.com/document2.txt"
-      ]
-    }
-
-  Responses:
-    200 OK:
-      {
-        "success": true,
-        "message": "Similarity analysis completed",
-        "similar_infringements": [...]
-      }
-    400 Bad Request:
-      {
-        "success": false,
-        "message": "No data provided" | "Document URLs are required" | "No viable document contents provided"
-      }
-    500 Internal Server Error:
-      {
-        "success": false,
-        "message": "Error details"
-      }
-  """
-  data = request.get_json()
-  if data is None:
-    return jsonify({'success': False, 'message': 'No data provided'}), 400
-  if 'document_urls' not in data:
-    return jsonify({'success': False, 'message': 'Document URLs are required'}), 400
-  document_urls = data.get('document_urls', [])
-  document_contents = []
-  for document in document_urls:
-    content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
-    document_contents.append(content)
-
-  if (len(document_contents) == 0) or (document_contents is None):
-    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-
-  complete_document_contents = ""
-  for content in document_contents:
-    if content.strip() != "":
-      complete_document_contents = f"{complete_document_contents}\n\n{content}"
-  
-  if complete_document_contents.strip() == "":
-    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-
-  claims = get_claims(complete_document_contents)
-  if (len(claims) == 0) or (claims is None):
-      return jsonify({'success': False, 'message': 'Unable to get claims from document contents'}), 400
-  if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
-      return jsonify({'success': False, 'message': claims[0]}), 400
-  
-  similar_infringements = get_complete_infringements(claims)
-  
-  if (similar_infringements is None) or (len(similar_infringements) == 0):
-    return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
-  if (similar_infringements[0] == 'Rate Exceeded Error') or (similar_infringements[0] == 'Access Forbidden Error') or (similar_infringements[0] == 'Authentication Error') or (similar_infringements[0] == 'Bad Request Error'):
-    return jsonify({'success': False, 'message': similar_infringements[0]}), 400
-  # if (similar_infringements is None) or (len(similar_infringements) == 0):
-  #   return jsonify({'success': False, 'message': 'No similar infringements found'}), 400
-  # print('TEST: similar_infringements: ', json.dumps(similar_infringements, indent=4))
-  return jsonify({
-    'success': True, 
-    'message': 'Similarity analysis completed', 
-    'claims': claims,
-    'similar_infringements': similar_infringements
-    }), 200
-
 # NOTE: Current implementation. Need to be updated with new one later after testing.
 @app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
 def live_similarity_analysis(case_id):
@@ -2062,7 +1970,13 @@ def live_similarity_analysis(case_id):
   if case_data is None:
     print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
     return jsonify({'success': False, 'message': 'Case not found'}), 404
+  
   keywords = case_data.get('keywords', [])
+  ref_case_title = case_data.get('title', '')
+  ref_case_id = case_data.get('_id', '').split('_')[-1]
+  titles_to_avoid = case_data.get('excluded_case_titles', [])
+  ids_to_avoid = case_data.get('excluded_case_ids', [])
+
   if (len(keywords) == 0) or (keywords is None):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
@@ -2077,7 +1991,7 @@ def live_similarity_analysis(case_id):
   update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
   # Perform Live Patent Search
   try:
-    patentResults = searchPatentSources(keywords, country, ref_claims)
+    patentResults = searchPatentSources(keywords, country, ref_claims, ref_case_title, ref_case_id)
     update_infringements(case_id, patentResults)
     update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed', 'last_updated': dt.now()})
   except Exception as e:
@@ -2327,26 +2241,141 @@ def generate_patent_description(case_id):
     'message': 'Patent summary generated successfully', 
     'summary': summary}), 200
 
+INFRINGEMENT_CHART_ERROR_RESPONSES = {
+  'CASE_NOT_FOUND': (404, 'Case not found.'),
+  'NO_PARENT_CLAIMS': (422, 'This case has no claims. Add claims before generating an infringement chart.'),
+  'NO_INFRINGEMENTS': (422, 'No infringements have been added for this case yet.'),
+  'INFRINGEMENT_CLAIMS_MISSING': (422, 'Infringements exist but contain no claims to compare.'),
+}
+
 @app.route('/api/infringement-chart/<case_id>', methods=['GET'])
 def getInfringementChart(case_id):
+  """
+  Get infringement chart rows for a case.
+  ---
+  tags:
+    - Infringements
+  summary: Build chart data for parent-vs-infringing claims
+  description: |
+    Returns chart rows computed from case claims and stored infringing claims.
+    Requires an authenticated session (user_id in session or X-User-ID header)
+    and a case_id path parameter.
+
+    The endpoint computes embedding cosine scores for every (parent claim ×
+    infringing patent claim) pair, keeps pairs with score above the threshold,
+    and stores them in `infringements[i].infringements` as an array of objects.
+    A prior Gemini single-object analysis is copied to `gemini_infringement`
+    when present. The response flattens all pairs into `chart_data`.
+
+    On non-success, the response includes a machine-readable `error_code`:
+
+      - `NO_SESSION` (401) — no user_id in session/header.
+      - `CASE_NOT_FOUND` (404) — no case for the given case_id.
+      - `NO_PARENT_CLAIMS` (422) — the case has no usable claims.
+      - `NO_INFRINGEMENTS` (422) — the case has no infringements saved.
+      - `INFRINGEMENT_CLAIMS_MISSING` (422) — infringements exist but none has
+        claims populated.
+      - `NO_MATCHES_ABOVE_THRESHOLD` (200) — pipeline ran but no pair met the
+        similarity threshold; `chart_data` is `[]`.
+      - `INTERNAL_ERROR` (500) — unhandled server error.
+  security:
+    - session: []
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+      description: Unique case identifier.
+  responses:
+    200:
+      description: |
+        Pipeline ran successfully. `chart_data` contains the rows. When
+        `error_code` is `NO_MATCHES_ABOVE_THRESHOLD`, the array is empty.
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: true
+          error_code:
+            type: string
+            example: NO_MATCHES_ABOVE_THRESHOLD
+          chart_data:
+            type: array
+            items:
+              type: object
+              properties:
+                ref_claim:
+                  type: string
+                  example: "1. A device comprising..."
+                infringing_claim:
+                  type: string
+                  example: "A semiconductor device including..."
+                similarity_score:
+                  type: number
+                  format: float
+                  example: 0.81
+                evaluation_method:
+                  type: string
+                  example: embedding_cosine
+                last_evaluated:
+                  type: string
+                  example: "2026-05-01T15:30:00Z"
+    401:
+      description: Missing user session (`error_code: NO_SESSION`).
+    404:
+      description: Case not found (`error_code: CASE_NOT_FOUND`).
+    422:
+      description: |
+        Case is missing data needed to build a chart. `error_code` is one of
+        `NO_PARENT_CLAIMS`, `NO_INFRINGEMENTS`, or `INFRINGEMENT_CLAIMS_MISSING`.
+    500:
+      description: Internal server error (`error_code: INTERNAL_ERROR`).
+  """
   user_id = get_user_id()
   if not user_id:
     print('\nERROR:User ID is not in session')
-    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+    return jsonify({
+      'success': False,
+      'error_code': 'NO_SESSION',
+      'message': 'User ID is not in session',
+    }), 401
   print(f'LOG: {user_id} Getting Infringement Chart for Case: {case_id}')
   try:
-    infringement_chart = get_infringement_chart(case_id)
-    print('LOG: Infringement Chart: ', infringement_chart)
-    if infringement_chart is None:
-      return jsonify({'success': False, 'message': 'No infringement chart found. Please check Claims and Infringements'}), 400
-    return jsonify({
-      'success': True, 
-      'message': 'Infringement chart retrieved successfully', 
-      'infringement_chart': infringement_chart
+    infringement_chart, error_code = get_case_infringement_chart(case_id)
+    rows_count = len(infringement_chart) if infringement_chart is not None else 0
+    print(f'LOG: Infringement Chart rows: {rows_count} (error_code={error_code})')
+
+    if error_code == 'NO_MATCHES_ABOVE_THRESHOLD':
+      return jsonify({
+        'success': True,
+        'chart_data': [],
+        'error_code': error_code,
+        'message': 'No claim pairs met the similarity threshold.',
       }), 200
+
+    if error_code is not None:
+      status, message = INFRINGEMENT_CHART_ERROR_RESPONSES.get(
+        error_code,
+        (400, 'No infringement chart found. Please check Claims and Infringements'),
+      )
+      return jsonify({
+        'success': False,
+        'error_code': error_code,
+        'message': message,
+      }), status
+
+    return jsonify({
+      'success': True,
+      'chart_data': infringement_chart,
+    }), 200
   except Exception as e:
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting infringement chart for patent: {str(e)}'}), 500
+    return jsonify({
+      'success': False,
+      'error_code': 'INTERNAL_ERROR',
+      'message': f'Error getting infringement chart for patent: {str(e)}',
+    }), 500
 
 @app.route('/api/test-new-infringement-analysis', methods=['POST'])
 def test_new_infringement_analysis():
@@ -2360,6 +2389,66 @@ def test_new_infringement_analysis():
   
   search_results = searchPatentSourcesNew(data['keywords'], data['country'], data['claims'], data['context'])
   return jsonify({'success': True, 'message': 'New infringement analysis completed', 'search_results': search_results}), 200
+
+@app.route('/api/search-history', methods=['GET'])
+def get_search_history_route():
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+  page = request.args.get('page', 1, type=int)
+  search_history = get_search_history(user_id, page=page)
+  return jsonify({
+      'success': True,
+      'message': 'Search history retrieved successfully',
+      'items': search_history.get('items', []),
+      'pagination': search_history.get('pagination', {})
+  }), 200
+
+@app.route('/api/search', methods=['POST'])
+def search():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'search_query' not in data:
+    return jsonify({'success': False, 'message': 'Search query is required'}), 400
+  
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  search_query = data.get('search_query', '')
+  page = request.args.get('page', 1, type=int)
+  search_results = search_cases(search_query, user_id, page=page)
+  return jsonify({
+    'success': True, 
+    'message': 'Search completed successfully', 
+    'items': search_results.get('items', []),
+    'pagination': search_results.get('pagination', {})
+    }), 200
+
+@app.route('/api/add-search-history', methods=['POST'])
+def add_search_history():
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'search_query' not in data:
+    return jsonify({'success': False, 'message': 'Search query is required'}), 400
+  if 'search_results' not in data:
+    return jsonify({'success': False, 'message': 'Search results are required'}), 400
+  
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  search_query = data.get('search_query', '')
+  search_results = data.get('search_results', [])
+  if (len(search_results) == 0) or (search_results is None):
+    return jsonify({'success': False, 'message': 'No search results provided'}), 400
+    
+  added = add_search_history(user_id, search_query, search_results)
+  if not added:
+    return jsonify({'success': False, 'message': 'Failed to add search history'}), 400
+  return jsonify({'success': True, 'message': 'Search history added successfully', 'search_results': search_results}), 200
 
 if __name__ == '__main__':
     port = app.config['PORT']

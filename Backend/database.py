@@ -6,16 +6,14 @@ from pymongo import MongoClient
 from typing import Optional, Dict, Any, List
 from env_controller import getDatabaseConnectionString
 
-import firebase_admin
-from firebase_admin import credentials, firestore
-
 # Module-level variable to store MongoDB database instance
 _mongodb_client = None
 _mongodb_db = None
+PAGE_SIZE = 10
 
 def connect_to_database():
     """
-    Connects to Firestore using MongoDB connection string from environment variables.
+    Connects to Database using MongoDB connection string from environment variables.
     Returns the MongoDB database client.
     
     The connection string should be in the format:
@@ -115,7 +113,7 @@ def getAllData(db, collectionName):
     try:
         collection = db[collectionName]
         # Convert ObjectId to string for JSON serialization
-        documents = list(collection.find({}))
+        documents = list(collection.find({}, max_time_ms=120000))
         # Convert _id from ObjectId to string if present
         for doc in documents:
             if '_id' in doc and hasattr(doc['_id'], '__str__'):
@@ -155,7 +153,7 @@ def getDataById(db, collectionName, entryId):
         collection = db[collectionName]
         document = collection.find_one({'_id': entryId})
         if document is None:
-            allDocs = collection.find({})
+            allDocs = collection.find({}, max_time_ms=120000)
             for doc in allDocs:
                 if doc['_id'] == entryId or doc['id'] == entryId:
                     document = doc
@@ -169,6 +167,158 @@ def getDataById(db, collectionName, entryId):
     except Exception as e:
         print(f"Error fetching data by ID from {collectionName}: {e}")
         return None
+
+def getDataByKeyValue(db, collectionName, key, value):
+    try:
+        collection = db[collectionName]
+        documents = list(collection.find({key: value}, max_time_ms=120000))
+        for doc in documents:
+            if '_id' in doc and hasattr(doc['_id'], '__str__'):
+                doc['_id'] = str(doc['_id'])
+        return documents
+    except Exception as e:
+        print(f"Error fetching data by key and value from {collectionName}: {e}")
+        return []
+
+def paginateDataByQuery(
+    db,
+    collectionName,
+    query=None,
+    page=1,
+    sort_field='last_updated',
+    sort_direction=-1
+):
+    """
+    Returns a fixed-size page (PAGE_SIZE) of documents and pagination metadata.
+    """
+    try:
+        collection = db[collectionName]
+        query = query or {}
+        page = max(int(page or 1), 1)
+        skip = (page - 1) * PAGE_SIZE
+
+        total = collection.count_documents(query, maxTimeMS=120000)
+        cursor = collection.find(query, max_time_ms=120000)
+
+        # Fall back to _id sort if selected field is missing on many docs.
+        try:
+            cursor = cursor.sort(sort_field, sort_direction)
+        except Exception:
+            cursor = cursor.sort('_id', -1)
+
+        documents = list(cursor.skip(skip).limit(PAGE_SIZE))
+        for doc in documents:
+            if '_id' in doc and hasattr(doc['_id'], '__str__'):
+                doc['_id'] = str(doc['_id'])
+
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE if total > 0 else 0
+        return {
+            'items': documents,
+            'pagination': {
+                'page': page,
+                'page_size': PAGE_SIZE,
+                'total': total,
+                'total_pages': total_pages,
+                'has_next': page < total_pages
+            }
+        }
+    except Exception as e:
+        print(f"Error paginating data from {collectionName}: {e}")
+        return {
+            'items': [],
+            'pagination': {
+                'page': max(int(page or 1), 1),
+                'page_size': PAGE_SIZE,
+                'total': 0,
+                'total_pages': 0,
+                'has_next': False
+            }
+        }
+
+def searchDataForKeywords(db, collectionName, key, value, keywords, page=1):
+    """
+    Search documents that match key:value and contain keyword(s) in any indexed field.
+    Returns paginated data with fixed PAGE_SIZE.
+    """
+    try:
+        collection = db[collectionName]
+        page = max(int(page or 1), 1)
+        skip = (page - 1) * PAGE_SIZE
+
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        keywords = [kw.strip() for kw in (keywords or []) if isinstance(kw, str) and kw.strip()]
+
+        if not keywords:
+            return paginateDataByQuery(db, collectionName, query={key: value}, page=page)
+
+        total_pipeline = [
+            {
+                "$search": {
+                    "index": "default",
+                    "compound": {
+                        "filter": [{"equals": {"path": key, "value": value}}],
+                        "should": [
+                            {"text": {"query": kw, "path": {"wildcard": "*"}}}
+                            for kw in keywords
+                        ],
+                        "minimumShouldMatch": 1,
+                    },
+                    "count": {"type": "total"},
+                }
+            },
+            {"$limit": 1},
+            {"$project": {"_id": 0, "count": "$$SEARCH_META.count.total"}}
+        ]
+        pipeline = [
+            {
+                "$search": {
+                    "index": "default",
+                    "compound": {
+                        "filter": [{"equals": {"path": key, "value": value}}],
+                        "should": [
+                            {"text": {"query": kw, "path": {"wildcard": "*"}}}
+                            for kw in keywords
+                        ],
+                        "minimumShouldMatch": 1,
+                    },
+                }
+            },
+            {"$sort": {"last_updated": -1, "_id": -1}},
+            {"$skip": skip},
+            {"$limit": PAGE_SIZE},
+        ]
+
+        total_result = list(collection.aggregate(total_pipeline, maxTimeMS=120000))
+        total = int(total_result[0].get('count', 0)) if total_result else 0
+        documents = list(collection.aggregate(pipeline))
+        for doc in documents:
+            if "_id" in doc and hasattr(doc["_id"], "__str__"):
+                doc["_id"] = str(doc["_id"])
+
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE if total > 0 else 0
+        return {
+            'items': documents,
+            'pagination': {
+                'page': page,
+                'page_size': PAGE_SIZE,
+                'total': total,
+                'total_pages': total_pages,
+                'has_next': page < total_pages
+            }
+        }
+    except Exception as atlas_error:
+        print(f"Atlas Search failed in {collectionName}: {atlas_error}")
+        return {
+            'items': [],
+            'pagination': {
+                'page': max(int(page or 1), 1),
+                'page_size': PAGE_SIZE,
+                'total': 0,
+                'total_pages': 0,
+                'has_next': False
+            }
+        }
 
 def updateListByIdAndKey(db, collectionName, update_list, entry_id, key):
     """
