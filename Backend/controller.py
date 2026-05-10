@@ -205,6 +205,9 @@ def calculate_average_infringement_percentage(case):
 def get_case_infringement_chart(case_id):
     """
     Retrieve chart-ready infringement rows for a case by case_id.
+
+    Returns ``(chart_data, error_code)``. See ``get_infringement_chart`` in
+    ``models.cases`` for the full contract on possible error codes.
     """
     return get_infringement_chart(case_id)
         

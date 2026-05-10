@@ -2241,6 +2241,13 @@ def generate_patent_description(case_id):
     'message': 'Patent summary generated successfully', 
     'summary': summary}), 200
 
+INFRINGEMENT_CHART_ERROR_RESPONSES = {
+  'CASE_NOT_FOUND': (404, 'Case not found.'),
+  'NO_PARENT_CLAIMS': (422, 'This case has no claims. Add claims before generating an infringement chart.'),
+  'NO_INFRINGEMENTS': (422, 'No infringements have been added for this case yet.'),
+  'INFRINGEMENT_CLAIMS_MISSING': (422, 'Infringements exist but contain no claims to compare.'),
+}
+
 @app.route('/api/infringement-chart/<case_id>', methods=['GET'])
 def getInfringementChart(case_id):
   """
@@ -2251,12 +2258,26 @@ def getInfringementChart(case_id):
   summary: Build chart data for parent-vs-infringing claims
   description: |
     Returns chart rows computed from case claims and stored infringing claims.
-    Requires an authenticated session (user_id in session) and a case_id path parameter.
-    The endpoint computes embedding cosine scores for every (parent claim × infringing
-    patent claim) pair, keeps pairs with score above the threshold, and stores them in
-    `infringements[i].infringements` as an array of objects. A prior Gemini single-object
-    analysis is copied to `gemini_infringement` when present. The response lists flatten
-    all pairs into `chart_data`.
+    Requires an authenticated session (user_id in session or X-User-ID header)
+    and a case_id path parameter.
+
+    The endpoint computes embedding cosine scores for every (parent claim ×
+    infringing patent claim) pair, keeps pairs with score above the threshold,
+    and stores them in `infringements[i].infringements` as an array of objects.
+    A prior Gemini single-object analysis is copied to `gemini_infringement`
+    when present. The response flattens all pairs into `chart_data`.
+
+    On non-success, the response includes a machine-readable `error_code`:
+
+      - `NO_SESSION` (401) — no user_id in session/header.
+      - `CASE_NOT_FOUND` (404) — no case for the given case_id.
+      - `NO_PARENT_CLAIMS` (422) — the case has no usable claims.
+      - `NO_INFRINGEMENTS` (422) — the case has no infringements saved.
+      - `INFRINGEMENT_CLAIMS_MISSING` (422) — infringements exist but none has
+        claims populated.
+      - `NO_MATCHES_ABOVE_THRESHOLD` (200) — pipeline ran but no pair met the
+        similarity threshold; `chart_data` is `[]`.
+      - `INTERNAL_ERROR` (500) — unhandled server error.
   security:
     - session: []
   parameters:
@@ -2267,13 +2288,18 @@ def getInfringementChart(case_id):
       description: Unique case identifier.
   responses:
     200:
-      description: Chart data retrieved successfully.
+      description: |
+        Pipeline ran successfully. `chart_data` contains the rows. When
+        `error_code` is `NO_MATCHES_ABOVE_THRESHOLD`, the array is empty.
       schema:
         type: object
         properties:
           success:
             type: boolean
             example: true
+          error_code:
+            type: string
+            example: NO_MATCHES_ABOVE_THRESHOLD
           chart_data:
             type: array
             items:
@@ -2295,28 +2321,61 @@ def getInfringementChart(case_id):
                 last_evaluated:
                   type: string
                   example: "2026-05-01T15:30:00Z"
-    400:
-      description: Missing user session or no chart data found.
+    401:
+      description: Missing user session (`error_code: NO_SESSION`).
+    404:
+      description: Case not found (`error_code: CASE_NOT_FOUND`).
+    422:
+      description: |
+        Case is missing data needed to build a chart. `error_code` is one of
+        `NO_PARENT_CLAIMS`, `NO_INFRINGEMENTS`, or `INFRINGEMENT_CLAIMS_MISSING`.
     500:
-      description: Internal server error while generating chart data.
+      description: Internal server error (`error_code: INTERNAL_ERROR`).
   """
   user_id = get_user_id()
   if not user_id:
     print('\nERROR:User ID is not in session')
-    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+    return jsonify({
+      'success': False,
+      'error_code': 'NO_SESSION',
+      'message': 'User ID is not in session',
+    }), 401
   print(f'LOG: {user_id} Getting Infringement Chart for Case: {case_id}')
   try:
-    infringement_chart = get_case_infringement_chart(case_id)
-    print(f'LOG: Infringement Chart rows: {len(infringement_chart) if infringement_chart else 0}')
-    if infringement_chart is None:
-      return jsonify({'success': False, 'message': 'No infringement chart found. Please check Claims and Infringements'}), 400
-    return jsonify({
-      'success': True, 
-      'chart_data': infringement_chart
+    infringement_chart, error_code = get_case_infringement_chart(case_id)
+    rows_count = len(infringement_chart) if infringement_chart is not None else 0
+    print(f'LOG: Infringement Chart rows: {rows_count} (error_code={error_code})')
+
+    if error_code == 'NO_MATCHES_ABOVE_THRESHOLD':
+      return jsonify({
+        'success': True,
+        'chart_data': [],
+        'error_code': error_code,
+        'message': 'No claim pairs met the similarity threshold.',
       }), 200
+
+    if error_code is not None:
+      status, message = INFRINGEMENT_CHART_ERROR_RESPONSES.get(
+        error_code,
+        (400, 'No infringement chart found. Please check Claims and Infringements'),
+      )
+      return jsonify({
+        'success': False,
+        'error_code': error_code,
+        'message': message,
+      }), status
+
+    return jsonify({
+      'success': True,
+      'chart_data': infringement_chart,
+    }), 200
   except Exception as e:
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting infringement chart for patent: {str(e)}'}), 500
+    return jsonify({
+      'success': False,
+      'error_code': 'INTERNAL_ERROR',
+      'message': f'Error getting infringement chart for patent: {str(e)}',
+    }), 500
 
 @app.route('/api/test-new-infringement-analysis', methods=['POST'])
 def test_new_infringement_analysis():

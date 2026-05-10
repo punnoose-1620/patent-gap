@@ -5,6 +5,8 @@ from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
 from scorer import score_infringement_matrix_entry
 
+CLAIM_SIMILARITY_THRESHOLD = 0.1
+
 def string_fuzzy_similarity(s1, s2):
     """
     Perform a fuzzy comparison between two strings and return a similarity score between 0 and 1.
@@ -315,17 +317,36 @@ def get_case_creator(case_id):
     return case.get('created_by')
 
 def get_infringement_chart(case_id):
+    """
+    Build chart-ready infringement rows for a case.
+
+    Returns a tuple ``(chart_data, error_code)``:
+
+    - ``(rows, None)`` on success with a non-empty list.
+    - ``([], 'NO_MATCHES_ABOVE_THRESHOLD')`` when claims and infringement claims
+      were both present and scored, but no pair met the similarity threshold.
+      Any newly computed scored rows are still persisted to the case document.
+    - ``(None, 'CASE_NOT_FOUND')`` when no case exists for ``case_id``.
+    - ``(None, 'NO_PARENT_CLAIMS')`` when the case has no usable parent claims.
+    - ``(None, 'NO_INFRINGEMENTS')`` when the case has no infringements saved.
+    - ``(None, 'INFRINGEMENT_CLAIMS_MISSING')`` when infringements exist but
+      none of them carries any claims to compare against.
+    """
     caseData = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     if caseData is None:
-        return None
+        return None, 'CASE_NOT_FOUND'
 
     claims = [claim for claim in caseData.get('claims', []) if isinstance(claim, str) and claim.strip() != '']
+    if len(claims) == 0:
+        return None, 'NO_PARENT_CLAIMS'
+
     infringements = caseData.get('infringements', [])
-    if (len(claims) == 0) or (len(infringements) == 0):
-        return None
+    if len(infringements) == 0:
+        return None, 'NO_INFRINGEMENTS'
 
     chart_data = []
     has_updates = False
+    entries_with_claims = 0
 
     for infringement_entry in infringements:
         if not isinstance(infringement_entry, dict):
@@ -346,12 +367,14 @@ def get_infringement_chart(case_id):
         if not inf_claims:
             continue
 
+        entries_with_claims += 1
+
         if isinstance(existing, dict) and not infringement_entry.get('gemini_infringement'):
             infringement_entry['gemini_infringement'] = dict(existing)
 
         before = existing
         stored_rows, entry_chart_rows = score_infringement_matrix_entry(
-            claims, inf_claims, existing, threshold=0.5
+            claims, inf_claims, existing, threshold=CLAIM_SIMILARITY_THRESHOLD
         )
         if stored_rows is None:
             continue
@@ -362,10 +385,13 @@ def get_infringement_chart(case_id):
         if before != stored_rows:
             has_updates = True
 
-    if len(chart_data) == 0:
-        return None
+    if entries_with_claims == 0:
+        return None, 'INFRINGEMENT_CLAIMS_MISSING'
 
     if has_updates:
         update_case(case_id, {'infringements': infringements})
 
-    return chart_data
+    if len(chart_data) == 0:
+        return [], 'NO_MATCHES_ABOVE_THRESHOLD'
+
+    return chart_data, None
