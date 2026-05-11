@@ -122,3 +122,67 @@ def getSearchHistoryDatabaseName():
         return os.environ.get('SEARCH_HISTORY_DATABASE_NAME_TEST')
     else:
         return os.environ.get('SEARCH_HISTORY_DATABASE_NAME_DEV')
+
+
+def getEmailConfig(key):
+    """
+    Return email-related env configuration values based on key.
+
+    Supported keys:
+    - source_email
+    - app_password
+    - smtp_host
+    - smtp_port
+    - use_tls
+    - confirmation_url
+    """
+    load_dotenv()
+
+    if key == 'source_email':
+        return os.environ.get('GMAIL_SENDER_EMAIL')
+    elif key in ('app_password', 'api_secret'):
+        return os.environ.get('GMAIL_APP_PASSWORD')
+    elif key == 'smtp_host':
+        return os.environ.get('GMAIL_SMTP_HOST', 'smtp.gmail.com')
+    elif key == 'smtp_port':
+        value = os.environ.get('GMAIL_SMTP_PORT', '587')
+        try:
+            return int(value)
+        except ValueError:
+            return 587
+    elif key == 'use_tls':
+        value = os.environ.get('GMAIL_USE_TLS', 'true').strip().lower()
+        return value in ('1', 'true', 'yes', 'y', 'on')
+    elif key == 'confirmation_url':
+        return os.environ.get('EMAIL_CONFIRMATION_URL', 'https://patentgap.ai/')
+
+    return None
+
+def getEmailSenderAddress():
+    load_dotenv()
+    return os.environ.get('GMAIL_SENDER_EMAIL')
+
+def getGmailAppPassword():
+    load_dotenv()
+    return os.environ.get('GMAIL_APP_PASSWORD')
+
+def getGmailSmtpHost():
+    load_dotenv()
+    return os.environ.get('GMAIL_SMTP_HOST', 'smtp.gmail.com')
+
+def getGmailSmtpPort():
+    load_dotenv()
+    value = os.environ.get('GMAIL_SMTP_PORT', '587')
+    try:
+        return int(value)
+    except ValueError:
+        return 587
+
+def getGmailUseTls():
+    load_dotenv()
+    value = os.environ.get('GMAIL_USE_TLS', 'true').strip().lower()
+    return value in ('1', 'true', 'yes', 'y', 'on')
+
+def getEmailConfirmationUrl():
+    load_dotenv()
+    return os.environ.get('EMAIL_CONFIRMATION_URL', 'https://patentgap.ai/')

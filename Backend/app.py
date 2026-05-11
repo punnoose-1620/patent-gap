@@ -1011,6 +1011,91 @@ def api_create_attorney():
       'message': f'Error creating attorney: {str(e)}'
       }), 500
 
+@app.route('/api/send-mail', methods=['POST'])
+def api_send_mail():
+  """
+  Send a Patent Gap email
+  ---
+  tags:
+    - Emails
+  summary: Send confirmation or infringement alert email
+  description: Sends a Patent Gap email using the configured Gmail SMTP credentials.
+  consumes:
+    - application/json
+  produces:
+    - application/json
+  parameters:
+    - in: body
+      name: email_data
+      description: Email request data
+      required: true
+      schema:
+        type: object
+        required:
+          - email
+        properties:
+          type:
+            type: string
+            enum:
+              - confirmation
+              - infringement
+            example: confirmation
+          email:
+            type: string
+            example: user@example.com
+          url:
+            type: string
+            example: https://patentgap.ai/
+          patent_name:
+            type: string
+            example: Optical Barcode Scanner
+          infringement_count:
+            type: integer
+            example: 5
+  responses:
+    200:
+      description: Email sent successfully
+      schema:
+        $ref: '#/definitions/SuccessResponse'
+    400:
+      description: Invalid input or email failed to send
+      schema:
+        $ref: '#/definitions/ErrorResponse'
+    500:
+      description: Server error
+      schema:
+        $ref: '#/definitions/ErrorResponse'
+  """
+  try:
+    data = request.get_json()
+    if not data:
+      return jsonify({'success': False, 'message': 'No data provided'}), 400
+
+    email_id = data.get('email') or data.get('email_id')
+    mail_type = data.get('type', 'confirmation')
+
+    if not email_id:
+      return jsonify({'success': False, 'message': 'Email is required'}), 400
+
+    if mail_type == 'confirmation':
+      result = send_confirmation_email(email_id, data.get('url'))
+    elif mail_type == 'infringement':
+      result = send_infringement_alert_email(
+        email_id,
+        data.get('patent_name'),
+        data.get('infringement_count')
+      )
+    else:
+      return jsonify({'success': False, 'message': 'Invalid mail type'}), 400
+
+    status_code = 200 if result.get('success') else 400
+    return jsonify(result), status_code
+  except Exception as e:
+    return jsonify({
+      'success': False,
+      'message': f'Error sending mail: {str(e)}'
+    }), 500
+
 @app.route('/api/update-attorney', methods=['POST'])
 def api_update_attorney():
   """
@@ -1031,15 +1116,15 @@ def api_update_attorney():
       name: attorney_data
       description: Attorney information
       required: true
-    responses:
-      200:
-        description: Attorney updated successfully
-    returns structure:
-      {
-        'success': True,
-        'message': 'User updated successfully',
-        'user_id': 'user_id'
-      }
+  responses:
+    200:
+      description: Attorney updated successfully
+  returns structure:
+    {
+      'success': True,
+      'message': 'User updated successfully',
+      'user_id': 'user_id'
+    }
   """
   try:
     data = request.get_json()

@@ -4,6 +4,8 @@ from data_processor import *
 from models.alerts import *
 from data_processor import *
 from models.cases import *
+from env_controller import getEmailConfirmationUrl
+from mailer import ConfirmEmailBody, InfringementAlertBody, SendMail
 
 """
 Controller functions for handling business logic
@@ -207,4 +209,59 @@ def get_case_infringement_chart(case_id):
     Retrieve chart-ready infringement rows for a case by case_id.
     """
     return get_infringement_chart(case_id)
-        
+
+
+def send_confirmation_email(email_id, confirmation_url=None):
+    """
+    Send an account confirmation email to the provided recipient.
+    """
+    if not email_id:
+        return {
+            'success': False,
+            'message': 'Recipient email is required'
+        }
+
+    body = ConfirmEmailBody(email_id, confirmation_url or getEmailConfirmationUrl())
+    if SendMail(body, email_id):
+        return {
+            'success': True,
+            'message': f'Confirmation email sent successfully to {email_id}'
+        }
+
+    return {
+        'success': False,
+        'message': 'Failed to send confirmation email'
+    }
+
+
+def send_infringement_alert_email(email_id, patent_name, infringement_count):
+    """
+    Send an infringement notification email to the provided recipient.
+    """
+    if not email_id:
+        return {
+            'success': False,
+            'message': 'Recipient email is required'
+        }
+    if not patent_name:
+        return {
+            'success': False,
+            'message': 'Patent name is required'
+        }
+    if infringement_count is None:
+        return {
+            'success': False,
+            'message': 'Infringement count is required'
+        }
+
+    body = InfringementAlertBody(patent_name, infringement_count)
+    if SendMail(body, email_id):
+        return {
+            'success': True,
+            'message': f'Infringement alert email sent successfully to {email_id}'
+        }
+
+    return {
+        'success': False,
+        'message': 'Failed to send infringement alert email'
+    }

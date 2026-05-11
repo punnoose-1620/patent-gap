@@ -12,3 +12,11 @@ DEBUG=True
 
 # CORS Configuration
 # CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+
+# Email Configuration
+# GMAIL_SENDER_EMAIL=your-email@gmail.com
+# GMAIL_APP_PASSWORD=your-gmail-app-password
+# GMAIL_SMTP_HOST=smtp.gmail.com
+# GMAIL_SMTP_PORT=587
+# GMAIL_USE_TLS=true
+# EMAIL_CONFIRMATION_URL=https://patentgap.ai/
