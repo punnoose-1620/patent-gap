@@ -97,6 +97,13 @@ def serve_image(imageName):
 
 ## Front End Pages
 
+@app.route('/user-manual')
+def login_page():
+    """Serve the User Manual page"""
+    # if 'user_id' in session:
+    #     return redirect(url_for('home_page'))
+    return render_template('user-manual.html')
+
 @app.route('/login')
 def login_page():
     """Serve the login page"""
