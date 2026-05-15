@@ -23,6 +23,7 @@ from llm_processor import *
 from data_processor import *
 from env_controller import *
 from live_search.liveSearchController import *
+from llm_brain.gemini import Gemini
 from file_controller import *
 
 
@@ -2248,6 +2249,57 @@ def get_infringement_details(case_id):
   except Exception as e:
     print(f'\nERROR:Error getting infringement details data: {str(e)}')
     return jsonify({'success': False, 'message': f'Error getting infringement details for patent: {str(e)}'}), 500
+
+
+@app.route('/api/generate-infringement-report/<case_id>', methods=['POST'])
+def generate_infringement_report_route(case_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+
+  print(f'LOG: {user_id} Generating Infringement Report for Case: {case_id}')
+  try:
+    case_data = get_case_by_id(case_id)
+    if case_data is None:
+      return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+    infringements = case_data.get('infringements', [])
+    if (infringements is None) or (len(infringements) == 0):
+      return jsonify({'success': False, 'message': 'No infringements found for this case'}), 400
+
+    report = Gemini().generate_infringement_report(case_data, infringements)
+    if report is None:
+      return jsonify({'success': False, 'message': 'Failed to generate infringement report'}), 500
+
+    report_errors = report.verifyValues()
+    if len(report_errors) > 0:
+      return jsonify({'success': False, 'message': 'Generated report failed validation', 'errors': report_errors}), 500
+
+    pdf_bytes = report.buildPdf()
+    update_case(case_id, {
+      'infringement_report': report.model_dump(),
+      'infringement_report_generated_at': report.generated_at,
+      'last_updated': dt.now()
+    })
+
+    if request.args.get('format', 'json').strip().lower() == 'pdf':
+      return Response(
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={
+          'Content-Disposition': f'inline; filename=infringement_report_{case_id}.pdf'
+        }
+      )
+
+    return jsonify({
+      'success': True,
+      'message': 'Infringement report generated successfully',
+      'report': report.model_dump(),
+      'pdf_size': len(pdf_bytes)
+    }), 200
+  except Exception as e:
+    print(f'\nERROR: Error generating infringement report: {str(e)}')
+    return jsonify({'success': False, 'message': f'Error generating infringement report: {str(e)}'}), 500
 
 @app.route('/api/generate-patent-summary/<case_id>', methods=['POST'])
 def generate_patent_summary(case_id):

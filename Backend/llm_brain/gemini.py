@@ -1,11 +1,13 @@
 import copy
 import json
+from datetime import datetime as dt
 from google import genai
 from google.genai import types
 from env_controller import getEnvKey
 
 from llm_brain.static_prompts import *
 from models.live_search_results import *
+from models.infringement_report import InfringementLitigationReport
 
 # Keys the legacy SDK doesn't accept as *schema annotations*.
 # IMPORTANT: Do NOT include field names like "title" or "description" here,
@@ -228,3 +230,61 @@ class Gemini:
         )
         wrapper = ProductSimilarityClaimList.model_validate_json(response.text)
         return wrapper.items
+
+    def generate_infringement_report(
+        self,
+        ref_case: dict,
+        infringements: list,
+        model_name: str = 'gemini-2.5-flash'
+    ):
+        """
+        Generate a structured infringement litigation report.
+        Returns an InfringementLitigationReport object, or None on failure.
+        """
+        if ref_case is None:
+            ref_case = {}
+        reference_case_normalized = {
+            'case_id': str(ref_case.get('_id', ref_case.get('case_id', '')) or ''),
+            'title': str(ref_case.get('title', '') or ''),
+            'description': str(ref_case.get('description', '') or ''),
+            'claims': ref_case.get('claims', []) or [],
+            'document_urls': ref_case.get('document_urls', []) or []
+        }
+        normalized_infringements = []
+        for inf in (infringements or []):
+            if hasattr(inf, 'model_dump'):
+                normalized_infringements.append(inf.model_dump())
+            elif hasattr(inf, 'dict'):
+                normalized_infringements.append(inf.dict())
+            elif isinstance(inf, dict):
+                normalized_infringements.append(inf)
+
+        aspect_description = InfringementLitigationReport.getDescription()
+        prompt = INFRINGEMENT_REPORT_PROMPT.replace('<aspectDescription>', aspect_description)
+        prompt = prompt.replace('<referenceCase>', json.dumps(reference_case_normalized, indent=2, default=str))
+        prompt = prompt.replace('<infringements>', json.dumps(normalized_infringements, indent=2, default=str))
+
+        schema = _strip_unsupported_schema_keys(
+            _schema_without_defs(InfringementLitigationReport.model_json_schema())
+        )
+        try:
+            response = self._client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config={
+                    'response_mime_type': 'application/json',
+                    'response_json_schema': schema,
+                }
+            )
+            report_data = json.loads(response.text if response else '{}')
+            # Fill defaults for fields the LLM may omit
+            if not report_data.get('report_title', '').strip():
+                report_data['report_title'] = f"Infringement Report for {reference_case_normalized.get('title', 'Reference Case')}"
+            if not report_data.get('generated_at', '').strip():
+                report_data['generated_at'] = dt.now().isoformat()
+            if not isinstance(report_data.get('reference_case'), dict):
+                report_data['reference_case'] = reference_case_normalized
+            return InfringementLitigationReport.model_validate(report_data)
+        except Exception as e:
+            print(f'\nERROR: Error generating infringement report: {str(e)}')
+            return None

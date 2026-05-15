@@ -237,3 +237,23 @@ Context of the reference claims :
 Infringing Claims : 
 <infringing_claims_replacement>
 """
+INFRINGEMENT_REPORT_PROMPT = """
+You are preparing a structured infringement litigation support report.
+Use only the supplied inputs. Do not invent facts, do not add outside legal conclusions, and do not mention evidence that is not in the reference case or infringement list.
+
+The report must follow the structure described below:
+<aspectDescription>
+
+Reference case input:
+<referenceCase>
+
+Infringement findings input:
+<infringements>
+
+Output rules:
+- Return only a single JSON object.
+- Keep every required field present.
+- Use empty strings, empty lists, or empty nested objects only when a field is missing and the schema allows it.
+- Keep the language neutral and evidence-based.
+- Do not provide legal advice.
+"""
