@@ -21,3 +21,4 @@ logs/
 Backend/.env
 Backend/.env
 .cursor/settings.json
+/new-case-structure

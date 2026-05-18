@@ -3,11 +3,13 @@ import json
 import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
+from datetime import datetime
 from file_controller import readFromXmlUrl, readFromPdfUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from llm_brain.gemini import Gemini
+import models.infringements as infringement_model
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
@@ -417,6 +419,7 @@ def searchPatentSources(
     ):
     searchResults = []
     infringement_analysis_results = []
+    created_ids = []
     # Perform Live Patent Search
     try:
         results = performLiveSearch(
@@ -450,12 +453,18 @@ def searchPatentSources(
                 result['infringements'] = infringement_analysis.dict()
             else:
                 result['infringements'] = infringement_analysis
+            
+            result['_id'] = 'patent_' + str(result['_id']) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
+            creation_result = infringement_model.create_infringement(result)
+            if creation_result['success']:
+                created_ids.append(creation_result['infringement_id'])
             infringement_analysis_results.append(result)
-        return infringement_analysis_results
+            # TODO: Create Infringement Record after altering the id
+        return infringement_analysis_results, created_ids
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
         raise e
-    return []
+    return [], []
 
 def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str], search_limitations:dict):
     # Generate Search String using Gemini
@@ -467,6 +476,7 @@ def searchProductSources(keywords:list[str], owners:list[str], reference_claims:
     product_details_list = []
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
+    created_ids = []
     # TODO: Change to all results when new version is ready
     # Iterate through Google Search Results
     for result in tqdm(google_search_results[:10], desc="Fetching Product Details from Google Search Results"):
@@ -504,13 +514,17 @@ def searchProductSources(keywords:list[str], owners:list[str], reference_claims:
                 continue
             if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
                 continue
+            product_details['_id'] = 'product_' + str(product_id) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
+            creation_result = infringement_model.create_infringement(product_details)
+            if creation_result['success']:
+                created_ids.append(creation_result['infringement_id'])
             product_details_list.append(product_details)
         except Exception as e:
             print(f"\nERROR: Error analyzing product infringements: {str(e)}")
             continue
     print(f"LOG: Product Search Sources: {json.dumps(sites_searched, indent=4)}")
     print(f"LOG: Products Found: {len(product_details_list)}")
-    return product_details_list
+    return product_details_list, created_ids
 
 # New Search Functions
 

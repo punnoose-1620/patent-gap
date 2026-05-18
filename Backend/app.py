@@ -10,7 +10,16 @@ from models.cases import *
 from models.users import *
 from models.alerts import *
 from models.documents import *
+from models.infringements import *
 from models.search_history import *
+from models.infringements import (
+    get_infringement_by_id as _model_get_infringement_by_id,
+    get_infringements_by_ids as _model_get_infringements_by_ids,
+    get_infringements_by_created_date as _model_get_infringements_by_created_date,
+    get_infringements_by_parent_case_id as _model_get_infringements_by_parent_case_id,
+    update_infringement_by_id as _model_update_infringement_by_id,
+    delete_infringement_by_id as _model_delete_infringement_by_id,
+)
 
 from sources.USPTO import *
 from sources.Gemini import *
@@ -1991,9 +2000,26 @@ def live_similarity_analysis(case_id):
   update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
   # Perform Live Patent Search
   try:
-    patentResults = searchPatentSources(keywords, country, ref_claims, ref_case_title, ref_case_id)
+    patentResults, created_patent_ids = searchPatentSources(
+      keywords, 
+      country, 
+      ref_claims, 
+      ref_case_title, 
+      ref_case_id
+      )
     update_infringements(case_id, patentResults)
-    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed', 'last_updated': dt.now()})
+    update_case(
+      case_id, 
+      {
+        'infringements': patentResults, 
+        'infringement_analysis_status': 'Patent Sources Completed', 
+        'infringement_details' : {
+          'patent_ids' : created_patent_ids,
+        },
+        'last_infringement_analysis_date': dt.now(),
+        'last_updated': dt.now()
+        }
+      )
   except Exception as e:
     current_time = time.time()
     time_in_seconds = current_time - start_time
@@ -2011,7 +2037,12 @@ def live_similarity_analysis(case_id):
   
   # Perform Live Product Search
   try:
-    product_details_list = searchProductSources(keywords, owners, ref_claims, search_limitations)
+    product_details_list, created_product_ids = searchProductSources(
+      keywords, 
+      owners, 
+      ref_claims, 
+      search_limitations
+      )
     update_infringements(case_id, product_details_list)
     update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed', 'last_updated': dt.now()})
     current_time = time.time()
@@ -2020,7 +2051,18 @@ def live_similarity_analysis(case_id):
     time_in_hours = int(time_in_minutes // 60)
     time_in_seconds = time_in_seconds % 60
     time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Completed', 'last_updated': dt.now()})
+    update_case(
+      case_id, 
+      {
+        'infringement_analysis_status': 'Completed', 
+        'infringement_details' : {
+          'patent_ids' : created_patent_ids,
+          'product_ids' : created_product_ids,
+        },
+        'last_infringement_analysis_date': dt.now(),
+        'last_updated': dt.now()
+        }
+      )
     return jsonify({
       'success': True, 
       'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
@@ -2449,6 +2491,209 @@ def add_search_history():
   if not added:
     return jsonify({'success': False, 'message': 'Failed to add search history'}), 400
   return jsonify({'success': True, 'message': 'Search history added successfully', 'search_results': search_results}), 200
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Infringement CRUD endpoints
+#
+# All operations are case-scoped: every endpoint requires a case_id in the
+# path and a user_id that resolves to an existing user. Bodies carry user_id
+# for POST/PUT/DELETE; GET falls back to the X-User-ID header / session via
+# get_user_id() for parity with the rest of the API.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _resolve_infringement_request(case_id, body_data=None, require_body=False):
+  """
+  Shared validation for infringement routes.
+
+  Returns ``(user_id, case, error_response)``. When ``error_response`` is not
+  None, the route should return it directly.
+  """
+  if require_body and body_data is None:
+    return None, None, (jsonify({'success': False, 'message': 'No data provided'}), 400)
+
+  user_id = None
+  if body_data is not None:
+    user_id = body_data.get('user_id')
+  if not user_id:
+    user_id = get_user_id()
+  if not user_id:
+    return None, None, (jsonify({'success': False, 'message': 'user_id is required'}), 400)
+
+  if get_user_profile(user_id) is None:
+    return None, None, (jsonify({'success': False, 'message': 'User not found'}), 404)
+
+  if not case_id:
+    return None, None, (jsonify({'success': False, 'message': 'case_id is required'}), 400)
+
+  case = get_case_by_id(case_id)
+  if case is None:
+    return None, None, (jsonify({'success': False, 'message': 'Case not found'}), 404)
+
+  return user_id, case, None
+
+
+@app.route('/api/cases/<case_id>/infringements', methods=['GET'])
+def list_case_infringements(case_id):
+  """
+  List infringements for a case, optionally filtered by a created_at range.
+  ---
+  tags:
+    - Infringements
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+    - name: start_date
+      in: query
+      required: false
+      type: string
+      description: ISO-8601 timestamp; lower bound for created_at (inclusive).
+    - name: end_date
+      in: query
+      required: false
+      type: string
+      description: ISO-8601 timestamp; upper bound for created_at (inclusive).
+  responses:
+    200:
+      description: Infringements retrieved successfully.
+    400:
+      description: Missing user_id or case_id.
+    404:
+      description: User or case not found.
+  """
+  user_id, case, error = _resolve_infringement_request(case_id)
+  if error is not None:
+    return error
+  print(f'LOG: {user_id} List Infringements for Case: {case_id}')
+
+  start_date = request.args.get('start_date') or None
+  end_date = request.args.get('end_date') or None
+
+  if start_date or end_date:
+    result = _model_get_infringements_by_created_date(case_id, start_date=start_date, end_date=end_date)
+  else:
+    result = _model_get_infringements_by_parent_case_id(case_id)
+
+  status = 200 if result.get('success') else 500
+  return jsonify(result), status
+
+
+@app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['GET'])
+def get_case_infringement(case_id, infringement_id):
+  """
+  Fetch a single infringement scoped to the given case.
+  ---
+  tags:
+    - Infringements
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+    - name: infringement_id
+      in: path
+      required: true
+      type: string
+  responses:
+    200:
+      description: Infringement retrieved successfully.
+    400:
+      description: Missing user_id or case_id.
+    404:
+      description: User, case, or infringement not found.
+  """
+  user_id, case, error = _resolve_infringement_request(case_id)
+  if error is not None:
+    return error
+  print(f'LOG: {user_id} Get Infringement {infringement_id} for Case: {case_id}')
+
+  result = _model_get_infringement_by_id(infringement_id, parent_case_id=case_id)
+  status = 200 if result.get('success') else 404
+  return jsonify(result), status
+
+
+@app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['PUT'])
+def update_case_infringement(case_id, infringement_id):
+  """
+  Update an existing infringement scoped to the given case.
+
+  Body shape:
+    { "user_id": str, "update_data": { ... } }
+  ---
+  tags:
+    - Infringements
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+    - name: infringement_id
+      in: path
+      required: true
+      type: string
+  responses:
+    200:
+      description: Infringement updated successfully.
+    400:
+      description: Missing user_id, case_id, or update_data.
+    404:
+      description: User, case, or infringement not found.
+  """
+  data = request.get_json(silent=True)
+  user_id, case, error = _resolve_infringement_request(case_id, body_data=data, require_body=True)
+  if error is not None:
+    return error
+  print(f'LOG: {user_id} Update Infringement {infringement_id} for Case: {case_id}')
+
+  update_data = data.get('update_data')
+  if not isinstance(update_data, dict) or len(update_data) == 0:
+    return jsonify({'success': False, 'message': 'update_data must be a non-empty object'}), 400
+
+  update_data.pop('_id', None)
+  update_data.pop('parent_case_id', None)
+
+  result = _model_update_infringement_by_id(infringement_id, update_data, parent_case_id=case_id)
+  status = 200 if result.get('success') else 404
+  return jsonify(result), status
+
+
+@app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['DELETE'])
+def delete_case_infringement(case_id, infringement_id):
+  """
+  Delete a single infringement scoped to the given case.
+
+  Body shape:
+    { "user_id": str }
+  ---
+  tags:
+    - Infringements
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+    - name: infringement_id
+      in: path
+      required: true
+      type: string
+  responses:
+    200:
+      description: Infringement deleted successfully.
+    400:
+      description: Missing user_id or case_id.
+    404:
+      description: User, case, or infringement not found.
+  """
+  data = request.get_json(silent=True)
+  user_id, case, error = _resolve_infringement_request(case_id, body_data=data)
+  if error is not None:
+    return error
+  print(f'LOG: {user_id} Delete Infringement {infringement_id} for Case: {case_id}')
+
+  result = _model_delete_infringement_by_id(infringement_id, parent_case_id=case_id)
+  status = 200 if result.get('success') else 404
+  return jsonify(result), status
 
 if __name__ == '__main__':
     port = app.config['PORT']
