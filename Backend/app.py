@@ -2015,6 +2015,7 @@ def live_similarity_analysis(case_id):
         'infringement_analysis_status': 'Patent Sources Completed', 
         'infringement_details' : {
           'patent_ids' : created_patent_ids,
+          'search_keywords' : keywords
         },
         'last_infringement_analysis_date': dt.now(),
         'last_updated': dt.now()
@@ -2058,6 +2059,7 @@ def live_similarity_analysis(case_id):
         'infringement_details' : {
           'patent_ids' : created_patent_ids,
           'product_ids' : created_product_ids,
+          'search_keywords' : keywords
         },
         'last_infringement_analysis_date': dt.now(),
         'last_updated': dt.now()
