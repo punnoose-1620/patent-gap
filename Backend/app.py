@@ -2251,13 +2251,64 @@ def get_infringement_details(case_id):
     return jsonify({'success': False, 'message': f'Error getting infringement details for patent: {str(e)}'}), 500
 
 
-@app.route('/api/generate-infringement-report/<case_id>', methods=['POST'])
-def generate_infringement_report_route(case_id):
+def _get_infringement_report_id(infringement):
+  if not isinstance(infringement, dict):
+    return ''
+  return str(
+    infringement.get('entry_id')
+    or infringement.get('case_id')
+    or infringement.get('_id')
+    or infringement.get('product_id')
+    or ''
+  )
+
+
+def _find_infringement_for_report(infringements, infringement_id):
+  target = str(infringement_id or '').strip()
+  if target == '':
+    return None
+  for infringement in infringements or []:
+    if not isinstance(infringement, dict):
+      continue
+    possible_ids = [
+      infringement.get('entry_id'),
+      infringement.get('case_id'),
+      infringement.get('_id'),
+      infringement.get('product_id'),
+      infringement.get('title'),
+      infringement.get('url'),
+    ]
+    if any(str(value or '').strip() == target for value in possible_ids):
+      return infringement
+  return None
+
+
+def _safe_report_filename_part(value):
+  value = str(value or '').strip()
+  safe_chars = []
+  for char in value:
+    if char.isalnum() or char in ['-', '_']:
+      safe_chars.append(char)
+    else:
+      safe_chars.append('_')
+  return ''.join(safe_chars).strip('_') or 'report'
+
+
+# @app.route('/api/generate-infringement-report/<case_id>', methods=['POST'])
+@app.route('/api/generate-infringement-report/<case_id>/<infringement_id>', methods=['POST'])
+def generate_infringement_report_route(case_id, infringement_id=None):
   user_id = get_user_id()
   if not user_id:
     return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
 
-  print(f'LOG: {user_id} Generating Infringement Report for Case: {case_id}')
+  requested_infringement_id = (
+    infringement_id
+    or request.args.get('infringement_id')
+    or request.args.get('entry_id')
+    or request.args.get('patent_id')
+  )
+  scope_label = f"Infringement: {requested_infringement_id}" if requested_infringement_id else 'All Infringements'
+  print(f'LOG: {user_id} Generating Infringement Report for Case: {case_id} ({scope_label})')
   try:
     case_data = get_case_by_id(case_id)
     if case_data is None:
@@ -2267,33 +2318,73 @@ def generate_infringement_report_route(case_id):
     if (infringements is None) or (len(infringements) == 0):
       return jsonify({'success': False, 'message': 'No infringements found for this case'}), 400
 
-    report = Gemini().generate_infringement_report(case_data, infringements)
+    selected_infringement = None
+    selected_infringement_id = None
+    if requested_infringement_id:
+      selected_infringement = _find_infringement_for_report(infringements, requested_infringement_id)
+      if selected_infringement is None:
+        return jsonify({
+          'success': False,
+          'message': 'Infringement not found for this case',
+          'infringement_id': requested_infringement_id
+        }), 404
+      selected_infringement_id = _get_infringement_report_id(selected_infringement) or str(requested_infringement_id)
+      infringements_for_report = [selected_infringement]
+    else:
+      infringements_for_report = infringements
+
+    report = Gemini().generate_infringement_report(case_data, infringements_for_report)
     if report is None:
       return jsonify({'success': False, 'message': 'Failed to generate infringement report'}), 500
+
+    if selected_infringement is not None:
+      entry_title = selected_infringement.get('entry_title') or selected_infringement.get('title') or selected_infringement_id
+      report.report_title = f"Infringement Report for {entry_title}"
 
     report_errors = report.verifyValues()
     if len(report_errors) > 0:
       return jsonify({'success': False, 'message': 'Generated report failed validation', 'errors': report_errors}), 500
 
     pdf_bytes = report.buildPdf()
-    update_case(case_id, {
-      'infringement_report': report.model_dump(),
-      'infringement_report_generated_at': report.generated_at,
-      'last_updated': dt.now()
-    })
+    update_payload = {'last_updated': dt.now()}
+    if selected_infringement is not None:
+      infringement_reports = case_data.get('infringement_reports', {})
+      if not isinstance(infringement_reports, dict):
+        infringement_reports = {}
+      infringement_reports[selected_infringement_id] = {
+        'report': report.model_dump(),
+        'generated_at': report.generated_at,
+        'entry_id': selected_infringement_id,
+        'entry_title': selected_infringement.get('entry_title') or selected_infringement.get('title', ''),
+        'entry_url': selected_infringement.get('entry_url') or selected_infringement.get('url', ''),
+        'source': selected_infringement.get('source', '')
+      }
+      update_payload['infringement_reports'] = infringement_reports
+    else:
+      update_payload['infringement_report'] = report.model_dump()
+      update_payload['infringement_report_generated_at'] = report.generated_at
+    update_case(case_id, update_payload)
+
+    filename_parts = ['infringement_report', case_id]
+    if selected_infringement_id:
+      filename_parts.append(selected_infringement_id)
+    filename = '_'.join(_safe_report_filename_part(part) for part in filename_parts) + '.pdf'
 
     if request.args.get('format', 'json').strip().lower() == 'pdf':
       return Response(
         pdf_bytes,
         mimetype='application/pdf',
         headers={
-          'Content-Disposition': f'inline; filename=infringement_report_{case_id}.pdf'
+          'Content-Disposition': f'inline; filename={filename}'
         }
       )
 
     return jsonify({
       'success': True,
       'message': 'Infringement report generated successfully',
+      'case_id': case_id,
+      'infringement_id': selected_infringement_id,
+      'report_scope': 'single_infringement' if selected_infringement is not None else 'case',
       'report': report.model_dump(),
       'pdf_size': len(pdf_bytes)
     }), 200

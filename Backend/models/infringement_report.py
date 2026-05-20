@@ -14,6 +14,7 @@ class ReportReferenceCase(BaseModel):
 
 
 class SimilarityClaim(BaseModel):
+    reference_claim: str = ""
     claim: str
     similarity_score: float
     source: str
@@ -187,6 +188,8 @@ class InfringementLitigationReport(BaseModel):
                         if not isinstance(claim, SimilarityClaim):
                             errors.append(f"infringements[{index}].similar_claims[{claim_index}] must be a SimilarityClaim object")
                             continue
+                        if not isinstance(claim.reference_claim, str):
+                            errors.append(f"infringements[{index}].similar_claims[{claim_index}].reference_claim must be a string")
                         if not isinstance(claim.claim, str) or claim.claim.strip() == "":
                             errors.append(f"infringements[{index}].similar_claims[{claim_index}].claim must be a non-empty string")
                         if not isinstance(claim.similarity_score, (int, float)):
@@ -260,67 +263,213 @@ class InfringementLitigationReport(BaseModel):
         return errors
 
     def buildPdf(self):
+        """
+        Build a concise, lawyer-facing PDF summary.
+
+        The API still returns the complete structured JSON for frontend drill-downs, but the
+        PDF should not mirror that JSON. It should summarize the evidence a patent lawyer is
+        most likely to scan first: reference patent, strongest infringement candidates,
+        strongest claim comparisons, risk, limitations, and sources.
+        """
         errors = self.verifyValues()
         if errors:
             raise ValueError(f"Invalid infringement report values: {', '.join(errors)}")
 
         lines = []
-        lines.extend(self._section_lines("Infringement Litigation Report"))
-        lines.append(f"Report Title: {self.report_title}")
+        lines.extend(self._section_lines("Title"))
+        lines.append(self._short_text(self.report_title, 180))
         lines.append(f"Generated At: {self.generated_at}")
         lines.append("")
-        lines.extend(self._section_lines("Reference Case"))
-        lines.extend(self._dict_lines(self.reference_case.model_dump()))
+
+        lines.extend(self._section_lines("Executive Summary"))
+        executive_summary = self._find_report_section("executive summary")
+        if executive_summary:
+            lines.extend(self._wrap_text(self._short_text(executive_summary.content, 900), indent=0, width=88))
+            for point in executive_summary.key_points[:5]:
+                lines.extend(self._wrap_text(f"- {self._short_text(point, 180)}", indent=0, width=88))
+        elif self.report_sections:
+            first_section = self.report_sections[0]
+            lines.extend(self._wrap_text(self._short_text(first_section.content, 900), indent=0, width=88))
+        else:
+            lines.append("No executive summary was generated.")
         lines.append("")
-        lines.extend(self._section_lines("Infringements"))
+
+        lines.extend(self._section_lines("Reference Patent Overview"))
+        lines.append(f"Patent / Case ID: {self.reference_case.case_id}")
+        lines.append(f"Title: {self._short_text(self.reference_case.title, 220)}")
+        if self.reference_case.description:
+            lines.extend(self._wrap_text(f"Summary: {self._short_text(self.reference_case.description, 700)}", width=88))
+        if self.reference_case.claims:
+            lines.append("Key Reference Claims:")
+            for index, claim in enumerate(self.reference_case.claims[:3], start=1):
+                lines.extend(self._wrap_text(f"{index}. {self._short_text(claim, 350)}", indent=2, width=86))
+        lines.append("")
+
+        lines.extend(self._section_lines("Top Infringement Findings"))
+        top_findings = self._top_infringement_findings(limit=5)
+        if top_findings:
+            for index, finding in enumerate(top_findings, start=1):
+                lines.append(f"{index}. {self._short_text(finding['title'], 180)}")
+                lines.append(f"   Patent / Entry ID: {finding['entry_id']}")
+                lines.append(f"   Source: {finding['source']}")
+                lines.append(f"   Highest Similarity Score: {self._format_score(finding['score'])}")
+                if finding.get('commentary'):
+                    lines.extend(self._wrap_text(f"   Why it matters: {self._short_text(finding['commentary'], 280)}", width=86))
+                if finding.get('url'):
+                    lines.extend(self._wrap_text(f"   Evidence URL: {finding['url']}", width=86))
+                lines.append("")
+        else:
+            lines.append("No infringement findings were generated.")
+            lines.append("")
+
+        lines.extend(self._section_lines("All Similar Claim Evidence"))
+        lines.append("This section lists every stored similar-claim match for the selected infringement report.")
+        lines.append("Each row preserves the calculated similarity score, the reference claim, and the candidate/infringing claim.")
+        lines.append("")
         if self.infringements:
-            for index, infringement in enumerate(self.infringements, start=1):
-                lines.append(f"Infringement {index}")
-                lines.extend(self._dict_lines(infringement.model_dump(), indent=2))
+            for infringement_index, infringement in enumerate(self.infringements, start=1):
+                lines.append(f"Infringement Patent {infringement_index}: {infringement.entry_title}")
+                lines.append(f"Patent / Entry ID: {infringement.entry_id}")
+                lines.append(f"Source: {infringement.source}")
+                if infringement.entry_url:
+                    lines.extend(self._wrap_text(f"Evidence URL: {infringement.entry_url}", width=88))
+                lines.append(f"Total Similar Claim Matches: {len(infringement.similar_claims)}")
                 lines.append("")
-        else:
-            lines.append("No infringement entries were provided.")
-            lines.append("")
-        lines.extend(self._section_lines("Claim Analysis"))
-        if self.claim_analysis:
+
+                if infringement.similar_claims:
+                    for claim_index, claim in enumerate(infringement.similar_claims, start=1):
+                        lines.append(f"Match {claim_index}")
+                        lines.append(f"Similarity Score: {self._format_score(claim.similarity_score)}")
+                        lines.extend(self._wrap_text(f"Reference Claim: {claim.reference_claim}", indent=2, width=86))
+                        lines.extend(self._wrap_text(f"Candidate / Infringing Claim: {claim.claim}", indent=2, width=86))
+                        if claim.url_to_claim:
+                            lines.extend(self._wrap_text(f"Claim Source URL: {claim.url_to_claim}", indent=2, width=86))
+                        lines.append("")
+                else:
+                    lines.append("No similar claim matches were captured for this infringement patent.")
+                    lines.append("")
+        elif self.claim_analysis:
+            # Fallback for older report objects that only contain flattened claim_analysis.
             for index, comparison in enumerate(self.claim_analysis, start=1):
-                lines.append(f"Claim Comparison {index}")
-                lines.extend(self._dict_lines(comparison.model_dump(), indent=2))
+                lines.append(f"Match {index}: {comparison.entry_title}")
+                lines.append(f"Patent / Entry ID: {comparison.entry_id}")
+                lines.append(f"Similarity Score: {self._format_score(comparison.similarity_score)}")
+                lines.extend(self._wrap_text(f"Reference Claim: {comparison.reference_claim}", indent=2, width=86))
+                lines.extend(self._wrap_text(f"Candidate / Infringing Claim: {comparison.infringing_claim}", indent=2, width=86))
+                if comparison.entry_url:
+                    lines.extend(self._wrap_text(f"Evidence URL: {comparison.entry_url}", indent=2, width=86))
                 lines.append("")
         else:
-            lines.append("No claim-by-claim analysis was provided.")
+            lines.append("No similar claim evidence was generated.")
             lines.append("")
-        lines.extend(self._section_lines("Report Sections"))
-        if self.report_sections:
-            for section in self.report_sections:
-                lines.append(f"Section: {section.name}")
-                lines.extend(self._wrap_text(section.content, indent=2))
-                if section.key_points:
-                    lines.append("  Key Points:")
-                    for point in section.key_points:
-                        lines.append(f"    - {point}")
-                lines.append("")
-        else:
-            lines.append("No narrative sections were provided.")
-            lines.append("")
+
         lines.extend(self._section_lines("Risk Assessment"))
-        lines.extend(self._dict_lines(self.risk_assessment.model_dump()))
+        lines.append(f"Risk Level: {self.risk_assessment.level.upper()}")
+        lines.append(f"Confidence: {self._format_score(self.risk_assessment.confidence)}")
+        if self.risk_assessment.basis:
+            lines.append("Basis:")
+            for item in self.risk_assessment.basis[:5]:
+                lines.extend(self._wrap_text(f"- {self._short_text(item, 220)}", indent=0, width=88))
         lines.append("")
+
         lines.extend(self._section_lines("Limitations"))
-        if self.limitations:
-            for limitation in self.limitations:
-                lines.append(f"- {limitation}")
-        else:
-            lines.append("- None provided")
+        limitations = self.limitations[:6] if self.limitations else [
+            "Automated litigation-support summary only; not a legal opinion.",
+            "Claim construction, prosecution history, and product-specific evidence were not independently reviewed."
+        ]
+        for limitation in limitations:
+            lines.extend(self._wrap_text(f"- {self._short_text(limitation, 240)}", width=88))
         lines.append("")
-        lines.extend(self._section_lines("Source Traceability"))
-        if self.source_traceability:
-            for item in self.source_traceability:
-                lines.append(f"- {item}")
+
+        lines.extend(self._section_lines("Sources"))
+        sources = self._source_lines(limit=10)
+        if sources:
+            for source in sources:
+                lines.extend(self._wrap_text(f"- {self._short_text(source, 240)}", width=88))
         else:
-            lines.append("- None provided")
+            lines.append("- No source traceability was generated.")
 
         return self._lines_to_pdf_bytes(lines)
+
+    def _find_report_section(self, name: str):
+        normalized_name = name.strip().lower()
+        for section in self.report_sections:
+            if section.name.strip().lower() == normalized_name:
+                return section
+        return None
+
+    @staticmethod
+    def _short_text(value: str, limit: int):
+        value = str(value or "").strip()
+        if len(value) <= limit:
+            return value
+        return value[:limit].rstrip() + "..."
+
+    @staticmethod
+    def _format_score(value):
+        if isinstance(value, (int, float)):
+            return f"{float(value):.2f}"
+        return str(value)
+
+    def _top_infringement_findings(self, limit: int = 5):
+        by_entry = {}
+        for infringement in self.infringements:
+            by_entry.setdefault(infringement.entry_id, {
+                'entry_id': infringement.entry_id,
+                'title': infringement.entry_title,
+                'source': infringement.source,
+                'url': infringement.entry_url,
+                'score': 0,
+                'commentary': ''
+            })
+            for claim in infringement.similar_claims:
+                if isinstance(claim.similarity_score, (int, float)) and claim.similarity_score > by_entry[infringement.entry_id]['score']:
+                    by_entry[infringement.entry_id]['score'] = float(claim.similarity_score)
+
+        for comparison in self.claim_analysis:
+            entry = by_entry.setdefault(comparison.entry_id, {
+                'entry_id': comparison.entry_id,
+                'title': comparison.entry_title,
+                'source': comparison.source,
+                'url': comparison.entry_url,
+                'score': 0,
+                'commentary': ''
+            })
+            if comparison.similarity_score > entry['score']:
+                entry['score'] = float(comparison.similarity_score)
+                entry['commentary'] = comparison.commentary
+            elif not entry.get('commentary') and comparison.commentary:
+                entry['commentary'] = comparison.commentary
+
+        return sorted(by_entry.values(), key=lambda item: item['score'], reverse=True)[:limit]
+
+    def _source_lines(self, limit: int = 10):
+        seen = set()
+        sources = []
+        for item in self.source_traceability:
+            cleaned = str(item or "").strip()
+            if cleaned and cleaned not in seen:
+                seen.add(cleaned)
+                sources.append(cleaned)
+            if len(sources) >= limit:
+                return sources
+
+        for comparison in self.claim_analysis:
+            source = f"{comparison.entry_id} - {comparison.entry_title} - {comparison.entry_url}"
+            if source not in seen:
+                seen.add(source)
+                sources.append(source)
+            if len(sources) >= limit:
+                return sources
+
+        for url in self.reference_case.document_urls:
+            source = f"Reference Patent Document - {url}"
+            if source not in seen:
+                seen.add(source)
+                sources.append(source)
+            if len(sources) >= limit:
+                return sources
+        return sources
 
     @staticmethod
     def _section_lines(title: str):
@@ -355,7 +504,7 @@ class InfringementLitigationReport(BaseModel):
             .replace(")", "\\)")
         )
 
-    def _lines_to_pdf_bytes(self, lines: list[str]):
+    def _lines_to_pdf_bytes(self, lines: list[str], max_pages: int = None):
         page_width = 612
         page_height = 792
         left_margin = 50
@@ -377,6 +526,10 @@ class InfringementLitigationReport(BaseModel):
         pages = [wrapped_lines[index:index + max_lines_per_page] for index in range(0, len(wrapped_lines), max_lines_per_page)]
         if not pages:
             pages = [["Infringement report"]]
+        if max_pages is not None and len(pages) > max_pages:
+            pages = pages[:max_pages]
+            notice = "Report truncated to fit the configured PDF page limit. See JSON response for full structured details."
+            pages[-1] = pages[-1][:max(0, max_lines_per_page - 2)] + ["", notice]
 
         content_object_start = 4
         page_object_start = content_object_start + len(pages)
