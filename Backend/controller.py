@@ -1,9 +1,17 @@
 import os
+import io
 import uuid
+import json
+import threading
+import pandas as pd
+from datetime import datetime as dt
+
+from data_processor import *
 from data_processor import *
 from models.alerts import *
-from data_processor import *
 from models.cases import *
+from models.users import *
+from live_search.liveSearchController import *
 
 """
 Controller functions for handling business logic
@@ -201,7 +209,6 @@ def calculate_average_infringement_percentage(case):
         return 0
     return total_infringement_percentage / infringements_count
 
-
 def get_case_infringement_chart(case_id):
     """
     Retrieve chart-ready infringement rows for a case by case_id.
@@ -210,4 +217,147 @@ def get_case_infringement_chart(case_id):
     ``models.cases`` for the full contract on possible error codes.
     """
     return get_infringement_chart(case_id)
+
+# Function to fetch Patent by ID with multiple sources
+def fetchById(app, patent_id:str, user_id:str):
+    uspto_error = False
+    google_error = False
+    free_patents_error = False
+    error_message = ""
+    with app.app_context():
+        try:
+            uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
+            uspto_data = uspto_instance.get_complete_patent_info(patent_id)
+            if uspto_data is None:
+                uspto_error = True
+                raise Exception("No Data found through USPTO")
+            else:
+                uspto_data['created_by'] = user_id
+                uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
+                print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
+                creationResult = create_case(uspto_data)
+                remove_patent_from_fetching_list(user_id, patent_id)
+                remove_patent_from_error_list(user_id, patent_id)
+                returnValue = {
+                    'success': True, 
+                    'message': 'Patent data imported successfully', 
+                    'case_id': f"uspto_{user_id}_{patent_id}",
+                    'keywords': uspto_data.get('keywords', []),
+                    'case_data': uspto_data
+                }
+                return returnValue, 200
+        except Exception as e:
+            print(f'\nError getting patent data from USPTO: {str(e)}')
+            error_message = str(e)
+        # Try searching patent id using Google Patents
+        if uspto_error:
+            try:
+                google_patents = GooglePatents()
+                google_patents_details = google_patents.search_by_id(patent_id)
+                if google_patents_details is not None:
+                    case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
+                    if case_data is not None:
+                        case_data['source'] = 'google_patents'
+                        case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
+                        case_data['created_by'] = user_id
+                        if case_data.get('current_status', '') == '':
+                            case_data['current_status'] = 'Granted'
+                        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                        created_id = case_data.get('_id', '')
+                        creationResult = create_case(case_data)
+                        created_id = case_data.get('_id', '')
+                        if 'DocumentCreationError' in created_id:
+                            raise Exception("Document Creation Error")
+                        remove_patent_from_fetching_list(user_id, patent_id)
+                        remove_patent_from_error_list(user_id, patent_id)
+                        returnValue = {
+                            'success': True, 
+                            'message': 'Patent data imported successfully', 
+                            'case_id': created_id,
+                            'keywords': case_data.get('keywords', []),
+                            'case_data': case_data
+                        }
+                        return returnValue, 200
+                else:
+                    raise Exception("No Data found through Google Patents")
+            except Exception as e:
+                print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
+                error_message = str(e)
+                google_error = True
+        # Patent not found using Google Patents, try using Free Patents Online
+        if google_error and uspto_error:
+            try:
+                free_patents = FreePatentsOnline()
+                free_patents_details = free_patents.search_by_id(patent_id)
+                if free_patents_details is not None:
+                    case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
+                    if case_data is not None:
+                        case_data['source'] = 'free_patents_online'
+                        case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
+                        case_data['created_by'] = user_id
+                        if case_data.get('current_status', '') == '':
+                            case_data['current_status'] = 'Granted'
+                        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                        creationResult = create_case(case_data)
+                        created_id = case_data.get('_id', '')
+                        if 'DocumentCreationError' in created_id:
+                            returnValue = {'success': False, 'message': created_id}
+                            raise Exception("Document Creation Error")
+                        remove_patent_from_error_list(user_id, patent_id)
+                        remove_patent_from_fetching_list(user_id, patent_id)
+                        returnValue = {
+                            'success': True, 
+                            'message': 'Patent data imported successfully', 
+                            'case_id': created_id,
+                            'keywords': case_data.get('keywords', []),
+                            'case_data': case_data
+                        }
+                        return returnValue, 200
+                else:
+                    raise Exception("No Data found through Free Patents Online")
+            except Exception as e:
+                print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
+                set_patent_to_error_list(user_id, patent_id)
+                error_message = str(e)
+                free_patents_error = True
         
+        errorReturn = {
+            'success': False, 
+            'message': f"Failed to find patent with ID {patent_id}",
+            'error_message': error_message
+            }
+        set_patent_to_error_list(user_id, patent_id)
+        return errorReturn, 500
+
+def bulk_fetch_by_ids(app, patent_ids: list[str], records: list[list[str]], user_id: str):
+    """
+    Bulk fetch patents by IDs
+    """
+    with app.app_context():
+        error_list = []
+        try:
+            for record in records:
+                if len(record) >= 2:
+                    patent_id, title = record[0], record[1]
+                    last_entry = (patent_id == patent_ids[-1])
+                    if type(patent_id) == float:
+                        patent_id = int(patent_id)               
+                    patent_id = str(patent_id).strip().replace('.', '')
+                    print(f"Patent ID: {patent_id}, Title: {title}")
+                    response, _ = fetchById(app, patent_id, user_id)
+                    responseSuccess= response.get('success', False)
+                    if (not responseSuccess):
+                        error_list.append(patent_id)
+                    if last_entry:
+                        update_user_fetching_patents(user_id, [], error_list, replace=True)
+            return {
+                'success': True,
+                'message': f"Patents bulk fetched successfully"
+            }
+        except Exception as e:
+            print(f"ERROR: Error bulk fetching patents: {str(e)}")
+            return {
+                'success': False,
+                'message': f"Error bulk fetching patents: {str(e)}"
+            }
+            

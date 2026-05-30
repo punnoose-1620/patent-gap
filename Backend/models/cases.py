@@ -7,6 +7,27 @@ from scorer import score_infringement_matrix_entry
 
 CLAIM_SIMILARITY_THRESHOLD = 0.1
 
+def caseAlreadyExists(case_id:str, user_id: str):
+    db = connect_to_database()
+    db_name = getCaseDatabaseName()
+
+    if '_' in case_id:
+        case_id = case_id.split('_')[-1]
+
+    if getDataById(db, db_name, case_id) is not None:
+        return True
+
+    sources = ['uspto', 'googlepatents', 'freepatentsonline', 'local']
+    for source in sources:
+        checker_id1 = f"{source}_{user_id}_{case_id}"
+        checker_id2 = f"{source}_{case_id}"
+
+        case1 = getDataById(db, db_name, checker_id1)
+        case2 = getDataById(db, db_name, checker_id2)
+        if (case1 is not None) or (case2 is not None):
+            return True
+    return False
+
 def string_fuzzy_similarity(s1, s2):
     """
     Perform a fuzzy comparison between two strings and return a similarity score between 0 and 1.

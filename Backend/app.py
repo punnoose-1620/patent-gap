@@ -1,5 +1,8 @@
 import os
+import io
 import requests
+import threading
+import pandas as pd
 from flask_cors import CORS
 from datetime import datetime as dt
 from swagger import initialize_swagger
@@ -1562,85 +1565,6 @@ def get_case_keywords():
       return jsonify({'success': False, 'message': 'No keywords found. The document may be empty or might contain only stop words.'}), 400
     return jsonify({'success': True, 'keywords': keywords})
 
-@app.route('/api/import-patent-from-uspto', methods=['POST'])
-def api_import_patent_from_uspto():
-  """
-  Import patent data from USPTO
-  ---
-  tags:
-    - Patents
-  summary: Import patent data from USPTO
-  description: |
-    Fetches and normalizes patent data from USPTO by patent ID. Returns the normalized data 
-    but does not automatically create a case. Use this to preview patent data before creating a case.
-  consumes:
-    - application/json
-  produces:
-    - application/json
-  security:
-    - session: []
-  parameters:
-    - in: body
-      name: patent_request
-      description: USPTO patent ID to import
-      required: true
-      schema:
-        $ref: '#/definitions/PatentImportRequest'
-  responses:
-    200:
-      description: Patent data imported successfully
-      schema:
-        $ref: '#/definitions/PatentImportResponse'
-    400:
-      description: Bad request - missing or invalid patent ID, or failed to fetch/normalize data
-      schema:
-        $ref: '#/definitions/ErrorResponse'
-    500:
-      description: Server error or USPTO rate limit exceeded
-      schema:
-        $ref: '#/definitions/ErrorResponse'
-  """
-  user_id = get_user_id()
-  if not user_id:
-    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-  data = request.get_json()
-  if data is None:
-    print('\nNo Data provided')
-    return jsonify({'success': False, 'message': 'No data provided'}), 400
-  if 'patentId' not in data.keys():
-    print('\nPatent ID is not Provided')
-    return jsonify({'success': False, 'message': 'Patent ID is not provided'}), 400
-  patent_id = data.get('patentId')
-  if patent_id is None or patent_id == '':
-    print('\nPatent ID is not valid')
-    return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
-  
-  try:
-    uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
-    uspto_data = uspto_instance.get_complete_patent_info(patent_id)
-    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-    infringements = get_openalex_entities({
-      'entity_name': 'topics',
-      'page': 1,
-      'per_page': 100,
-      'search': '',
-      'timeout': 30
-      })
-    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
-    if uspto_data is None:
-      return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
-    # creationResult = create_case(uspto_data)
-    return jsonify({
-      'success': True, 
-      'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{user_id}_{patent_id}",
-      'keywords': uspto_data['keywords'],
-      'case_data': uspto_data
-      }), 200
-  except Exception as e:
-    print(f'\nError getting patent data from USPTO: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
-
 @app.route('/api/create-patent', methods=['POST'])
 def api_create_patent():
   try:
@@ -1778,81 +1702,153 @@ def fetch_patent_from_uspto():
   if patent_id is None or patent_id == '':
     print('\nPatent ID is not valid')
     return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
-  
-  try:
-    print(f'\nFetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
-    uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
-    uspto_data = uspto_instance.get_complete_patent_info(patent_id)
-    uspto_data['created_by'] = user_id
-    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
-    if uspto_data is None:
-      return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
-    creationResult = create_case(uspto_data)
-    return jsonify({
-      'success': True, 
-      'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{user_id}_{patent_id}",
-      'keywords': uspto_data.get('keywords', []),
-      'case_data': uspto_data
-      }), 200
-  except Exception as e:
-    print(f'\nError getting patent data from USPTO: {str(e)}')
-  # Try searching patent id using Google Patents
-  try:
-    google_patents = GooglePatents()
-    google_patents_details = google_patents.search_by_id(patent_id)
-    if google_patents_details is not None:
-      case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
-      if case_data is not None:
-        case_data['source'] = 'google_patents'
-        case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
-        case_data['created_by'] = user_id
-        if case_data.get('current_status', '') == '':
-          case_data['current_status'] = 'Granted'
-        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
-        created_id = case_data.get('_id', '')
-        creationResult = create_case(case_data)
-        created_id = case_data.get('_id', '')
-        if 'DocumentCreationError' in created_id:
-          return jsonify({'success': False, 'message': created_id}), 400
-        return jsonify({
-          'success': True, 
-          'message': 'Patent data imported successfully', 
-          'case_id': created_id,
-          'keywords': case_data.get('keywords', []),
-          'case_data': case_data
-          }), 200
-  except Exception as e:
-    print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
-  # Patent not found using Google Patents, try using Free Patents Online
-  # try:
-    free_patents = FreePatentsOnline()
-    free_patents_details = free_patents.search_by_id(patent_id)
-    if free_patents_details is not None:
-      case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
-      if case_data is not None:
-        case_data['source'] = 'free_patents_online'
-        case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
-        case_data['created_by'] = user_id
-        if case_data.get('current_status', '') == '':
-          case_data['current_status'] = 'Granted'
-        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
-        creationResult = create_case(case_data)
-        created_id = case_data.get('_id', '')
-        if 'DocumentCreationError' in created_id:
-          return jsonify({'success': False, 'message': created_id}), 400
-        return jsonify({
-          'success': True, 
-          'message': 'Patent data imported successfully', 
-          'case_id': created_id,
-          'keywords': case_data.get('keywords', []),
-          'case_data': case_data
-          }), 200
-  except Exception as e:
-    print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
 
-  return jsonify({'success': False, 'message': f"Failed to find patent with ID {patent_id}"}), 500
+  # Check if the patent already exists
+  if caseAlreadyExists(patent_id, user_id):
+    return jsonify({'success': False, 'message': 'Patent already exists in your portfolio'}), 400
+  
+  print(f'\nFetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
+
+  update_user_fetching_patents(user_id, [patent_id], [], replace=True)
+  thread = threading.Thread(
+    target=fetchById,
+    args=(app, patent_id, user_id),
+    daemon=True,
+  )
+  thread.start()
+  responseBody = {
+    'success': True, 
+    'message': 'Patent data import started', 
+    'case_id': patent_id
+  }
+  return jsonify(responseBody), 200
+
+@app.route('/api/bulk-fetch', methods=['POST'])
+def bulk_fetch():
+  """
+  Bulk import patents from an uploaded Excel or CSV file
+  ---
+  tags:
+    - Patents
+  summary: Bulk fetch patents from file
+  description: |
+    Accepts a multipart file upload containing patent records and starts background
+    import for each row. The file must be `.csv`, `.xlsx`, or `.xls` and the first
+    two columns must be `patent_id` and `title` (case-insensitive). Additional
+    columns are ignored.
+
+    Each row is processed asynchronously via `fetchById`, which tries USPTO first,
+    then Google Patents, then Free Patents Online. On acceptance, the user's
+    `fetching_patents` list is replaced with all queued patent IDs so the client
+    can poll profile progress.
+
+    Returns 202 immediately after validation; import continues in background threads.
+  consumes:
+    - multipart/form-data
+  produces:
+    - application/json
+  security:
+    - session: []
+  parameters:
+    - in: formData
+      name: file
+      type: file
+      required: true
+      description: |
+        Excel or CSV file with required headers `patent_id`, `title` in the first
+        two columns. Example row: US12345678, Example Patent Title
+  responses:
+    202:
+      description: File validated and batch processing started
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: true
+          message:
+            type: string
+            example: "Batch processing started successfully"
+    400:
+      description: |
+        Bad request — not authenticated, missing/empty file, invalid file type,
+        unreadable file, or headers do not start with patent_id and title
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: false
+          message:
+            type: string
+            example: "File headers must start with ['patent_id', 'title']"
+  """
+  # Check User ID
+  user_id = get_user_id()
+  if not user_id:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {user_id} bulk fetch upload')
+
+  # Check Excel/CSV File Exists
+  if 'file' not in request.files:
+    print('\nNo File provided')
+    return jsonify({'success': False, 'message': 'No file provided'}), 400
+
+  file = request.files['file']
+  fileBytes = file.read()
+  # Check file is not empty and filename is valid
+  if file.filename == '' or not file:
+    print('\nNo File selected')
+    return jsonify({'success': False, 'message': 'No file selected'}), 400
+  if not fileBytes:
+    print('\nFile is empty')
+    return jsonify({'success': False, 'message': 'File is empty'}), 400
+  # Check file type is Excel/CSV
+  allowed = False
+  if file.filename.lower().endswith('.xlsx') or file.filename.lower().endswith('.csv') or file.filename.lower().endswith('.xls'):
+    allowed = True
+  if not allowed:
+    print('\nInvalid file type')
+    return jsonify({'success': False, 'message': 'Invalid file type'}), 400
+  
+  # Read file and check headers
+  titles_in_order = ['patent_id', 'title']
+  filename_lower = file.filename.lower()
+  try:
+    if filename_lower.endswith('.csv'):
+      df = pd.read_csv(io.BytesIO(fileBytes))
+    else:
+      df = pd.read_excel(io.BytesIO(fileBytes))
+  except Exception as e:
+    print(f"\nError reading file: {e}")
+    return jsonify({'success': False, 'message': f'Failed to read file: {e}'}), 400
+
+  if df.shape[1] < 2:
+    print('\nFile does not have at least two columns')
+    return jsonify({'success': False, 'message': 'File does not have required headers'}), 400
+
+  actual_headers = list(df.columns)
+  if actual_headers[0].strip().lower() != titles_in_order[0].strip().lower() \
+      or actual_headers[1].strip().lower() != titles_in_order[1].strip().lower():
+    print('\nFile headers do not match required order')
+    return jsonify({'success': False, 'message': f'File headers must start with {titles_in_order}'}), 400
+
+  # Read the first 2 columns (without headers) from the file
+  records = df.iloc[:, :2].values.tolist()
+  # Isolate the patent_ids to a separate array
+  patent_ids = [record[0] for record in records if len(record) >= 1]
+  update_user_fetching_patents(user_id, patent_ids, [], replace=True)
+  thread = threading.Thread(
+    target=bulk_fetch_by_ids,
+    args=(app, patent_ids, records, user_id),
+    daemon=True,
+  )
+  thread.start()
+  return jsonify({
+    'success': True, 
+    'message': 'Batch processing started successfully'}
+    ), 202
 
 @app.route('/api/get-claims/<case_id>', methods=['GET'])
 def get_claims_for_patent(case_id):
