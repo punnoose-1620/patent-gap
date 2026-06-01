@@ -66,6 +66,14 @@ class Gemini:
         self.apiKey = getEnvKey('gemini')
         self._client = genai.Client(api_key=self.apiKey)
 
+    def _strip_json_markdown_fences(self, text: str):
+        cleaned = (text or "").strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.strip("`").strip()
+            if cleaned.lower().startswith("json"):
+                cleaned = cleaned[4:].strip()
+        return cleaned
+
     def extract_patent_metadata(
         self, 
         patent_content:str, 
@@ -179,7 +187,7 @@ class Gemini:
             model=model_name,
             contents=final_prompt,
         )
-        return response.text
+        return self._strip_json_markdown_fences(response.text)
     
     def perform_google_search(
         self, 

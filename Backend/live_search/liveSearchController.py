@@ -4,6 +4,7 @@ import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
 from datetime import datetime
+from urllib.parse import urlparse
 from file_controller import readFromXmlUrl, readFromPdfUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -406,6 +407,77 @@ def alreadyExistsInProductDetailsList(product_detail, product_details_list: list
             return True
     return False
 
+def _model_to_dict(value):
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "dict"):
+        return value.dict()
+    if isinstance(value, dict):
+        return dict(value)
+    return value
+
+def _is_blank_product_value(value):
+    if value is None:
+        return True
+    normalized = str(value).strip().lower()
+    return normalized in ("", "unknown", "n/a", "none", "null")
+
+def _website_name_from_url(url: str):
+    try:
+        parsed = urlparse(url)
+        return parsed.netloc or url
+    except Exception:
+        return url
+
+def _normalize_url(url: str):
+    return str(url or "").strip()
+
+def _safe_product_id(product_id: str, product_name: str, source_url: str):
+    if not _is_blank_product_value(product_id):
+        return str(product_id).strip()
+    fallback = product_name
+    if _is_blank_product_value(fallback):
+        fallback = _website_name_from_url(source_url)
+    fallback = "".join(char if char.isalnum() else "_" for char in str(fallback).strip())
+    return fallback[:80] or datetime.now().strftime("%Y%m%d%H%M%S")
+
+def _build_user_provided_product_sources(search_limitations: dict):
+    """
+    Treat search_limitations.urls as direct product evidence sources.
+    Previously they were only placed into Gemini's search prompt as hints.
+    """
+    urls = []
+    for raw_url in (search_limitations or {}).get("urls", []) or []:
+        url = _normalize_url(raw_url)
+        if not url:
+            continue
+        urls.append({
+            "title": "User-provided product source",
+            "url": url,
+            "website_name": _website_name_from_url(url),
+            "description": "Provided through search limitations",
+            "source_type": "user_provided_url",
+        })
+    return urls
+
+def _append_unique_sources(existing_sources: list, new_sources: list):
+    seen_urls = {
+        _normalize_url(source.get("url", "")).lower()
+        for source in existing_sources
+        if isinstance(source, dict)
+    }
+    for source in new_sources:
+        source_dict = _model_to_dict(source)
+        url = _normalize_url(source_dict.get("url", ""))
+        if not url:
+            continue
+        key = url.lower()
+        if key in seen_urls:
+            continue
+        existing_sources.append(source_dict)
+        seen_urls.add(key)
+    return existing_sources
+
 # Final Search Functions
 
 def searchPatentSources(
@@ -466,25 +538,44 @@ def searchPatentSources(
         raise e
     return [], []
 
-def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str], search_limitations:dict):
-    # Generate Search String using Gemini
-    search_string = Gemini().get_search_string(keywords, owners, search_limitations)
-    print(f"LOG: Search String: {search_string}")
-    # Perform Google Search
-    google_search_results = Gemini().perform_google_search(search_string)
+def searchProductSources(
+    keywords:list[str],
+    owners:list[str],
+    reference_claims:list[str],
+    search_limitations:dict,
+    parent_case_id: str = None,
+    direct_urls_first: bool = True,
+    max_search_results: int = 10,
+):
     sites_searched = {}
     product_details_list = []
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
     created_ids = []
-    # TODO: Change to all results when new version is ready
-    # Iterate through Google Search Results
-    for result in tqdm(google_search_results[:10], desc="Fetching Product Details from Google Search Results"):
-        website_searched = result.website_name
+
+    product_sources_to_fetch = []
+    if direct_urls_first:
+        direct_sources = _build_user_provided_product_sources(search_limitations)
+        product_sources_to_fetch = _append_unique_sources(product_sources_to_fetch, direct_sources)
+        print(f"LOG: User-provided product URLs queued: {len(direct_sources)}")
+
+    try:
+        search_string = Gemini().get_search_string(keywords, owners, search_limitations)
+        print(f"LOG: Search String: {search_string}")
+        google_search_results = Gemini().perform_google_search(search_string)
+        product_sources_to_fetch = _append_unique_sources(
+            product_sources_to_fetch,
+            google_search_results[:max_search_results],
+        )
+    except Exception as e:
+        print(f"\nERROR: Error generating/fetching broader product search results: {str(e)}")
+
+    for result in tqdm(product_sources_to_fetch, desc="Fetching Product Details from Product Sources"):
+        website_searched = result.get("website_name") or _website_name_from_url(result.get("url", ""))
         if website_searched not in sites_searched.keys():
             sites_searched[website_searched] = 0
         sites_searched[website_searched] += 1
-        url = result.url
+        url = result.get("url")
         # Get HTML Content for each URL from search results
         try:
             html_content = performSearch(url, session)
@@ -494,31 +585,35 @@ def searchProductSources(keywords:list[str], owners:list[str], reference_claims:
         except Exception as e:
             print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
             continue
-        # Pass HTML Content to Gemini to extract product details
-        product_details = Gemini().get_product_details(html_content)
-        # Analyze Product Infringements
         try:
+            # Pass HTML Content to Gemini to extract product details
+            product_details = Gemini().get_product_details(html_content)
+            # Analyze Product Infringements
             infringement_analysis = Gemini().analyze_product_infringements(reference_claims, product_details.claims)
             product_details.similar_claims = infringement_analysis
-            product_id = product_details.product_id
-            product_url = product_details.product_url
+            product_id = _safe_product_id(product_details.product_id, product_details.product_name, url)
+            product_url = url if _is_blank_product_value(product_details.product_url) else product_details.product_url
             print(f"LOG: Product ID: {product_id}")
             print(f"LOG: Product URL: {product_url}")
             if alreadyExistsInProductDetailsList(product_details, product_details_list):
                 continue
-            if (product_id is None) or (product_url is None):
+            if _is_blank_product_value(product_url):
                 continue
-            if (product_id == "") or (product_url == ""):
-                continue
-            if (str(product_id).lower() == "unknown") or (str(product_url).lower == "unknown"):
-                continue
-            if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
-                continue
-            product_details['_id'] = 'product_' + str(product_id) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
-            creation_result = infringement_model.create_infringement(product_details)
+            product_payload = _model_to_dict(product_details)
+            product_payload["product_id"] = product_id
+            product_payload["product_url"] = product_url
+            product_payload["source_url"] = url
+            product_payload["source_type"] = result.get("source_type", "product_search_result")
+            product_payload['_id'] = 'product_' + str(product_id) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
+            creation_result = infringement_model.create_infringement(
+                product_payload,
+                parent_case_id=parent_case_id,
+            )
             if creation_result['success']:
                 created_ids.append(creation_result['infringement_id'])
-            product_details_list.append(product_details)
+            else:
+                print(f"\nERROR: Failed to create product infringement record: {creation_result.get('message')}")
+            product_details_list.append(product_payload)
         except Exception as e:
             print(f"\nERROR: Error analyzing product infringements: {str(e)}")
             continue

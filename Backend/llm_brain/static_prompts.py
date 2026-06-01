@@ -147,10 +147,14 @@ SEARCH_STRING_GENERATOR = """
 I am providing you with a list of keywords and a list of owners.
 Generate a search string that will be used to search for products related to the keywords and owners.
 The search string should be a valid Google Search string.
-The result of the google search should yield product pages from various relevant sources like Amazon, eBay, Walmart, etc.
-The result of the google search should not be another search results page, but rather a product page from a relevant source.
-If owners firms/companies are provided, prioritize their competitor products in the search results.
+The result of the google search should yield product pages, product manuals, technical documentation, support pages, reviews, screenshots, videos, or other product evidence pages.
+The result of the google search should not be another search results page.
+For product infringement analysis, companies listed under "Companies to focus search on" are the accused-product companies/products to search for. Do not exclude them.
+Do not replace accused-product companies with the patent owner unless the keywords explicitly ask for the patent owner's products.
+If owners are provided, treat them as reference patent owners. Do not assume the owner's products are the accused products.
+Prioritize the accused product/company, product behavior, manuals, technical documentation, and UI evidence.
 The search string should be a single string, not a list of strings.
+Return only raw JSON. Do not wrap the JSON in Markdown fences.
 
 Return the search string in the following format:
 {
@@ -182,7 +186,8 @@ Return the results in the following format:
   ]
 }
 Do not include any other text or comments.
-The results should only be live products available for purchase/order. Do not include any other type of results.
+The results should be product evidence pages: product pages, manuals, technical documentation, support pages, reviews, screenshots, videos, or pages describing accused product behavior. They do not need to be purchase/order pages.
+Return only raw JSON. Do not wrap the JSON in Markdown fences.
 
 Here's is the search string to perform the google search:
 <search_string_replacement>

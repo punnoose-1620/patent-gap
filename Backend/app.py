@@ -1967,6 +1967,7 @@ def live_similarity_analysis(case_id):
   country = data.get('country', '')
   context = data.get('context', '')
   search_limitations = data.get('search_limitations', {})
+  analysis_mode = data.get('analysis_mode', 'mixed')
   
   if case_id is None:
     print(f'\nERROR: LiveSearch: Case ID is required for user: {user_id}')
@@ -1976,7 +1977,9 @@ def live_similarity_analysis(case_id):
     print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
     return jsonify({'success': False, 'message': 'Case not found'}), 404
   
-  keywords = case_data.get('keywords', [])
+  request_keywords = keywords or []
+  case_keywords = case_data.get('keywords', []) or []
+  keywords = list(dict.fromkeys(case_keywords + request_keywords))
   ref_case_title = case_data.get('title', '')
   ref_case_id = case_data.get('_id', '').split('_')[-1]
   titles_to_avoid = case_data.get('excluded_case_titles', [])
@@ -1993,7 +1996,70 @@ def live_similarity_analysis(case_id):
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
   
   start_time = time.time()
+  patentResults = []
+  product_details_list = []
+  created_patent_ids = []
+  created_product_ids = []
   update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
+
+  # Perform Live Product Search first so user-provided product URLs in
+  # search_limitations are treated as direct evidence sources, not merely
+  # fallback hints after patent search.
+  if analysis_mode in ['mixed', 'product', 'product_only']:
+    try:
+      product_details_list, created_product_ids = searchProductSources(
+        keywords, 
+        owners, 
+        ref_claims, 
+        search_limitations,
+        parent_case_id=case_id,
+        direct_urls_first=True
+        )
+      update_infringements(case_id, product_details_list)
+      update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed', 'last_updated': dt.now()})
+    except Exception as e:
+      current_time = time.time()
+      time_in_seconds = current_time - start_time
+      time_in_minutes = time_in_seconds // 60
+      time_in_hours = int(time_in_minutes // 60)
+      time_in_seconds = time_in_seconds % 60
+      time_in_minutes = int(time_in_minutes % 60)
+      update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources', 'last_updated': dt.now()})
+      print(f'\nERROR: LiveSearch: Error performing product infringement analysis: {str(e)}')
+      return jsonify({
+        'success': False, 
+        'message': f'Error performing product source infringement analysis: {str(e)}',
+        'search_results': product_details_list,
+        'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+        }), 500
+
+  if analysis_mode in ['product', 'product_only']:
+    current_time = time.time()
+    time_in_seconds = current_time - start_time
+    time_in_minutes = time_in_seconds // 60
+    time_in_hours = int(time_in_minutes // 60)
+    time_in_seconds = time_in_seconds % 60
+    time_in_minutes = int(time_in_minutes % 60)
+    update_case(
+      case_id, 
+      {
+        'infringement_analysis_status': 'Completed', 
+        'infringement_details' : {
+          'patent_ids' : [],
+          'product_ids' : created_product_ids,
+          'search_keywords' : keywords,
+          'claim_type' : 'product'
+        },
+        'last_infringement_analysis_date': dt.now(),
+        'last_updated': dt.now()
+        }
+      )
+    return jsonify({
+      'success': True, 
+      'message': 'Product source infringement analysis completed', 
+      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+      }), 200
+
   # Perform Live Patent Search
   try:
     patentResults, created_patent_ids = searchPatentSources(
@@ -2007,7 +2073,6 @@ def live_similarity_analysis(case_id):
     update_case(
       case_id, 
       {
-        'infringements': patentResults, 
         'infringement_analysis_status': 'Patent Sources Completed', 
         'infringement_details' : {
           'patent_ids' : created_patent_ids,
@@ -2033,16 +2098,7 @@ def live_similarity_analysis(case_id):
       'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
       }), 500
   
-  # Perform Live Product Search
   try:
-    product_details_list, created_product_ids = searchProductSources(
-      keywords, 
-      owners, 
-      ref_claims, 
-      search_limitations
-      )
-    update_infringements(case_id, product_details_list)
-    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed', 'last_updated': dt.now()})
     current_time = time.time()
     time_in_seconds = current_time - start_time
     time_in_minutes = time_in_seconds // 60
