@@ -1,5 +1,6 @@
 import json
 from database import *
+from datetime import datetime, date
 from env_controller import getUserDatabaseName
 
 mock_users = [
@@ -60,7 +61,12 @@ def update_user(data, user_id):
     Args:
         data (dict): User data
     """
-    updated = updateDataById(connect_to_database(), getUserDatabaseName(), data, user_id)
+    updated = updateDataById(
+        connect_to_database(), 
+        getUserDatabaseName(), 
+        data, 
+        user_id
+        )
     if updated:
         return {
             'success': True,
@@ -91,7 +97,7 @@ def login_user(email, password):
     
     users = getAllData(connect_to_database(), getUserDatabaseName())
     for user in users:
-        print(f'LOG: User found: {json.dumps(user, indent=4)}')
+        print(f'LOG: User found: {user}')
         if user['email'] == email and user['password'] == password:
             return {
                 'success': True,
@@ -139,6 +145,8 @@ def get_user_profile(user_id, show_password=False):
         user_copy = user.copy()
         if 'password' in user_copy and not show_password:
             del user_copy['password']
+        if isinstance(user_copy.get('last_updated'), (datetime, date)):
+            user_copy['last_updated'] = user_copy['last_updated'].isoformat()
         return user_copy
     return None
 
