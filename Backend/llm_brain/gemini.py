@@ -210,6 +210,18 @@ class Gemini:
         )
         return InfringingProductDetail.model_validate_json(response.text)
 
+    def get_patent_sources(self, patent_ids: list[str], model_name:str = 'gemini-2.5-flash'):
+        final_prompt = SOURCE_LISTER.replace('<ids_replacement>', '\n'.join(patent_ids))
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": PatentSourceList.model_json_schema(),
+            },
+        )
+        return PatentSourceList.model_validate_json(response.text)
+
     def analyze_product_infringements(
         self, 
         reference_claims:list[str], 

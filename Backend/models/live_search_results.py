@@ -82,3 +82,27 @@ class ProductSimilarityClaim(BaseModel):
 class ProductSimilarityClaimList(BaseModel):
     """Wrapper so Gemini receives an object schema (required), not an array."""
     items: list[ProductSimilarityClaim]
+
+class PatentSource(BaseModel):
+    id: str
+    source: str
+    country: str
+
+class PatentSourceList(BaseModel):
+    patents: list[PatentSource]
+
+class ClaimTypes(BaseModel):
+    asserted_claims: list[str]
+    independent_claims: list[str]
+    core_claims: list[str]
+    pivotal_claims: list[str]
+
+    def get_claim_types_description(self):
+        return """
+        {
+          'asserted_claims': list<str>: The specific claims selected for a lawsuit because a competitor's product actively infringes them.
+          'independent_claims': list<str>: Broad, standalone claims that don't rely on other claims, making them the primary targets for litigation.
+          'core_claims': list<str>: Industry shorthand for the specific claims that capture the actual commercial value of the product.
+          'pivotal_claims': list<str>: The claims that best survive "prior art" challenges while still catching the infringer.
+        }
+        """

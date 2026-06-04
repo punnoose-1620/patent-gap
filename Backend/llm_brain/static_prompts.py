@@ -181,8 +181,11 @@ Return the results in the following format:
     }
   ]
 }
-Do not include any other text or comments.
-The results should only be live products available for purchase/order. Do not include any other type of results.
+Rules:
+- Do not include any other text or comments.
+- The results should only be live products available for purchase/order. 
+- Do not include any other type of results.
+- Do not assume or build URLs. The URLs should be the exact URLs from the search results.
 
 Here's is the search string to perform the google search:
 <search_string_replacement>
@@ -223,10 +226,11 @@ Return the analysis in the following format:
     }
   ]
 }
-Similarity score is a number between 0 and 1 that represents the similarity between the infringing claim and the reference claim.
-The higher the similarity score, the more similar the claims are.
-The similarity score is calculated using the cosine similarity algorithm.
-Do not include any other text or comments.
+Rules:
+- Similarity score is a number between 0 and 1 that represents the similarity between the infringing claim and the reference claim.
+- The higher the similarity score, the more similar the claims are.
+- The similarity score is calculated using the cosine similarity algorithm.
+- Do not include any other text or comments.
 
 Reference Claims : 
 <reference_claims_replacement>
@@ -236,4 +240,42 @@ Context of the reference claims :
 
 Infringing Claims : 
 <infringing_claims_replacement>
+"""
+
+SOURCE_LISTER = """
+Here are the IDs of a few patents. For each patent ID, list what source it is from based on the structure of the ID. Also list the country of origin of the patent.
+Return the results in the following format:
+{
+  "patents": [
+    {
+      "id": "<string: ID of the patent>",
+      "source": "<string: Source of the patent (USPTO, EPO, WIPO, etc.)>",
+      "country": "<string: Country of origin of the patent (US, EU, JP, etc.)>",
+    }
+  ]
+}
+Rules:
+- Do not include any other text or comments.
+- Do not assume any information about the source based on the ID.
+- Trace which patent offices or countries or sources the ID is from.
+
+Here are the IDs :
+<ids_replacement>
+"""
+
+CLAIM_RANKING_DISTILLATOR = """
+There are 4 types of claims for this patent :
+1. Asserted Claims: The specific claims selected for a lawsuit because a competitor's product actively infringes them.
+2. Independent Claims: Broad, standalone claims that don't rely on other claims, making them the primary targets for litigation.
+3. Core Claims: Industry shorthand for the specific claims that capture the actual commercial value of the product.
+4. Pivotal Claims: The claims that best survive "prior art" challenges while still catching the infringer.
+
+I am providing you with a list of all claims from this patent.
+Isolate each type of claims into a list of strings. Within each list, order the claims based on the relevance of that string to the claim category.
+
+Return the lists in the following format:
+<CLAIM_RANKING_DISTILLATOR_RETURN_FORMAT>
+
+Here are all the claims :
+<ALL_CLAIMS_REPLACEMENT>
 """

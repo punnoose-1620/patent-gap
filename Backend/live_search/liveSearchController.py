@@ -10,6 +10,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from llm_brain.gemini import Gemini
 import models.infringements as infringement_model
+import models.cases as case_model
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
@@ -354,6 +355,39 @@ def performLiveSearch(
     titles: list[str] = [],
     ids: list[str] = [],
     ):
+    """
+    Run live patent discovery on Free Patents Online and Google Patents, then merge
+    and deduplicate results.
+
+    Searches both sources with the given keywords. Each source's hits are filtered
+    before merge so the reference case and prior hits are not returned again.
+
+    Checks performed on each candidate result (per source):
+        - Exact title match against ``titles`` (includes ``ref_case_title`` and titles
+          accepted from earlier hits in this run).
+        - Exact case id match against ``ids`` (includes ``ref_case_id`` and ids from
+          earlier hits; case id is normalized via the last ``_`` segment).
+        - Near-duplicate title via ``checkSimilarTitleExists`` (cosine similarity >
+          ``TITLE_SIMILARITY_THRESHOLD``, 0.85).
+
+    After both searches, Free Patents Online results are kept as the base list. Google
+    Patents results are appended only when ``alreadyExists`` finds no duplicate by
+    ``_id``, ``title``, ``case_id``, or ``patent_id`` in the merged list.
+
+    Connection and other errors from either source are logged; the other source's
+    results are still returned when possible.
+
+    Args:
+        keywords: Search terms passed to both scrapers.
+        country: Reserved for scope filtering (not applied in this function yet).
+        ref_case_title: Reference case title excluded from results.
+        ref_case_id: Reference case id excluded from results.
+        titles: Seed list of titles to skip (mutated in place as new titles are accepted).
+        ids: Seed list of case ids to skip (mutated in place as new ids are accepted).
+
+    Returns:
+        list[dict]: Merged, deduplicated patent case dicts ready for infringement analysis.
+    """
     free_patents_results = []
     titles.append(ref_case_title)
     ids.append(ref_case_id)
@@ -388,8 +422,8 @@ def performLiveSearch(
     except Exception as e:
         print(f"\nERROR: Google Patents search failed: {str(e)}")
     # TODO: Change to all results when new version is ready
-    merged_results = list(free_patents_results)[:10]
-    for patent in google_patents_results[:10]:
+    merged_results = list(free_patents_results)
+    for patent in google_patents_results:
         if not alreadyExists(patent, merged_results):
             merged_results.append(patent)
     return merged_results
@@ -422,6 +456,7 @@ def searchPatentSources(
     created_ids = []
     # Perform Live Patent Search
     try:
+        found_ids = []
         results = performLiveSearch(
             keywords, 
             country=country, 
@@ -431,15 +466,22 @@ def searchPatentSources(
             ids=ids_to_avoid,
             )
         for result in results:
+            found_ids.append(result['_id'])
             searchResults.append(result)
+        patent_sources = Gemini().get_patent_sources(found_ids)
+        for patent in patent_sources.patents:
+            for result in searchResults:
+                if patent.id == result['_id']:
+                    result['source'] = patent.source
+                    result['country'] = patent.country
+                    break
+            patent_sources.remove(patent)
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
         raise e
-    if len(searchResults) > 0:
-        print(f"TEST: Search Result: {json.dumps(searchResults[0], indent=4)}")
     # Perform Infringement Analysis
     try:
-        # TODO: Isolate to 10 results
+        sources = []
         for result in searchResults:
             infringement_analysis = performInfringementAnalysis(
                 reference_claims,
@@ -458,7 +500,9 @@ def searchPatentSources(
             creation_result = infringement_model.create_infringement(result)
             if creation_result['success']:
                 created_ids.append(creation_result['infringement_id'])
+                sources.append(result['source'])
             infringement_analysis_results.append(result)
+            case_model.update_case(result['case_id'], {'infringement_sources': sources})
             # TODO: Create Infringement Record after altering the id
         return infringement_analysis_results, created_ids
     except Exception as e:
