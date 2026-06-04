@@ -1,6 +1,7 @@
 import os
 import io
 import uuid
+import time
 import json
 import threading
 import pandas as pd
@@ -353,10 +354,13 @@ def fetchById(app, patent_id:str, user_id:str):
                 uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
                 print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
                 creationResult = create_case(uspto_data)
+                print(f"TEST 1.1: Creation Result: {json.dumps(creationResult, indent=4)}")
+                descriptionResult = generate_patent_description(f"uspto_{user_id}_{patent_id}")
+                print(f"TEST 1.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
+                print(f"TEST 1.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
                 remove_patent_from_fetching_list(user_id, patent_id)
                 remove_patent_from_error_list(user_id, patent_id)
-                generate_patent_description(f"uspto_{user_id}_{patent_id}")
-                isolate_claims(f"uspto_{user_id}_{patent_id}")
                 returnValue = {
                     'success': True, 
                     'message': 'Patent data imported successfully', 
@@ -371,6 +375,7 @@ def fetchById(app, patent_id:str, user_id:str):
             error_message = str(e)
         # Try searching patent id using Google Patents
         if uspto_error:
+            time.sleep(180)       
             try:
                 google_patents = GooglePatents()
                 google_patents_details = google_patents.search_by_id(patent_id)
@@ -385,13 +390,16 @@ def fetchById(app, patent_id:str, user_id:str):
                         case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
                         created_id = case_data.get('_id', '')
                         creationResult = create_case(case_data)
+                        print(f"TEST 2.1: Creation Result: {json.dumps(creationResult, indent=4)}")
                         created_id = case_data.get('_id', '')
                         if 'DocumentCreationError' in created_id:
                             raise Exception("Document Creation Error")
+                        descriptionResult = generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
+                        print(f"TEST 2.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                        claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
+                        print(f"TEST 2.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
                         remove_patent_from_fetching_list(user_id, patent_id)
                         remove_patent_from_error_list(user_id, patent_id)
-                        generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
-                        isolate_claims(f"uspto_{user_id}_{patent_id}")
                         returnValue = {
                             'success': True, 
                             'message': 'Patent data imported successfully', 
@@ -408,6 +416,7 @@ def fetchById(app, patent_id:str, user_id:str):
                 google_error = True
         # Patent not found using Google Patents, try using Free Patents Online
         if google_error and uspto_error:
+            time.sleep(180)   
             try:
                 free_patents = FreePatentsOnline()
                 free_patents_details = free_patents.search_by_id(patent_id)
@@ -421,14 +430,17 @@ def fetchById(app, patent_id:str, user_id:str):
                             case_data['current_status'] = 'Granted'
                         case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
                         creationResult = create_case(case_data)
+                        print(f"TEST 3.1: Creation Result: {json.dumps(creationResult, indent=4)}")
                         created_id = case_data.get('_id', '')
                         if 'DocumentCreationError' in created_id:
                             returnValue = {'success': False, 'message': created_id}
                             raise Exception("Document Creation Error")
+                        descriptionResult = generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
+                        print(f"TEST 3.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                        claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
+                        print(f"TEST 3.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
                         remove_patent_from_error_list(user_id, patent_id)
                         remove_patent_from_fetching_list(user_id, patent_id)
-                        generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
-                        isolate_claims(f"uspto_{user_id}_{patent_id}")
                         returnValue = {
                             'success': True, 
                             'message': 'Patent data imported successfully', 
