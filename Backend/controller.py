@@ -6,11 +6,13 @@ import threading
 import pandas as pd
 from datetime import datetime as dt
 
+from sources.Gemini import *
 from data_processor import *
 from data_processor import *
 from models.alerts import *
 from models.cases import *
 from models.users import *
+from file_controller import *
 from live_search.liveSearchController import *
 
 """
@@ -218,6 +220,120 @@ def get_case_infringement_chart(case_id):
     """
     return get_infringement_chart(case_id)
 
+def generate_patent_description(case_id):
+    """
+    Generate a description for a patent by case_id
+    """
+    case = get_case_by_id(case_id)
+    if case is None:
+        return {'success': False, 'message': 'Case not found'}
+    
+    document_urls = case.get('document_urls', [])
+    document_contents = []
+    for document in document_urls:
+        content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+        document_contents.append(content)
+
+    if (len(document_contents) == 0) or (document_contents is None):
+        return {'success': False, 'message': 'No viable document contents provided'}
+    
+    complete_document_contents = ""
+    for content in document_contents:
+        if content.strip() != "":
+            complete_document_contents = f"{complete_document_contents}\n\n{content}"
+    
+    if complete_document_contents.strip() == "":
+        return {'success': False, 'message': 'No viable document contents provided'}
+
+    summary = get_patent_summary(complete_document_contents)
+    
+    # Update Case Data for the Generated Description
+    result = update_case(case_id, {'description': summary, 'last_updated': dt.now()})
+    return {
+        'success': True, 
+        'message': 'Patent summary generated successfully', 
+        'summary': summary
+        }
+
+def isolate_claims(case_id):
+    """
+    Isolate the claims for a given case_id
+    """
+    case_data = get_case_by_id(case_id)
+    if case_data is None:
+      print(f'\nERROR: Error getting claims: Case not found')
+      return {'success': False, 'message': 'Case not found'}
+
+    existing_claims = case_data.get('claims', [])
+    if (len(existing_claims) > 0) and (existing_claims is not None):
+      print(f'\nERROR: Error getting claims: Claims already exist')
+      return {'success': True, 'message': 'Claims already exist', 'claims': existing_claims}
+
+    description = case_data.get('description', '')
+    if description.strip() != "":
+      complete_document_contents = f"Description:\n{description}"
+    
+    document_urls = case_data.get('document_urls', [])
+    document_contents = []
+    for document in document_urls:
+      if 'uspto' in document:
+        content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+      elif '/document/' in document:
+        doc_id = document.split('/')[-1].strip()
+        content = readLocalDocument(doc_id)
+      else:
+        content = readDocumentFromUrl(document)
+      document_contents.append(content)
+
+    documents = case_data.get('documents', [])
+    for document in documents:
+      if document.get('source', '') == 'uspto':
+        content  = readDocumentFromUrl(document.get('url', ''), headers={"X-API-KEY": getEnvKey('uspto')})
+        document_contents.append(content)
+      elif document.get('source', '') == 'local':
+        doc_id = document.get('url', '').split('/')[-1].strip()
+        document_view = getDocumentById(doc_id)
+        if document_view.get('success', False):
+          document_blob = document_view.get('document', {}).get('file_content', '')
+          content = document_blob.decode('utf-8')
+          document_contents.append(content)
+      else:
+        document_contents.append(document.get('content', ''))
+
+    if (len(document_contents) == 0) or (document_contents is None):
+      return {
+        'success': False, 
+        'message': 'No viable document contents provided', 
+        'documents': {
+          'document_urls_key': document_urls,
+          'documents_key': document_contents
+        }}
+
+    complete_document_contents = ""
+    for content in document_contents:
+      if content.strip() != "":
+        complete_document_contents = f"{complete_document_contents}\n\n{content}"
+    
+    if complete_document_contents.strip() == "":
+      print(f'\nERROR: Error getting claims: No viable document contents provided')
+      return {'success': False, 'message': 'No viable document contents provided'}
+
+    claims = get_claims(complete_document_contents)
+    if (len(claims) == 0) or (claims is None):
+      print(f'\nERROR: Error getting claims: No claims found')
+      return {'success': False, 'message': 'No claims found'}
+    if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
+        print(f'\nERROR: Error getting claims: {claims[0]}')
+        return {'success': False, 'message': claims[0]}
+
+    # Update Claims in Case Data
+    result = update_case(case_id, {'claims': claims, 'last_updated': dt.now()})
+    if result['success']:
+      return {'success': True, 'message': 'Claims updated successfully', 'claims': claims}
+    else:
+      print(f'\nERROR: Error updating claims: {result["message"]}')
+      return {'success': False, 'message': result['message']}
+
 # Function to fetch Patent by ID with multiple sources
 def fetchById(app, patent_id:str, user_id:str):
     uspto_error = False
@@ -233,11 +349,14 @@ def fetchById(app, patent_id:str, user_id:str):
                 raise Exception("No Data found through USPTO")
             else:
                 uspto_data['created_by'] = user_id
+                uspto_data['_id'] = f"uspto_{user_id}_{patent_id}"
                 uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
                 print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
                 creationResult = create_case(uspto_data)
                 remove_patent_from_fetching_list(user_id, patent_id)
                 remove_patent_from_error_list(user_id, patent_id)
+                generate_patent_description(f"uspto_{user_id}_{patent_id}")
+                isolate_claims(f"uspto_{user_id}_{patent_id}")
                 returnValue = {
                     'success': True, 
                     'message': 'Patent data imported successfully', 
@@ -248,6 +367,7 @@ def fetchById(app, patent_id:str, user_id:str):
                 return returnValue, 200
         except Exception as e:
             print(f'\nError getting patent data from USPTO: {str(e)}')
+            uspto_error = True
             error_message = str(e)
         # Try searching patent id using Google Patents
         if uspto_error:
@@ -270,6 +390,8 @@ def fetchById(app, patent_id:str, user_id:str):
                             raise Exception("Document Creation Error")
                         remove_patent_from_fetching_list(user_id, patent_id)
                         remove_patent_from_error_list(user_id, patent_id)
+                        generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
+                        isolate_claims(f"uspto_{user_id}_{patent_id}")
                         returnValue = {
                             'success': True, 
                             'message': 'Patent data imported successfully', 
@@ -305,6 +427,8 @@ def fetchById(app, patent_id:str, user_id:str):
                             raise Exception("Document Creation Error")
                         remove_patent_from_error_list(user_id, patent_id)
                         remove_patent_from_fetching_list(user_id, patent_id)
+                        generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
+                        isolate_claims(f"uspto_{user_id}_{patent_id}")
                         returnValue = {
                             'success': True, 
                             'message': 'Patent data imported successfully', 

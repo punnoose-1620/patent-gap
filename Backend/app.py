@@ -1852,7 +1852,6 @@ def bulk_fetch():
 
 @app.route('/api/get-claims/<case_id>', methods=['GET'])
 def get_claims_for_patent(case_id):
-  #TODO: Add function information to swagger
   user_id = get_user_id()
   if not user_id:
     print('\nUser ID is not in session')
@@ -1860,84 +1859,29 @@ def get_claims_for_patent(case_id):
   print(f'LOG: {user_id} Getting Claims for Case: {case_id}')
 
   try:
-    case_data = get_case_by_id(case_id)
-    if case_data is None:
-      print(f'\nERROR: Error getting claims: Case not found')
-      return jsonify({'success': False, 'message': 'Case not found'}), 404
-
-    existing_claims = case_data.get('claims', [])
-    if (len(existing_claims) > 0) and (existing_claims is not None):
-      print(f'\nERROR: Error getting claims: Claims already exist')
-      return jsonify({'success': True, 'message': 'Claims already exist', 'claims': existing_claims}), 200
-
-    description = case_data.get('description', '')
-    if description.strip() != "":
-      complete_document_contents = f"Description:\n{description}"
-    
-    document_urls = case_data.get('document_urls', [])
-    document_contents = []
-    for document in document_urls:
-      if 'uspto' in document:
-        content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
-      elif '/document/' in document:
-        doc_id = document.split('/')[-1].strip()
-        content = readLocalDocument(doc_id)
+    statusCode = 200
+    resultBody = isolate_claims(case_id)
+    if not resultBody['success']:
+      if resultBody['message'] == 'Case not found':
+        statusCode = 401
+      elif resultBody['message'] == 'No viable document contents provided':
+        statusCode = 402
+      elif resultBody['message'] == 'No claims found':
+        statusCode = 403
+      elif resultBody['message'] == 'Rate Exceeded Error':
+        statusCode = 429
+      elif resultBody['message'] == 'Access Forbidden Error':
+        statusCode = 405
       else:
-        content = readDocumentFromUrl(document)
-      document_contents.append(content)
-
-    documents = case_data.get('documents', [])
-    for document in documents:
-      if document.get('source', '') == 'uspto':
-        content  = readDocumentFromUrl(document.get('url', ''), headers={"X-API-KEY": getEnvKey('uspto')})
-        document_contents.append(content)
-      elif document.get('source', '') == 'local':
-        doc_id = document.get('url', '').split('/')[-1].strip()
-        document_view = getDocumentById(doc_id)
-        if document_view.get('success', False):
-          document_blob = document_view.get('document', {}).get('file_content', '')
-          content = document_blob.decode('utf-8')
-          document_contents.append(content)
-      else:
-        document_contents.append(document.get('content', ''))
-
-    if (len(document_contents) == 0) or (document_contents is None):
-      return jsonify({
-        'success': False, 
-        'message': 'No viable document contents provided', 
-        'documents': {
-          'document_urls_key': document_urls,
-          'documents_key': document_contents
-        }}), 400
-
-    complete_document_contents = ""
-    for content in document_contents:
-      if content.strip() != "":
-        complete_document_contents = f"{complete_document_contents}\n\n{content}"
-    
-    if complete_document_contents.strip() == "":
-      print(f'\nERROR: Error getting claims: No viable document contents provided')
-      return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-
-    claims = get_claims(complete_document_contents)
-    if (len(claims) == 0) or (claims is None):
-      print(f'\nERROR: Error getting claims: No claims found')
-      return jsonify({'success': False, 'message': 'No claims found'}), 400
-    if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
-        print(f'\nERROR: Error getting claims: {claims[0]}')
-        return jsonify({'success': False, 'message': claims[0]}), 400
-
-    # Update Claims in Case Data
-    result = update_case(case_id, {'claims': claims, 'last_updated': dt.now()})
-    if result['success']:
-      return jsonify({'success': True, 'message': 'Claims updated successfully', 'claims': claims}), 200
-    else:
-      print(f'\nERROR: Error updating claims: {result["message"]}')
-      return jsonify({'success': False, 'message': result['message']}), 400
+        statusCode = 400
+    return jsonify(resultBody), statusCode
 
   except Exception as e:
     print(f'\nERROR:Error getting claims data: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting claims for patent: {str(e)}'}), 500
+    return jsonify({
+      'success': False, 
+      'message': f'Error getting claims for patent: {str(e)}'
+      }), 500
 
 # NOTE: Current implementation. Need to be updated with new one later after testing.
 @app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
@@ -2251,38 +2195,17 @@ def generate_patent_description(case_id):
   if data is None:
     return jsonify({'success': False, 'message': 'No data provided'}), 400
   
-  case_data = get_case_by_id(case_id)
-  if case_data is None:
-    return jsonify({'success': False, 'message': 'Case not found'}), 404
+  resultBody = generate_patent_description(case_id)
+  statusCode = 200
+  if not resultBody['success']:
+    if resultBody['message'] == 'Case not found':
+      statusCode = 401
+    elif resultBody['message'] == 'No viable document contents provided':
+      statusCode = 402
+    else:
+      statusCode = 400
+  return jsonify(resultBody), statusCode
   
-  
-  document_urls = case_data.get('document_urls', [])
-  document_contents = []
-  for document in document_urls:
-    content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
-    document_contents.append(content)
-  
-  if (len(document_contents) == 0) or (document_contents is None):
-    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-  
-  complete_document_contents = ""
-  for content in document_contents:
-    if content.strip() != "":
-      complete_document_contents = f"{complete_document_contents}\n\n{content}"
-  
-  if complete_document_contents.strip() == "":
-    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-
-  summary = get_patent_summary(complete_document_contents)
-  
-  # Update Case Data for the Generated Description
-  result = update_case(case_id, {'description': summary, 'last_updated': dt.now()})
-  print('TEST 6: Result')
-  return jsonify({
-    'success': True, 
-    'message': 'Patent summary generated successfully', 
-    'summary': summary}), 200
-
 INFRINGEMENT_CHART_ERROR_RESPONSES = {
   'CASE_NOT_FOUND': (404, 'Case not found.'),
   'NO_PARENT_CLAIMS': (422, 'This case has no claims. Add claims before generating an infringement chart.'),
