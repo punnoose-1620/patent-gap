@@ -1920,6 +1920,9 @@ def live_similarity_analysis(case_id):
     print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
     return jsonify({'success': False, 'message': 'Case not found'}), 404
   
+  if 'claims' in case_data:
+    temp_claims = case_data['claims']
+    ref_claims = temp_claims
   keywords = case_data.get('keywords', [])
   ref_case_title = case_data.get('title', '')
   ref_case_id = case_data.get('_id', '').split('_')[-1]
