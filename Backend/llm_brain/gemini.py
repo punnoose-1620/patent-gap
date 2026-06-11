@@ -145,6 +145,8 @@ class Gemini:
         count += 1
         wrapper = IsolatedClaims.model_validate_json(response.text)
         validated, error_message = wrapper.verify_isolated_claims()
+        if not validated:
+            print(error_message)
         while not validated and count < MAX_ATTEMPTS:
             time.sleep(DEFAULT_LLM_DELAY)
             response = self._client.models.generate_content(
@@ -156,8 +158,10 @@ class Gemini:
                 },
             )
             count += 1
-            validated, error_message = wrapper.verify_isolated_claims()
             wrapper = IsolatedClaims.model_validate_json(response.text)
+            validated, error_message = wrapper.verify_isolated_claims()
+            if not validated:
+                print(error_message)
         if not validated or count >= MAX_ATTEMPTS:
             raise Exception(f"Error: Failed to extract claims after {MAX_ATTEMPTS} attempts. {error_message}")
         return wrapper
