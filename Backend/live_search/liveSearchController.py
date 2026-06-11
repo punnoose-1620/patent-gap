@@ -116,12 +116,14 @@ def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float 
             title = case_data.title
             filing_date = case_data.filingDate
             if (title.strip() == "") or (filing_date.strip() == ""):
+                print(f"Error: Failed to extract patent metadata after {max_attempts} attempts. {last_error}")
                 raise Exception("Error: Failed to extract patent metadata after 3 attempts")
 
             # Extract claims as a separate model, then attach just the list.
             isolated_claims = Gemini().extract_claims(patent_content=str(text))
             validated, error_message = isolated_claims.verify_isolated_claims()
             if not validated:
+                print(f"Error: Failed to extract claims after {max_attempts} attempts. {error_message}")
                 raise Exception(f"Error: Failed to extract claims after {max_attempts} attempts. {error_message}")
             final_claims = {}
             for i in range(len(isolated_claims.claims)):
@@ -136,7 +138,7 @@ def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float 
                 message = e.message
             else:
                 message = str(e)
-            print(f"\nLOG: Attempt {attempt} failed: {message}")
+            print(f"\nLOG: Attempt {attempt} failed: {message} : {last_error}")
             # If we've exhausted retries, re-raise
             if attempt >= max_attempts:
                 print(f"\nMAX_ATTEMPTS_ERROR: Failed to extract patent metadata after {max_attempts} attempts")
