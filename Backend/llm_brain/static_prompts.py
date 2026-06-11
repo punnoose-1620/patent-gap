@@ -110,12 +110,17 @@ Return **only** the final JSON object, with no explanations or comments.
 
 CLAIM_ISOLATOR = """
 I am providing all the content from all documents related to a patent below.
-Extract all the claims from the documents.
-Return the claims in the following format:
-{
-  "claims": "<list[str]: List of claims of the patent>",
-}
-Do not include any other text or comments.
+Extract all the claims from the documents in their original language and also translate them to market language using relevant wordings.
+Return the claims in the following format: List of <ISOLATED_CLAIMS_RETURN_FORMAT>
+
+Rules:
+- Do not include any other text or comments.
+
+Allowed values for claim_type:
+- "asserted_claim" : This specific claim is often selected for a lawsuit because a competitor's product actively infringes them.
+- "independent_claim" : This claim is broad, standalone claim that doesn't rely on other claims, making it the primary target for litigation.
+- "core_claim" : This claim captures the actual commercial value of the product.
+- "pivotal_claim" : This claim best survives "prior art" challenges while still catching the infringer.
 """
 
 INFRINGEMENT_ANALYZER = """
@@ -183,6 +188,7 @@ Return the results in the following format:
 }
 Rules:
 - Do not include any other text or comments.
+- Return up to <max_results_replacement> distinct product results (prioritize manufacturer and medical-device product pages when relevant).
 - The results should only be live products available for purchase/order. 
 - Do not include any other type of results.
 - Do not assume or build URLs. The URLs should be the exact URLs from the search results.

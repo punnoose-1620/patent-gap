@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
 from scorer import score_infringement_matrix_entry
 
-CLAIM_SIMILARITY_THRESHOLD = 0.1
+CLAIM_SIMILARITY_THRESHOLD = 0.5
 
 def caseAlreadyExists(case_id:str, user_id: str):
     db = connect_to_database()
@@ -357,8 +357,28 @@ def get_infringement_chart(case_id):
     if caseData is None:
         return None, 'CASE_NOT_FOUND'
 
-    claims = [claim for claim in caseData.get('claims', []) if isinstance(claim, str) and claim.strip() != '']
-    if len(claims) == 0:
+    claims_original_list = caseData.get('claims', [])
+    claims = []
+    original_claims = []
+    market_claims = []
+    if isinstance(claims_original_list, list) and all(isinstance(claim, str) for claim in claims_original_list):
+        for claim in claims_original_list:
+            if claim is None:
+                continue
+            if claim.strip() != '':
+                claims.append(claim.strip())
+    elif isinstance(claims_original_list, dict):
+        for index, claimData in claims_original_list.items():
+            if not isinstance(claimData, dict):
+                continue
+            documented = (claimData.get('documented_claim') or '').strip()
+            market = (claimData.get('market_language_claim') or '').strip()
+            if documented:
+                claims.append(documented)
+                original_claims.append(documented)
+            if market:
+                market_claims.append(market)
+    if not claims and not original_claims and not market_claims:
         return None, 'NO_PARENT_CLAIMS'
 
     infringements = caseData.get('infringements', [])
@@ -366,6 +386,8 @@ def get_infringement_chart(case_id):
         return None, 'NO_INFRINGEMENTS'
 
     chart_data = []
+    patent_chart_data = []
+    product_chart_data = []
     has_updates = False
     entries_with_claims = 0
 
@@ -388,6 +410,15 @@ def get_infringement_chart(case_id):
         if not inf_claims:
             continue
 
+        is_product = bool(infringement_entry.get('product_id'))
+        if is_product:
+            ref_claims = market_claims if market_claims else claims
+        else:
+            ref_claims = original_claims if original_claims else claims
+
+        if not ref_claims:
+            continue
+
         entries_with_claims += 1
 
         if isinstance(existing, dict) and not infringement_entry.get('gemini_infringement'):
@@ -395,13 +426,17 @@ def get_infringement_chart(case_id):
 
         before = existing
         stored_rows, entry_chart_rows = score_infringement_matrix_entry(
-            claims, inf_claims, existing, threshold=CLAIM_SIMILARITY_THRESHOLD
+            ref_claims, inf_claims, existing, threshold=CLAIM_SIMILARITY_THRESHOLD
         )
         if stored_rows is None:
             continue
 
         infringement_entry['infringements'] = stored_rows
         chart_data.extend(entry_chart_rows)
+        if is_product:
+            product_chart_data.extend(entry_chart_rows)
+        else:
+            patent_chart_data.extend(entry_chart_rows)
 
         if before != stored_rows:
             has_updates = True
@@ -413,6 +448,6 @@ def get_infringement_chart(case_id):
         update_case(case_id, {'infringements': infringements})
 
     if len(chart_data) == 0:
-        return [], 'NO_MATCHES_ABOVE_THRESHOLD'
+        return [], [], [], 'NO_MATCHES_ABOVE_THRESHOLD'
 
-    return chart_data, None
+    return chart_data, patent_chart_data, product_chart_data, None

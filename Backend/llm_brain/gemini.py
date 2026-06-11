@@ -11,6 +11,7 @@ from models.live_search_results import *
 # IMPORTANT: Do NOT include field names like "title" or "description" here,
 # or they will be stripped from the properties we want Gemini to fill.
 _SCHEMA_STRIP_KEYS = {"examples", "default", "$defs"}
+MAX_ATTEMPTS = 5
 
 def _strip_unsupported_schema_keys(obj):
     if isinstance(obj, dict):
@@ -125,7 +126,10 @@ class Gemini:
         patent_content:str, 
         model_name:str = 'gemini-2.5-flash'
         ):
-        final_prompt = CLAIM_ISOLATOR + "\nHere's the content : \n" + str(patent_content)
+
+        count = 0
+        final_prompt = CLAIM_ISOLATOR.replace("<ISOLATED_CLAIMS_RETURN_FORMAT>", IsolatedClaims.get_isolated_claims_description())
+        final_prompt = final_prompt + "\nHere's the content : \n" + str(patent_content)
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(IsolatedClaims.model_json_schema()))
         response = self._client.models.generate_content(
@@ -136,7 +140,24 @@ class Gemini:
                 "response_json_schema": schema,
             },
         )
-        return IsolatedClaims.model_validate_json(response.text)
+        count += 1
+        wrapper = IsolatedClaims.model_validate_json(response.text)
+        validated, error_message = wrapper.verify_isolated_claims()
+        while not validated and count < MAX_ATTEMPTS:
+            response = self._client.models.generate_content(
+                model=model_name,
+                contents=final_prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_json_schema": schema,
+                },
+            )
+            count += 1
+            validated, error_message = wrapper.verify_isolated_claims()
+            wrapper = IsolatedClaims.model_validate_json(response.text)
+        if not wrapper.verify_isolated_claims() or count >= MAX_ATTEMPTS:
+            raise Exception(f"Error: Failed to extract claims after {MAX_ATTEMPTS} attempts. {error_message}")
+        return wrapper
 
     def analyze_infringements(
         self, 
@@ -183,10 +204,12 @@ class Gemini:
     
     def perform_google_search(
         self, 
-        search_string: str, 
+        search_string: str,
+        max_results: int = 30,
         model_name:str = 'gemini-2.5-flash'
         ):
         final_prompt = PERFORM_GOOGLE_SEARCH_PROMPT.replace("<search_string_replacement>", search_string)
+        final_prompt = final_prompt.replace("<max_results_replacement>", str(max_results))
         response = self._client.models.generate_content(
             model=model_name,
             contents=final_prompt,

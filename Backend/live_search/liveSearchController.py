@@ -18,7 +18,10 @@ from web_scraper.free_patents_online import FreePatentsOnline
 from web_scraper.google_patents import GooglePatents
 
 TITLE_SIMILARITY_THRESHOLD = 0.85
+DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
 SEARCH_TIMEOUT = 10
+DEFAULT_PRODUCT_SEARCH_MAX_RESULTS = 30
+MAX_PRODUCT_SEARCH_MAX_RESULTS = 100
 SESSION_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -117,14 +120,14 @@ def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float 
 
             # Extract claims as a separate model, then attach just the list.
             isolated_claims = Gemini().extract_claims(patent_content=str(text))
-            try:
-                claims_list = getattr(isolated_claims, "claims", [])
-                if isinstance(claims_list, list):
-                    if len(claims_list) <3:
-                        raise Exception("ClaimsError: Claims not properly isolated")
-            except Exception:
-                claims_list = []
-            case_data.claims = claims_list
+            validated, error_message = isolated_claims.verify_isolated_claims()
+            if not validated:
+                raise Exception(f"Error: Failed to extract claims after {max_attempts} attempts. {error_message}")
+            final_claims = {}
+            for i in range(len(isolated_claims.claims)):
+                claim = isolated_claims[i]
+                final_claims[i] = claim.model_dump()
+            case_data.claims = final_claims
             return case_data
         except Exception as e:
             last_error = e
@@ -253,6 +256,7 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
             caseDataDict['url'] = caseDataUrl
             caseDataDict['source'] = 'free_patents_online'
             resultCasesList.append(caseDataDict)
+            time.sleep(DEFAULT_LLM_DELAY)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
@@ -327,6 +331,7 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
             caseDataDict['url'] = caseDataUrl
             caseDataDict['source'] = 'google_patents'
             resultCasesList.append(caseDataDict)
+            time.sleep(DEFAULT_LLM_DELAY)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
@@ -450,10 +455,12 @@ def searchPatentSources(
     ref_case_id: str = '',
     titles_to_avoid: list[str] = [],
     ids_to_avoid: list[str] = [],
+    search_type: str = 'generic'
     ):
     searchResults = []
     infringement_analysis_results = []
     created_ids = []
+    status_key = f"{search_type}_claims_patent_analysis"
     # Perform Live Patent Search
     try:
         found_ids = []
@@ -466,7 +473,13 @@ def searchPatentSources(
             ids=ids_to_avoid,
             )
         for result in results:
-            found_ids.append(result['_id'])
+            foundId = result['_id']
+            foundTitle = result['title']
+            if foundId in ids_to_avoid:
+                continue
+            if foundTitle in titles_to_avoid:
+                continue
+            found_ids.append(foundId)
             searchResults.append(result)
         patent_sources = Gemini().get_patent_sources(found_ids)
         for patent in patent_sources.patents:
@@ -478,6 +491,13 @@ def searchPatentSources(
             patent_sources.remove(patent)
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
+        case_model.update_case(ref_case_id, {
+          'infringement_analysis_status': 'Started', 
+          'last_updated': datetime.now(),
+          'status_flags': {
+            status_key: 'Live SearchError: ' + str(e)
+          }
+        })
         raise e
     # Perform Infringement Analysis
     try:
@@ -507,23 +527,45 @@ def searchPatentSources(
         return infringement_analysis_results, created_ids
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
+        case_model.update_case(ref_case_id, {
+          'infringement_analysis_status': 'Started', 
+          'last_updated': datetime.now(),
+          'status_flags': {
+            status_key: 'Infringement Analysis Error: ' + str(e)
+          }
+        })
         raise e
     return [], []
 
+def resolve_product_search_max_results(search_limitations: dict | None) -> int:
+    """Max product URLs to fetch/analyze; override via search_limitations.max_product_results."""
+    if not search_limitations:
+        return DEFAULT_PRODUCT_SEARCH_MAX_RESULTS
+    raw = search_limitations.get('max_product_results', DEFAULT_PRODUCT_SEARCH_MAX_RESULTS)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_PRODUCT_SEARCH_MAX_RESULTS
+    return max(1, min(n, MAX_PRODUCT_SEARCH_MAX_RESULTS))
+
+
 def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str], search_limitations:dict):
+    search_limitations = search_limitations or {}
+    max_product_results = resolve_product_search_max_results(search_limitations)
     # Generate Search String using Gemini
     search_string = Gemini().get_search_string(keywords, owners, search_limitations)
     print(f"LOG: Search String: {search_string}")
+    print(f"LOG: Product search max results: {max_product_results}")
     # Perform Google Search
-    google_search_results = Gemini().perform_google_search(search_string)
+    google_search_results = Gemini().perform_google_search(search_string, max_results=max_product_results)
     sites_searched = {}
     product_details_list = []
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
     created_ids = []
-    # TODO: Change to all results when new version is ready
+    results_to_process = google_search_results[:max_product_results]
     # Iterate through Google Search Results
-    for result in tqdm(google_search_results[:10], desc="Fetching Product Details from Google Search Results"):
+    for result in tqdm(results_to_process, desc="Fetching Product Details from Google Search Results"):
         website_searched = result.website_name
         if website_searched not in sites_searched.keys():
             sites_searched[website_searched] = 0

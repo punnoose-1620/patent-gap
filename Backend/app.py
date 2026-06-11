@@ -1929,104 +1929,114 @@ def live_similarity_analysis(case_id):
   if (len(keywords) == 0) or (keywords is None):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
-  if (len(ref_claims) == 0) or (ref_claims is None):
-    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Claims are required'}), 400
+  if isinstance(ref_claims, list):
+    if (len(ref_claims) == 0) or (ref_claims is None):
+      print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+      return jsonify({'success': False, 'message': 'Claims are required'}), 400
+  else:
+    if ref_claims is None:
+      print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+      return jsonify({'success': False, 'message': 'Claims are required'}), 400
+    if isinstance(ref_claims, dict):
+      if (len(ref_claims.keys()) == 0) or (ref_claims is None):
+        print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+        return jsonify({'success': False, 'message': 'Claims are required'}), 400
   if (len(owners) == 0) or (owners is None):
     print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
-  
-  start_time = time.time()
-  update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
-  # Perform Live Patent Search
-  try:
-    patentResults, created_patent_ids = searchPatentSources(
+
+  # Filter original claims into buckets
+  asserted_claims = []
+  independent_claims = []
+  core_claims = []
+  pivotal_claims = []
+
+  search_type = 'bucketed'
+  if isinstance(ref_claims, list):
+    search_type = 'generic'
+    for claim in ref_claims:
+      asserted_claims.append(claim)
+  if isinstance(ref_claims, dict):
+    for _, claimData in ref_claims.items():
+      if claimData.get('claim_type') == 'asserted_claim':
+        asserted_claims.append(claimData.get('documented_claim', ''))
+      elif claimData.get('claim_type') == 'independent_claim':
+        independent_claims.append(claimData.get('documented_claim', ''))
+      elif claimData.get('claim_type') == 'core_claim':
+        core_claims.append(claimData.get('documented_claim', ''))
+      elif claimData.get('claim_type') == 'pivotal_claim':
+        pivotal_claims.append(claimData.get('documented_claim', ''))
+
+  # Start Live Patent Search in background thread
+  update_case(case_id, {'infringements': []})
+  patent_thread = threading.Thread(
+    target=start_patent_analysis,
+    args=(
+      app, 
+      case_id, 
       keywords, 
       country, 
-      ref_claims, 
       ref_case_title, 
-      ref_case_id
-      )
-    update_infringements(case_id, patentResults)
-    update_case(
+      ref_case_id, 
+      titles_to_avoid, 
+      ids_to_avoid, 
+      search_type,
+      asserted_claims, 
+      independent_claims, 
+      core_claims, 
+      pivotal_claims, 
+      context),
+    daemon=True,
+  )
+  patent_thread.start()
+
+  # Filter market language claims into buckets
+  asserted_claims = []
+  independent_claims = []
+  core_claims = []
+  pivotal_claims = []
+
+  search_type = 'bucketed'
+  if isinstance(ref_claims, list):
+    search_type = 'generic'
+    for claim in ref_claims:
+      asserted_claims.append(claim)
+  if isinstance(ref_claims, dict):
+    for _, claimData in ref_claims.items():
+      if claimData.get('claim_type') == 'asserted_claim':
+        asserted_claims.append(claimData.get('market_language_claim', ''))
+      elif claimData.get('claim_type') == 'independent_claim':
+        independent_claims.append(claimData.get('market_language_claim', ''))
+      elif claimData.get('claim_type') == 'core_claim':
+        core_claims.append(claimData.get('market_language_claim', ''))
+      elif claimData.get('claim_type') == 'pivotal_claim':
+        pivotal_claims.append(claimData.get('market_language_claim', ''))
+
+  # Start Live Patent Search in background thread
+  product_thread = threading.Thread(
+    target=start_product_analysis,
+    args=(
+      app, 
       case_id, 
-      {
-        'infringements': patentResults, 
-        'infringement_analysis_status': 'Patent Sources Completed', 
-        'infringement_details' : {
-          'patent_ids' : created_patent_ids,
-          'search_keywords' : keywords,
-          'claim_type' : 'generic'
-        },
-        'last_infringement_analysis_date': dt.now(),
-        'last_updated': dt.now()
-        }
-      )
-  except Exception as e:
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources', 'last_updated': dt.now()})
-    print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
-    return jsonify({
-      'success': False, 
-      'message': f'Error performing patent source infringement analysis: {str(e)}',
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 500
-  
-  # Perform Live Product Search
-  try:
-    product_details_list, created_product_ids = searchProductSources(
       keywords, 
       owners, 
-      ref_claims, 
-      search_limitations
-      )
-    update_infringements(case_id, product_details_list)
-    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed', 'last_updated': dt.now()})
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(
-      case_id, 
-      {
-        'infringement_analysis_status': 'Completed', 
-        'infringement_details' : {
-          'patent_ids' : created_patent_ids,
-          'product_ids' : created_product_ids,
-          'search_keywords' : keywords,
-          'claim_type' : 'generic'
-        },
-        'last_infringement_analysis_date': dt.now(),
-        'last_updated': dt.now()
-        }
-      )
-    return jsonify({
-      'success': True, 
-      'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 200
-  except Exception as e:
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources', 'last_updated': dt.now()})
-    print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
-    return jsonify({
-      'success': False, 
-      'message': f'Error performing product sourceinfringement analysis: {str(e)}',
-      'search_results': product_details_list,
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 500
+      search_limitations, 
+      asserted_claims, 
+      independent_claims, 
+      core_claims, 
+      pivotal_claims, 
+      search_type,
+      context),
+    daemon=True,
+  )
+  product_thread.start()
+
+  return jsonify({
+    'success': True, 
+    'message': 'Product analysis started successfully',
+    'patent_thread_id': patent_thread.ident,
+    'product_thread_id': product_thread.ident,
+    }), 200
 
 @app.route('/api/document/<document_id>', methods=['GET'])
 def get_document(document_id):
@@ -2307,17 +2317,18 @@ def getInfringementChart(case_id):
     }), 401
   print(f'LOG: {user_id} Getting Infringement Chart for Case: {case_id}')
   try:
-    infringement_chart, error_code = get_case_infringement_chart(case_id)
+    result = get_case_infringement_chart(case_id)
+    if not result['success']:
+      if result['error_code'] == 'NO_MATCHES_ABOVE_THRESHOLD':
+        return jsonify(result), 200
+      return jsonify(result), result['status_code']
+
+    infringement_chart = result['chart_data']
+    patent_chart_data = result['patent_chart_data']
+    product_chart_data = result['product_chart_data']
+    error_code = ""
     rows_count = len(infringement_chart) if infringement_chart is not None else 0
     print(f'LOG: Infringement Chart rows: {rows_count} (error_code={error_code})')
-
-    if error_code == 'NO_MATCHES_ABOVE_THRESHOLD':
-      return jsonify({
-        'success': True,
-        'chart_data': [],
-        'error_code': error_code,
-        'message': 'No claim pairs met the similarity threshold.',
-      }), 200
 
     if error_code is not None:
       status, message = INFRINGEMENT_CHART_ERROR_RESPONSES.get(
@@ -2333,6 +2344,8 @@ def getInfringementChart(case_id):
     return jsonify({
       'success': True,
       'chart_data': infringement_chart,
+      'patent_chart_data': patent_chart_data,
+      'product_chart_data': product_chart_data
     }), 200
   except Exception as e:
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')

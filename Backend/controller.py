@@ -219,7 +219,24 @@ def get_case_infringement_chart(case_id):
     Returns ``(chart_data, error_code)``. See ``get_infringement_chart`` in
     ``models.cases`` for the full contract on possible error codes.
     """
-    return get_infringement_chart(case_id)
+    chart_data, patent_chart_data, product_chart_data, error_code = get_infringement_chart(case_id)
+    if error_code:
+        return {
+            'success': False, 
+            'message': error_code, 
+            'chart_data': [],
+            'patent_chart_data': [],
+            'product_chart_data': [],
+            'error_code': error_code,
+            'status_code': 500
+            }
+    return {
+        'success': True,
+        'message': 'Infringement chart retrieved successfully',
+        'chart_data': chart_data,
+        'patent_chart_data': patent_chart_data,
+        'product_chart_data': product_chart_data
+    }
 
 def generate_patent_description(case_id):
     """
@@ -335,6 +352,318 @@ def isolate_claims(case_id):
       print(f'\nERROR: Error updating claims: {result["message"]}')
       return {'success': False, 'message': result['message']}
 
+# Functions for Infringement Analysis
+def start_patent_analysis(
+    app,
+    case_id: str,
+    keywords: list[str],
+    country: str,
+    ref_case_title: str = '',
+    ref_case_id: str = '',
+    titles_to_avoid: list[str] = [],
+    ids_to_avoid: list[str] = [],
+    search_type: str = 'generic',
+    asserted_claims: list[dict] = [], 
+    independent_claims: list[dict] = [], 
+    core_claims: list[dict] = [], 
+    pivotal_claims: list[dict] = [], 
+    context: str = ''
+    ):
+    start_time = time.time()
+    search_status_key = search_type+"_claims_patent_analysis"
+    if search_type == 'bucketed':
+        search_status_key = "asserted_claims_patent_analysis"
+    with app.app_context():
+        asserted_patentResults = []
+        independent_patentResults = []
+        core_patentResults = []
+        pivotal_patentResults = []
+        asserted_created_patent_ids = []
+        independent_created_patent_ids = []
+        core_created_patent_ids = []
+        pivotal_created_patent_ids = []
+        try:
+            if len(asserted_claims) > 0:
+                update_case(case_id, {
+                    'infringement_analysis_status': 'Started', 
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        search_status_key: 'Started'
+                    }
+                    })
+                asserted_patentResults, asserted_created_patent_ids = searchPatentSources(
+                    keywords, 
+                    country, 
+                    asserted_claims, 
+                    ref_case_title, 
+                    ref_case_id,
+                    titles_to_avoid,
+                    ids_to_avoid,
+                    search_type
+                    )
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        search_status_key: 'Completed'
+                    }
+                    })
+            if len(independent_claims) > 0:
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'independent_claims_patent_analysis': 'Started'
+                    }
+                    })
+                independent_patentResults, independent_created_patent_ids = searchPatentSources(
+                    keywords, 
+                    country, 
+                    independent_claims, 
+                    ref_case_title, 
+                    ref_case_id,
+                    titles_to_avoid,
+                    ids_to_avoid,
+                    'independent'
+                    )
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'independent_claims_patent_analysis': 'Completed'
+                    }
+                    })
+            if len(core_claims) > 0:
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'core_claims_patent_analysis': 'Started'
+                    }
+                    })
+                core_patentResults, core_created_patent_ids = searchPatentSources(
+                    keywords, 
+                    country, 
+                    core_claims, 
+                    ref_case_title, 
+                    ref_case_id,
+                    titles_to_avoid,
+                    ids_to_avoid,
+                    'core'
+                    )
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'core_claims_patent_analysis': 'Completed'
+                    }
+                    })
+            if len(pivotal_claims) > 0:
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'pivotal_claims_patent_analysis': 'Started'
+                    }
+                    })
+                pivotal_patentResults, pivotal_created_patent_ids = searchPatentSources(
+                    keywords, 
+                    country, 
+                    pivotal_claims, 
+                    ref_case_title, 
+                    ref_case_id,
+                    titles_to_avoid,
+                    ids_to_avoid,
+                    'pivotal'
+                    )
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'pivotal_claims_patent_analysis': 'Completed'
+                    }
+                    })
+            # Avoid duplicates among all patent results
+            patentResults = []
+            for result in asserted_patentResults:
+                if result not in patentResults:
+                    patentResults.append(result)
+            for result in independent_patentResults:
+                if result not in patentResults:
+                    patentResults.append(result)
+            for result in core_patentResults:
+                if result not in patentResults:
+                    patentResults.append(result)
+            for result in pivotal_patentResults:
+                if result not in patentResults:
+                    patentResults.append(result)
+            
+            if search_type != 'generic':
+                search_type = "bucketed"
+            update_infringements(case_id, patentResults)
+            update_case(
+                case_id, 
+                {
+                    'infringement_analysis_status': 'Patent Sources Completed', 
+                    'infringement_details' : {
+                        'patent_ids' : {
+                            'asserted' : asserted_created_patent_ids,
+                            'independent' : independent_created_patent_ids,
+                            'core' : core_created_patent_ids,
+                            'pivotal' : pivotal_created_patent_ids
+                        },
+                        'search_keywords' : keywords,
+                        'claim_type' : search_type
+                    },
+                    'last_infringement_analysis_date': dt.now(),
+                    'last_updated': dt.now()
+                    }
+                )
+        except Exception as e:
+            current_time = time.time()
+            time_in_seconds = current_time - start_time
+            time_in_minutes = time_in_seconds // 60
+            time_in_hours = int(time_in_minutes // 60)
+            time_in_seconds = time_in_seconds % 60
+            time_in_minutes = int(time_in_minutes % 60)
+            update_case(
+                case_id, {
+                    'infringement_analysis_status': 'Failed during Patent Sources', 
+                    'last_updated': dt.now()
+                    })
+            print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
+
+def start_product_analysis(
+    app,
+    case_id: str,
+    keywords: list[str],
+    owners: list[str],
+    search_limitations: list[dict],
+    asserted_claims: list[dict] = [], 
+    independent_claims: list[dict] = [], 
+    core_claims: list[dict] = [], 
+    pivotal_claims: list[dict] = [],
+    search_type: str = 'generic',
+    context: str = ''
+    ):
+    with app.app_context():
+        asserted_product_details_list = []
+        independent_product_details_list = []
+        core_product_details_list = []
+        pivotal_product_details_list = []
+        asserted_created_product_ids = []
+        independent_created_product_ids = []
+        core_created_product_ids = []
+        pivotal_created_product_ids = []
+        try:
+            if len(asserted_claims) > 0:
+                search_status_key = search_type+"_claims_product_analysis"
+                if search_type != 'generic':
+                    search_status_key = "asserted_claims_product_analysis"
+                update_case(case_id, {
+                    'infringement_analysis_status': 'Started', 
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        search_status_key: 'Started'
+                    }})
+                asserted_product_details_list, asserted_created_product_ids = searchProductSources(
+                    keywords, 
+                    owners, 
+                    asserted_claims, 
+                    search_limitations
+                    )
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        search_status_key: 'Completed'
+                    }})
+            if len(independent_claims) > 0:
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'independent_claims_product_analysis': 'Started'
+                    }})
+                independent_product_details_list, independent_created_product_ids = searchProductSources(
+                    keywords, 
+                    owners, 
+                    independent_claims, 
+                    search_limitations
+                    )
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'independent_claims_product_analysis': 'Completed'
+                    }})
+            if len(core_claims) > 0:
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'core_claims_product_analysis': 'Started'
+                    }})
+                core_product_details_list, core_created_product_ids = searchProductSources(
+                    keywords, 
+                    owners, 
+                    core_claims, 
+                    search_limitations
+                    )
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'core_claims_product_analysis': 'Completed'
+                    }})
+            if len(pivotal_claims) > 0:
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'pivotal_claims_product_analysis': 'Started'
+                    }})
+                pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
+                    keywords, 
+                    owners, 
+                    pivotal_claims, 
+                    search_limitations
+                    )
+                update_case(case_id, {
+                    'last_updated': dt.now(),
+                    'status_flags': {
+                        'pivotal_claims_product_analysis': 'Completed'
+                    }})
+                    
+            productResults = []
+            for result in asserted_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+            for result in independent_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+            for result in core_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+            for result in pivotal_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+
+            update_infringements(case_id, productResults)
+            update_case(
+                case_id, 
+                {
+                    'infringement_analysis_status': 'Product Sources Completed', 
+                    'infringement_details' : {
+                        'product_ids' : {
+                            'asserted' : asserted_created_product_ids,
+                            'independent' : independent_created_product_ids,
+                            'core' : core_created_product_ids,
+                            'pivotal' : pivotal_created_product_ids
+                        },
+                        'search_keywords' : keywords,
+                        'claim_type' : search_type
+                        },
+                    'last_infringement_analysis_date': dt.now(),
+                    'last_updated': dt.now()
+                    }
+                )
+        except Exception as e:
+            print(f'\nERROR: LiveSearch: Error performing product sourceinfringement analysis: {str(e)}')
+            update_case(
+            case_id, {
+                'infringement_analysis_status': 'Failed during Product Sources', 
+                'last_infringement_analysis_date': dt.now(),
+                'last_updated': dt.now()
+                })
+
 # Function to fetch Patent by ID with multiple sources
 def fetchById(app, patent_id:str, user_id:str):
     uspto_error = False
@@ -362,8 +691,8 @@ def fetchById(app, patent_id:str, user_id:str):
                 remove_patent_from_fetching_list(user_id, patent_id)
                 remove_patent_from_error_list(user_id, patent_id)
                 returnValue = {
-                    'success': True, 
-                    'message': 'Patent data imported successfully', 
+                    'success': True,
+                    'message': 'Patent data imported successfully',
                     'case_id': f"uspto_{user_id}_{patent_id}",
                     'keywords': uspto_data.get('keywords', []),
                     'case_data': uspto_data
@@ -375,7 +704,7 @@ def fetchById(app, patent_id:str, user_id:str):
             error_message = str(e)
         # Try searching patent id using Google Patents
         if uspto_error:
-            time.sleep(180)       
+            time.sleep(180)
             try:
                 google_patents = GooglePatents()
                 google_patents_details = google_patents.search_by_id(patent_id)
@@ -401,8 +730,8 @@ def fetchById(app, patent_id:str, user_id:str):
                         remove_patent_from_fetching_list(user_id, patent_id)
                         remove_patent_from_error_list(user_id, patent_id)
                         returnValue = {
-                            'success': True, 
-                            'message': 'Patent data imported successfully', 
+                            'success': True,
+                            'message': 'Patent data imported successfully',
                             'case_id': created_id,
                             'keywords': case_data.get('keywords', []),
                             'case_data': case_data
@@ -416,7 +745,7 @@ def fetchById(app, patent_id:str, user_id:str):
                 google_error = True
         # Patent not found using Google Patents, try using Free Patents Online
         if google_error and uspto_error:
-            time.sleep(180)   
+            time.sleep(180)
             try:
                 free_patents = FreePatentsOnline()
                 free_patents_details = free_patents.search_by_id(patent_id)
@@ -442,8 +771,8 @@ def fetchById(app, patent_id:str, user_id:str):
                         remove_patent_from_error_list(user_id, patent_id)
                         remove_patent_from_fetching_list(user_id, patent_id)
                         returnValue = {
-                            'success': True, 
-                            'message': 'Patent data imported successfully', 
+                            'success': True,
+                            'message': 'Patent data imported successfully',
                             'case_id': created_id,
                             'keywords': case_data.get('keywords', []),
                             'case_data': case_data
@@ -456,12 +785,12 @@ def fetchById(app, patent_id:str, user_id:str):
                 set_patent_to_error_list(user_id, patent_id)
                 error_message = str(e)
                 free_patents_error = True
-        
+
         errorReturn = {
-            'success': False, 
+            'success': False,
             'message': f"Failed to find patent with ID {patent_id}",
             'error_message': error_message
-            }
+        }
         set_patent_to_error_list(user_id, patent_id)
         return errorReturn, 500
 
@@ -496,4 +825,3 @@ def bulk_fetch_by_ids(app, patent_ids: list[str], records: list[list[str]], user
                 'success': False,
                 'message': f"Error bulk fetching patents: {str(e)}"
             }
-            
