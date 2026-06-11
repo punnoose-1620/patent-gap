@@ -127,11 +127,12 @@ class IsolatedClaims(BaseModel):
         """
     
     def verify_isolated_claims(self):
-        for claim in self.claims:
-            index = self.claims.index(claim)
+        for i in range(len(self.claims)):
+            claim = self.claims[i]
             validated, error_message = claim.verify_single_claim()
             if not validated:
-                return False, "For claim "+str(index)+": "+error_message
+                message = "For claim "+str(i+1)+": "+error_message
+                return False, message
         return True, ""
 
 class InfringementAnalysis(BaseModel):
