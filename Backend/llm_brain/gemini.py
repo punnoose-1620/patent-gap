@@ -1,5 +1,6 @@
 import copy
 import json
+import time
 from google import genai
 from google.genai import types
 from env_controller import getEnvKey
@@ -12,6 +13,7 @@ from models.live_search_results import *
 # or they will be stripped from the properties we want Gemini to fill.
 _SCHEMA_STRIP_KEYS = {"examples", "default", "$defs"}
 MAX_ATTEMPTS = 5
+DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
 
 def _strip_unsupported_schema_keys(obj):
     if isinstance(obj, dict):
@@ -128,7 +130,7 @@ class Gemini:
         ):
 
         count = 0
-        final_prompt = CLAIM_ISOLATOR.replace("<ISOLATED_CLAIMS_RETURN_FORMAT>", IsolatedClaims.get_isolated_claims_description())
+        final_prompt = CLAIM_ISOLATOR.replace("<ISOLATED_CLAIMS_RETURN_FORMAT>", IsolatedClaims().get_isolated_claims_description())
         final_prompt = final_prompt + "\nHere's the content : \n" + str(patent_content)
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(IsolatedClaims.model_json_schema()))
@@ -144,6 +146,7 @@ class Gemini:
         wrapper = IsolatedClaims.model_validate_json(response.text)
         validated, error_message = wrapper.verify_isolated_claims()
         while not validated and count < MAX_ATTEMPTS:
+            time.sleep(DEFAULT_LLM_DELAY)
             response = self._client.models.generate_content(
                 model=model_name,
                 contents=final_prompt,
@@ -155,7 +158,7 @@ class Gemini:
             count += 1
             validated, error_message = wrapper.verify_isolated_claims()
             wrapper = IsolatedClaims.model_validate_json(response.text)
-        if not wrapper.verify_isolated_claims() or count >= MAX_ATTEMPTS:
+        if not validated or count >= MAX_ATTEMPTS:
             raise Exception(f"Error: Failed to extract claims after {MAX_ATTEMPTS} attempts. {error_message}")
         return wrapper
 
