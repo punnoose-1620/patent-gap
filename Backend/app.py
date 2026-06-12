@@ -1945,6 +1945,12 @@ def live_similarity_analysis(case_id):
         print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
         return jsonify({'success': False, 'message': 'Claims are required'}), 400
   if (len(owners) == 0) or (owners is None):
+    owners = list(case_data.get('current_assignee') or [])
+    if case_data.get('applicant'):
+      owners.append(case_data['applicant'])
+    owners.extend(case_data.get('inventors') or [])
+    owners = [o.strip() for o in owners if isinstance(o, str) and o.strip()]
+  if (len(owners) == 0) or (owners is None):
     print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
 
@@ -1989,7 +1995,7 @@ def live_similarity_analysis(case_id):
       core_claims, 
       pivotal_claims, 
       context),
-    daemon=True,
+    daemon=False,
   )
   patent_thread.start()
 
@@ -2030,7 +2036,7 @@ def live_similarity_analysis(case_id):
       pivotal_claims, 
       search_type,
       context),
-    daemon=True,
+    daemon=False,
   )
   product_thread.start()
 
@@ -2329,20 +2335,8 @@ def getInfringementChart(case_id):
     infringement_chart = result['chart_data']
     patent_chart_data = result['patent_chart_data']
     product_chart_data = result['product_chart_data']
-    error_code = ""
     rows_count = len(infringement_chart) if infringement_chart is not None else 0
-    print(f'LOG: Infringement Chart rows: {rows_count} (error_code={error_code})')
-
-    if error_code is not None:
-      status, message = INFRINGEMENT_CHART_ERROR_RESPONSES.get(
-        error_code,
-        (400, 'No infringement chart found. Please check Claims and Infringements'),
-      )
-      return jsonify({
-        'success': False,
-        'error_code': error_code,
-        'message': message,
-      }), status
+    print(f'LOG: Infringement Chart rows: {rows_count}')
 
     return jsonify({
       'success': True,

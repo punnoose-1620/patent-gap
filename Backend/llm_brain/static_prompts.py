@@ -108,6 +108,23 @@ The fields to extract are:
 Return **only** the final JSON object, with no explanations or comments.
 """
 
+DOCUMENTED_CLAIMS_ISOLATOR = """
+I am providing patent content below. Locate the claims section (e.g. "Claims", "What is claimed is:").
+Extract every numbered claim in original patent language only.
+
+Return JSON in this shape:
+{
+  "claims": ["1. ...", "2. ...", ...]
+}
+
+Rules:
+- Include the claim number at the start of each string.
+- Preserve dependent-claim wording and structure.
+- Do not include abstract, description, or drawings text.
+- Do not add market language or litigation categories.
+- Return only the JSON object.
+"""
+
 CLAIM_ISOLATOR = """
 I am providing all the content from all documents related to a patent below.
 Extract all the claims from the documents in their original language and also translate them to market language using relevant wordings.

@@ -337,25 +337,24 @@ def get_case_creator(case_id):
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     return case.get('created_by')
 
+def _chart_error(error_code: str):
+    return [], [], [], error_code
+
+
 def get_infringement_chart(case_id):
     """
     Build chart-ready infringement rows for a case.
 
-    Returns a tuple ``(chart_data, error_code)``:
+    Returns ``(chart_data, patent_chart_data, product_chart_data, error_code)``:
 
-    - ``(rows, None)`` on success with a non-empty list.
-    - ``([], 'NO_MATCHES_ABOVE_THRESHOLD')`` when claims and infringement claims
-      were both present and scored, but no pair met the similarity threshold.
-      Any newly computed scored rows are still persisted to the case document.
-    - ``(None, 'CASE_NOT_FOUND')`` when no case exists for ``case_id``.
-    - ``(None, 'NO_PARENT_CLAIMS')`` when the case has no usable parent claims.
-    - ``(None, 'NO_INFRINGEMENTS')`` when the case has no infringements saved.
-    - ``(None, 'INFRINGEMENT_CLAIMS_MISSING')`` when infringements exist but
-      none of them carries any claims to compare against.
+    - Last element ``None`` on success with a non-empty chart.
+    - ``([], [], [], 'NO_MATCHES_ABOVE_THRESHOLD')`` when scoring ran but no pair
+      met the threshold (rows may still be persisted).
+    - ``([], [], [], <ERROR_CODE>)`` for CASE_NOT_FOUND, NO_PARENT_CLAIMS, etc.
     """
     caseData = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     if caseData is None:
-        return None, 'CASE_NOT_FOUND'
+        return _chart_error('CASE_NOT_FOUND')
 
     claims_original_list = caseData.get('claims', [])
     claims = []
@@ -379,11 +378,11 @@ def get_infringement_chart(case_id):
             if market:
                 market_claims.append(market)
     if not claims and not original_claims and not market_claims:
-        return None, 'NO_PARENT_CLAIMS'
+        return _chart_error('NO_PARENT_CLAIMS')
 
     infringements = caseData.get('infringements', [])
     if len(infringements) == 0:
-        return None, 'NO_INFRINGEMENTS'
+        return _chart_error('NO_INFRINGEMENTS')
 
     chart_data = []
     patent_chart_data = []
@@ -406,6 +405,13 @@ def get_infringement_chart(case_id):
             legacy_claim = existing.get('claim')
             if isinstance(legacy_claim, str) and legacy_claim.strip() != '':
                 inf_claims = [legacy_claim.strip()]
+
+        if not inf_claims:
+            gemini_hint = infringement_entry.get('gemini_infringement')
+            if isinstance(gemini_hint, dict):
+                hint_claim = gemini_hint.get('claim')
+                if isinstance(hint_claim, str) and hint_claim.strip():
+                    inf_claims = [hint_claim.strip()]
 
         if not inf_claims:
             continue
@@ -442,7 +448,7 @@ def get_infringement_chart(case_id):
             has_updates = True
 
     if entries_with_claims == 0:
-        return None, 'INFRINGEMENT_CLAIMS_MISSING'
+        return _chart_error('INFRINGEMENT_CLAIMS_MISSING')
 
     if has_updates:
         update_case(case_id, {'infringements': infringements})

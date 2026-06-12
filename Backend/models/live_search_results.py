@@ -1,4 +1,18 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+_ALLOWED_CLAIM_TYPES = frozenset({
+    "asserted_claim",
+    "independent_claim",
+    "core_claim",
+    "pivotal_claim",
+})
+
+_CLAIM_TYPE_ALIASES = {
+    "asserted": "asserted_claim",
+    "independent": "independent_claim",
+    "core": "core_claim",
+    "pivotal": "pivotal_claim",
+}
 
 class OtherIdData(BaseModel):
     title: str
@@ -51,6 +65,20 @@ class SingleClaim(BaseModel):
     documented_claim: str
     market_language_claim: str
     claim_type:str
+
+    @field_validator("claim_type", mode="before")
+    @classmethod
+    def normalize_claim_type(cls, value):
+        if value is None:
+            return value
+        normalized = str(value).strip().lower().replace(" ", "_").replace("-", "_")
+        if normalized in _CLAIM_TYPE_ALIASES:
+            return _CLAIM_TYPE_ALIASES[normalized]
+        if normalized in _ALLOWED_CLAIM_TYPES:
+            return normalized
+        if normalized.endswith("_claim") and normalized in _ALLOWED_CLAIM_TYPES:
+            return normalized
+        return normalized
 
     def get_single_claim_description(self):
         return """
@@ -109,10 +137,24 @@ class SingleClaim(BaseModel):
             return False, claim_type_error_message
         return True, ""
 
+class DocumentedClaims(BaseModel):
+    """Plain documented claim text for infringing patents (no types or market language)."""
+    claims: list[str]
+
+    def verify_documented_claims(self):
+        if not self.claims:
+            return False, "No claims extracted"
+        for i, claim in enumerate(self.claims):
+            if not isinstance(claim, str) or not claim.strip():
+                return False, f"Claim {i + 1} is empty"
+        return True, ""
+
+
 class IsolatedClaims(BaseModel):
     claims: list[SingleClaim]
 
-    def get_isolated_claims_description(self):
+    @classmethod
+    def get_isolated_claims_description(cls):
         return """
         {
             'claims': list[SingleClaim]: The claims that are isolated from the patent.

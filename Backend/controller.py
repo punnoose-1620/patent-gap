@@ -15,6 +15,7 @@ from models.cases import *
 from models.users import *
 from file_controller import *
 from live_search.liveSearchController import *
+from llm_brain.gemini import Gemini
 
 """
 Controller functions for handling business logic
@@ -221,15 +222,22 @@ def get_case_infringement_chart(case_id):
     """
     chart_data, patent_chart_data, product_chart_data, error_code = get_infringement_chart(case_id)
     if error_code:
+        status_by_code = {
+            'CASE_NOT_FOUND': 404,
+            'NO_PARENT_CLAIMS': 422,
+            'NO_INFRINGEMENTS': 422,
+            'INFRINGEMENT_CLAIMS_MISSING': 422,
+            'NO_MATCHES_ABOVE_THRESHOLD': 200,
+        }
         return {
-            'success': False, 
-            'message': error_code, 
-            'chart_data': [],
-            'patent_chart_data': [],
-            'product_chart_data': [],
+            'success': error_code == 'NO_MATCHES_ABOVE_THRESHOLD',
+            'message': error_code,
+            'chart_data': chart_data or [],
+            'patent_chart_data': patent_chart_data or [],
+            'product_chart_data': product_chart_data or [],
             'error_code': error_code,
-            'status_code': 500
-            }
+            'status_code': status_by_code.get(error_code, 500),
+        }
     return {
         'success': True,
         'message': 'Infringement chart retrieved successfully',
@@ -273,6 +281,15 @@ def generate_patent_description(case_id):
         'summary': summary
         }
 
+def _claims_already_populated(claims) -> bool:
+    if claims is None:
+        return False
+    if isinstance(claims, dict):
+        return len(claims) > 0
+    if isinstance(claims, list):
+        return len(claims) > 0
+    return False
+
 def isolate_claims(case_id):
     """
     Isolate the claims for a given case_id
@@ -283,11 +300,11 @@ def isolate_claims(case_id):
       return {'success': False, 'message': 'Case not found'}
 
     existing_claims = case_data.get('claims', [])
-    if (len(existing_claims) > 0) and (existing_claims is not None):
-      print(f'\nERROR: Error getting claims: Claims already exist')
+    if _claims_already_populated(existing_claims):
       return {'success': True, 'message': 'Claims already exist', 'claims': existing_claims}
 
     description = case_data.get('description', '')
+    complete_document_contents = ""
     if description.strip() != "":
       complete_document_contents = f"Description:\n{description}"
     
@@ -336,13 +353,23 @@ def isolate_claims(case_id):
       print(f'\nERROR: Error getting claims: No viable document contents provided')
       return {'success': False, 'message': 'No viable document contents provided'}
 
-    claims = get_claims(complete_document_contents)
-    if (len(claims) == 0) or (claims is None):
+    try:
+      isolated = Gemini().extract_claims(patent_content=complete_document_contents)
+      validated, error_message = isolated.verify_isolated_claims()
+      if not validated:
+        print(f'\nERROR: Error getting claims: {error_message}')
+        return {'success': False, 'message': error_message}
+      claims = {
+        str(i): isolated.claims[i].model_dump()
+        for i in range(len(isolated.claims))
+      }
+    except Exception as e:
+      print(f'\nERROR: Error extracting claims: {str(e)}')
+      return {'success': False, 'message': str(e)}
+
+    if not claims:
       print(f'\nERROR: Error getting claims: No claims found')
       return {'success': False, 'message': 'No claims found'}
-    if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
-        print(f'\nERROR: Error getting claims: {claims[0]}')
-        return {'success': False, 'message': claims[0]}
 
     # Update Claims in Case Data
     result = update_case(case_id, {'claims': claims, 'last_updated': dt.now()})
@@ -351,6 +378,21 @@ def isolate_claims(case_id):
     else:
       print(f'\nERROR: Error updating claims: {result["message"]}')
       return {'success': False, 'message': result['message']}
+
+def _merge_infringement_details(case_id: str, partial: dict) -> dict:
+    """Merge patent/product infringement_details without clobbering parallel thread writes."""
+    case = get_case_by_id(case_id) or {}
+    details = dict(case.get('infringement_details') or {})
+    for key, value in partial.items():
+        if key in ('patent_ids', 'product_ids') and isinstance(value, dict):
+            bucket_map = dict(details.get(key) or {})
+            for bucket, ids in value.items():
+                bucket_map[bucket] = ids
+            details[key] = bucket_map
+        else:
+            details[key] = value
+    return details
+
 
 # Functions for Infringement Analysis
 def start_patent_analysis(
@@ -399,7 +441,8 @@ def start_patent_analysis(
                     ref_case_id,
                     titles_to_avoid,
                     ids_to_avoid,
-                    search_type
+                    search_type,
+                    parent_case_id=case_id,
                     )
                 update_case(case_id, {
                     'last_updated': dt.now(),
@@ -422,7 +465,8 @@ def start_patent_analysis(
                     ref_case_id,
                     titles_to_avoid,
                     ids_to_avoid,
-                    'independent'
+                    'independent',
+                    parent_case_id=case_id,
                     )
                 update_case(case_id, {
                     'last_updated': dt.now(),
@@ -445,7 +489,8 @@ def start_patent_analysis(
                     ref_case_id,
                     titles_to_avoid,
                     ids_to_avoid,
-                    'core'
+                    'core',
+                    parent_case_id=case_id,
                     )
                 update_case(case_id, {
                     'last_updated': dt.now(),
@@ -468,7 +513,8 @@ def start_patent_analysis(
                     ref_case_id,
                     titles_to_avoid,
                     ids_to_avoid,
-                    'pivotal'
+                    'pivotal',
+                    parent_case_id=case_id,
                     )
                 update_case(case_id, {
                     'last_updated': dt.now(),
@@ -494,24 +540,25 @@ def start_patent_analysis(
             if search_type != 'generic':
                 search_type = "bucketed"
             update_infringements(case_id, patentResults)
+            infringement_details = _merge_infringement_details(case_id, {
+                'patent_ids': {
+                    'asserted': asserted_created_patent_ids,
+                    'independent': independent_created_patent_ids,
+                    'core': core_created_patent_ids,
+                    'pivotal': pivotal_created_patent_ids,
+                },
+                'search_keywords': keywords,
+                'claim_type': search_type,
+            })
             update_case(
-                case_id, 
+                case_id,
                 {
-                    'infringement_analysis_status': 'Patent Sources Completed', 
-                    'infringement_details' : {
-                        'patent_ids' : {
-                            'asserted' : asserted_created_patent_ids,
-                            'independent' : independent_created_patent_ids,
-                            'core' : core_created_patent_ids,
-                            'pivotal' : pivotal_created_patent_ids
-                        },
-                        'search_keywords' : keywords,
-                        'claim_type' : search_type
-                    },
+                    'infringement_analysis_status': 'Patent Sources Completed',
+                    'infringement_details': infringement_details,
                     'last_infringement_analysis_date': dt.now(),
-                    'last_updated': dt.now()
-                    }
-                )
+                    'last_updated': dt.now(),
+                },
+            )
         except Exception as e:
             current_time = time.time()
             time_in_seconds = current_time - start_time
@@ -563,7 +610,8 @@ def start_product_analysis(
                     keywords, 
                     owners, 
                     asserted_claims, 
-                    search_limitations
+                    search_limitations,
+                    parent_case_id=case_id,
                     )
                 update_case(case_id, {
                     'last_updated': dt.now(),
@@ -580,7 +628,8 @@ def start_product_analysis(
                     keywords, 
                     owners, 
                     independent_claims, 
-                    search_limitations
+                    search_limitations,
+                    parent_case_id=case_id,
                     )
                 update_case(case_id, {
                     'last_updated': dt.now(),
@@ -597,7 +646,8 @@ def start_product_analysis(
                     keywords, 
                     owners, 
                     core_claims, 
-                    search_limitations
+                    search_limitations,
+                    parent_case_id=case_id,
                     )
                 update_case(case_id, {
                     'last_updated': dt.now(),
@@ -614,7 +664,8 @@ def start_product_analysis(
                     keywords, 
                     owners, 
                     pivotal_claims, 
-                    search_limitations
+                    search_limitations,
+                    parent_case_id=case_id,
                     )
                 update_case(case_id, {
                     'last_updated': dt.now(),
@@ -637,24 +688,25 @@ def start_product_analysis(
                     productResults.append(result)
 
             update_infringements(case_id, productResults)
+            infringement_details = _merge_infringement_details(case_id, {
+                'product_ids': {
+                    'asserted': asserted_created_product_ids,
+                    'independent': independent_created_product_ids,
+                    'core': core_created_product_ids,
+                    'pivotal': pivotal_created_product_ids,
+                },
+                'search_keywords': keywords,
+                'claim_type': search_type,
+            })
             update_case(
-                case_id, 
+                case_id,
                 {
-                    'infringement_analysis_status': 'Product Sources Completed', 
-                    'infringement_details' : {
-                        'product_ids' : {
-                            'asserted' : asserted_created_product_ids,
-                            'independent' : independent_created_product_ids,
-                            'core' : core_created_product_ids,
-                            'pivotal' : pivotal_created_product_ids
-                        },
-                        'search_keywords' : keywords,
-                        'claim_type' : search_type
-                        },
+                    'infringement_analysis_status': 'Product Sources Completed',
+                    'infringement_details': infringement_details,
                     'last_infringement_analysis_date': dt.now(),
-                    'last_updated': dt.now()
-                    }
-                )
+                    'last_updated': dt.now(),
+                },
+            )
         except Exception as e:
             print(f'\nERROR: LiveSearch: Error performing product sourceinfringement analysis: {str(e)}')
             update_case(
@@ -709,8 +761,20 @@ def fetchById(app, patent_id:str, user_id:str):
                 google_patents = GooglePatents()
                 google_patents_details = google_patents.search_by_id(patent_id)
                 if google_patents_details is not None:
-                    case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
+                    if isinstance(google_patents_details, dict):
+                        case_data = passToGeminiForMetadata(
+                            google_patents_details.get('metadata_content', ''),
+                            claims_content=google_patents_details.get('claims_content'),
+                        ).model_dump()
+                    else:
+                        case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
                     if case_data is not None:
+                        patent_page_url = google_patents.get_patent_page_url(patent_id)
+                        if patent_page_url:
+                            case_data['document_urls'] = [patent_page_url]
+                            case_data['documents'] = [
+                                {'url': patent_page_url, 'source': 'google_patents'}
+                            ]
                         case_data['source'] = 'google_patents'
                         case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
                         case_data['created_by'] = user_id
@@ -725,7 +789,7 @@ def fetchById(app, patent_id:str, user_id:str):
                             raise Exception("Document Creation Error")
                         descriptionResult = generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
                         print(f"TEST 2.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
-                        claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
+                        claimsResult = isolate_claims(f"googlepatents_{user_id}_{patent_id}")
                         print(f"TEST 2.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
                         remove_patent_from_fetching_list(user_id, patent_id)
                         remove_patent_from_error_list(user_id, patent_id)
@@ -766,7 +830,7 @@ def fetchById(app, patent_id:str, user_id:str):
                             raise Exception("Document Creation Error")
                         descriptionResult = generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
                         print(f"TEST 3.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
-                        claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
+                        claimsResult = isolate_claims(f"freepatentsonline_{user_id}_{patent_id}")
                         print(f"TEST 3.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
                         remove_patent_from_error_list(user_id, patent_id)
                         remove_patent_from_fetching_list(user_id, patent_id)

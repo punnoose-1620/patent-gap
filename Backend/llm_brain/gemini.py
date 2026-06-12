@@ -130,7 +130,7 @@ class Gemini:
         ):
 
         count = 0
-        final_prompt = CLAIM_ISOLATOR.replace("<ISOLATED_CLAIMS_RETURN_FORMAT>", IsolatedClaims().get_isolated_claims_description())
+        final_prompt = CLAIM_ISOLATOR.replace("<ISOLATED_CLAIMS_RETURN_FORMAT>", IsolatedClaims.get_isolated_claims_description())
         final_prompt = final_prompt + "\nHere's the content : \n" + str(patent_content)
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(IsolatedClaims.model_json_schema()))
@@ -145,13 +145,19 @@ class Gemini:
         count += 1
         wrapper = IsolatedClaims.model_validate_json(response.text)
         validated, error_message = wrapper.verify_isolated_claims()
-        if not validated:
-            print(error_message)
         while not validated and count < MAX_ATTEMPTS:
+            print(error_message)
+            retry_prompt = (
+                final_prompt
+                + f"\n\nYour previous response failed validation: {error_message}\n"
+                + "Fix every claim. Each claim must have non-empty documented_claim and "
+                + "market_language_claim, and claim_type must be exactly one of: "
+                + "asserted_claim, independent_claim, core_claim, pivotal_claim."
+            )
             time.sleep(DEFAULT_LLM_DELAY)
             response = self._client.models.generate_content(
                 model=model_name,
-                contents=final_prompt,
+                contents=retry_prompt,
                 config={
                     "response_mime_type": "application/json",
                     "response_json_schema": schema,
@@ -160,10 +166,59 @@ class Gemini:
             count += 1
             wrapper = IsolatedClaims.model_validate_json(response.text)
             validated, error_message = wrapper.verify_isolated_claims()
-            if not validated:
-                print(error_message)
-        if not validated or count >= MAX_ATTEMPTS:
+        if not validated:
             raise Exception(f"Error: Failed to extract claims after {MAX_ATTEMPTS} attempts. {error_message}")
+        return wrapper
+
+    def extract_documented_claims(
+        self,
+        patent_content: str,
+        model_name: str = 'gemini-2.5-flash',
+    ):
+        """Extract numbered documented claims only (for live-search infringement candidates)."""
+        count = 0
+        final_prompt = (
+            DOCUMENTED_CLAIMS_ISOLATOR
+            + "\nHere's the content:\n"
+            + str(patent_content)
+        )
+        schema = _strip_unsupported_schema_keys(
+            _schema_without_defs(DocumentedClaims.model_json_schema())
+        )
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": schema,
+            },
+        )
+        count += 1
+        wrapper = DocumentedClaims.model_validate_json(response.text)
+        validated, error_message = wrapper.verify_documented_claims()
+        while not validated and count < MAX_ATTEMPTS:
+            print(error_message)
+            retry_prompt = (
+                final_prompt
+                + f"\n\nYour previous response failed validation: {error_message}\n"
+                + "Return a non-empty claims array of complete numbered claim strings."
+            )
+            time.sleep(DEFAULT_LLM_DELAY)
+            response = self._client.models.generate_content(
+                model=model_name,
+                contents=retry_prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_json_schema": schema,
+                },
+            )
+            count += 1
+            wrapper = DocumentedClaims.model_validate_json(response.text)
+            validated, error_message = wrapper.verify_documented_claims()
+        if not validated:
+            raise Exception(
+                f"Error: Failed to extract documented claims after {MAX_ATTEMPTS} attempts. {error_message}"
+            )
         return wrapper
 
     def analyze_infringements(

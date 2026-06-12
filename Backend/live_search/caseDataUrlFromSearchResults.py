@@ -46,7 +46,10 @@ class CaseDataUrlFromSearchResults:
     if selector == 'google-patents':
         return base + href
     else:
-        return base.replace('/result.html', '') + href
+        base_stripped = base.replace('/result.html', '').rstrip('/')
+        if not href.startswith('/'):
+            href = '/' + href
+        return base_stripped + href
     return base + href
 
   def isolate_case_data_urls(self, selector:str, base_url:str):
