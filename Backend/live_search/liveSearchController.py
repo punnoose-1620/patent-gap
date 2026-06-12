@@ -4,6 +4,7 @@ import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
 from datetime import datetime
+from urllib.parse import urlparse
 from file_controller import readFromXmlUrl, readFromPdfUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -73,6 +74,91 @@ SOURCES = [
         'use_gemini_for_details': True
     }
 ]
+
+
+def _model_to_dict(value):
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "dict"):
+        return value.dict()
+    return value
+
+
+def _as_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _analysis_to_plain_list(value):
+    plain = _model_to_dict(value)
+    if isinstance(plain, list):
+        return [_model_to_dict(item) for item in plain]
+    if isinstance(plain, dict):
+        for key in ("similar_claims", "claims", "matches", "infringements"):
+            nested = plain.get(key)
+            if isinstance(nested, list):
+                return [_model_to_dict(item) for item in nested]
+        return [plain] if plain else []
+    return _as_list(plain)
+
+
+def _domain_from_url(url: str) -> str:
+    try:
+        return urlparse(url or "").netloc.replace("www.", "")
+    except Exception:
+        return ""
+
+
+def _fallback_product_id(product_details: dict, url: str, index: int) -> str:
+    raw_id = product_details.get("product_id") or product_details.get("id")
+    if raw_id and str(raw_id).strip().lower() not in {"unknown", "n/a", "none"}:
+        return str(raw_id).strip()
+    name = product_details.get("product_name") or product_details.get("name") or product_details.get("title") or "product"
+    safe_name = "_".join(str(name).lower().split())[:60] or "product"
+    domain = _domain_from_url(url).replace(".", "_") or "source"
+    return f"{domain}_{safe_name}_{index + 1}"
+
+
+def _normalize_patent_infringement(result: dict, infringement_analysis, parent_case_id: str) -> dict:
+    payload = dict(result or {})
+    analysis_list = _analysis_to_plain_list(infringement_analysis)
+    payload["infringements"] = analysis_list
+    payload["similar_claims"] = analysis_list
+    payload["infringement_type"] = "patent"
+    payload["type"] = "patent"
+    payload["parent_case_id"] = parent_case_id
+    payload["entry_id"] = payload.get("entry_id") or payload.get("case_id") or payload.get("patent_id") or payload.get("_id")
+    payload["entry_title"] = payload.get("entry_title") or payload.get("title") or "Patent infringement source"
+    payload["entry_url"] = payload.get("entry_url") or payload.get("url") or payload.get("source_url") or ""
+    return payload
+
+
+def _normalize_product_infringement(product_details, infringement_analysis, source_result, parent_case_id: str, index: int) -> dict:
+    payload = _model_to_dict(product_details)
+    url = payload.get("product_url") or payload.get("url") or getattr(source_result, "url", "")
+    product_id = _fallback_product_id(payload, url, index)
+    analysis_list = _analysis_to_plain_list(infringement_analysis)
+    payload.update({
+        "product_id": product_id,
+        "product_url": url,
+        "infringement_type": "product",
+        "type": "product",
+        "parent_case_id": parent_case_id,
+        "entry_id": product_id,
+        "entry_title": payload.get("product_name") or payload.get("name") or payload.get("title") or "Product infringement source",
+        "entry_url": url,
+        "source": getattr(source_result, "website_name", None) or _domain_from_url(url) or payload.get("source") or "Product Source",
+        "similar_claims": analysis_list,
+        "infringements": analysis_list,
+    })
+    return payload
 
 def calculate_cosine_similarity(text1: str, text2: str) -> float:
     """Calculate cosine similarity between two text strings."""
@@ -450,6 +536,7 @@ def searchPatentSources(
     ref_case_id: str = '',
     titles_to_avoid: list[str] = [],
     ids_to_avoid: list[str] = [],
+    parent_case_id: str = '',
     ):
     searchResults = []
     infringement_analysis_results = []
@@ -475,7 +562,6 @@ def searchPatentSources(
                     result['source'] = patent.source
                     result['country'] = patent.country
                     break
-            patent_sources.remove(patent)
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
         raise e
@@ -488,21 +574,18 @@ def searchPatentSources(
                 result.get('claims', []),
                 result.get('context', '')
             )
-            # Convert Pydantic model to plain dict so Flask/jsonify can serialize it
-            if hasattr(infringement_analysis, "model_dump"):
-                result['infringements'] = infringement_analysis.model_dump()
-            elif hasattr(infringement_analysis, "dict"):
-                result['infringements'] = infringement_analysis.dict()
-            else:
-                result['infringements'] = infringement_analysis
-            
-            result['_id'] = 'patent_' + str(result['_id']) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
-            creation_result = infringement_model.create_infringement(result)
+            result = _normalize_patent_infringement(result, infringement_analysis, parent_case_id or result.get('parent_case_id') or result.get('case_id'))
+            result['_id'] = 'patent_' + str(result.get('entry_id') or result.get('_id')) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
+            creation_result = infringement_model.create_infringement(result, parent_case_id=parent_case_id or result.get('parent_case_id'))
             if creation_result['success']:
                 created_ids.append(creation_result['infringement_id'])
-                sources.append(result['source'])
+                if result.get('source'):
+                    sources.append(result['source'])
+            else:
+                print(f"\nERROR: Failed to store patent infringement: {creation_result.get('message')}")
             infringement_analysis_results.append(result)
-            case_model.update_case(result['case_id'], {'infringement_sources': sources})
+            if parent_case_id:
+                case_model.update_case(parent_case_id, {'infringement_sources': sources})
             # TODO: Create Infringement Record after altering the id
         return infringement_analysis_results, created_ids
     except Exception as e:
@@ -510,7 +593,7 @@ def searchPatentSources(
         raise e
     return [], []
 
-def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str], search_limitations:dict):
+def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str], search_limitations:dict, parent_case_id: str = ''):
     # Generate Search String using Gemini
     search_string = Gemini().get_search_string(keywords, owners, search_limitations)
     print(f"LOG: Search String: {search_string}")
@@ -543,26 +626,22 @@ def searchProductSources(keywords:list[str], owners:list[str], reference_claims:
         # Analyze Product Infringements
         try:
             infringement_analysis = Gemini().analyze_product_infringements(reference_claims, product_details.claims)
-            product_details.similar_claims = infringement_analysis
-            product_id = product_details.product_id
-            product_url = product_details.product_url
+            product_payload = _normalize_product_infringement(product_details, infringement_analysis, result, parent_case_id, len(product_details_list))
+            product_id = product_payload.get('product_id')
+            product_url = product_payload.get('product_url')
             print(f"LOG: Product ID: {product_id}")
             print(f"LOG: Product URL: {product_url}")
-            if alreadyExistsInProductDetailsList(product_details, product_details_list):
+            if alreadyExistsInProductDetailsList(product_payload, product_details_list):
                 continue
-            if (product_id is None) or (product_url is None):
+            if not product_url or str(product_url).strip().lower() in {"unknown", "n/a", "none"}:
                 continue
-            if (product_id == "") or (product_url == ""):
-                continue
-            if (str(product_id).lower() == "unknown") or (str(product_url).lower == "unknown"):
-                continue
-            if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
-                continue
-            product_details['_id'] = 'product_' + str(product_id) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
-            creation_result = infringement_model.create_infringement(product_details)
+            product_payload['_id'] = 'product_' + str(product_id) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
+            creation_result = infringement_model.create_infringement(product_payload, parent_case_id=parent_case_id)
             if creation_result['success']:
                 created_ids.append(creation_result['infringement_id'])
-            product_details_list.append(product_details)
+            else:
+                print(f"\nERROR: Failed to store product infringement: {creation_result.get('message')}")
+            product_details_list.append(product_payload)
         except Exception as e:
             print(f"\nERROR: Error analyzing product infringements: {str(e)}")
             continue

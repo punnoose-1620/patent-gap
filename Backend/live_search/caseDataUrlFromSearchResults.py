@@ -2,6 +2,7 @@ import json
 import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 class CaseDataUrlFromSearchResults:
   html_content:str
@@ -43,11 +44,7 @@ class CaseDataUrlFromSearchResults:
         return 'https:' + href
     if self.url_checker(href):
         return href
-    if selector == 'google-patents':
-        return base + href
-    else:
-        return base.replace('/result.html', '') + href
-    return base + href
+    return urljoin(base, href)
 
   def isolate_case_data_urls(self, selector:str, base_url:str):
     urls = []

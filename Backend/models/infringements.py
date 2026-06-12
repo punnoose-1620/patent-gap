@@ -5,7 +5,7 @@ from env_controller import getInfringementDatabaseName
 
 
 def _collection_name():
-    return getInfringementDatabaseName()
+    return getInfringementDatabaseName() or 'infringements'
 
 
 def _utc_now_iso():
