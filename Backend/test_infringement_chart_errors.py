@@ -55,10 +55,12 @@ def main():
     flask_client = app.test_client()
 
     _print_header('1. Direct call: get_infringement_chart(real case_id)')
-    chart, code = get_infringement_chart(CASE_ID)
+    chart, patent_chart, product_chart, code = get_infringement_chart(CASE_ID)
     rows = len(chart) if chart is not None else 0
     print(f'  error_code   : {code}')
     print(f'  rows         : {rows}')
+    print(f'  patent rows  : {len(patent_chart) if patent_chart else 0}')
+    print(f'  product rows : {len(product_chart) if product_chart else 0}')
     if chart and rows:
         sample = chart[0]
         if isinstance(sample, dict):

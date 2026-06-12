@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
 from scorer import score_infringement_matrix_entry
 
-CLAIM_SIMILARITY_THRESHOLD = 0.5
+CLAIM_SIMILARITY_THRESHOLD = 0.85
 
 def caseAlreadyExists(case_id:str, user_id: str):
     db = connect_to_database()
