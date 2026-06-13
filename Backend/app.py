@@ -1707,6 +1707,15 @@ def fetch_patent_from_uspto():
   if caseAlreadyExists(patent_id, user_id):
     return jsonify({'success': False, 'message': 'Patent already exists in your portfolio'}), 400
   
+  user_data = get_user_profile(user_id, show_password=False) 
+  fetching_patents = user_data.get('fetching_patents', [])
+  if patent_id in fetching_patents:
+    return jsonify({
+        'success': False,
+        'message': f'Patent ID {patent_id} is already being fetched by this user.',
+        'case_id': patent_id
+    }), 409
+
   print(f'\nFetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
 
   update_user_fetching_patents(user_id, [patent_id], [], replace=True)

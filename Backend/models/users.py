@@ -252,7 +252,9 @@ def remove_patent_from_fetching_list(user_id: str, patent_id: str) -> dict:
     existing_fetching_patents = user.get('fetching_patents', [])
     error_patents = user.get('error_patents', [])
     if patent_id in existing_fetching_patents:
-        existing_fetching_patents.remove(patent_id)
+        for value in existing_fetching_patents:
+            if value == patent_id:
+                existing_fetching_patents.remove(value)
     return update_user_fetching_patents(user_id, existing_fetching_patents, error_patents, replace=True)
 
 def remove_patent_from_error_list(user_id: str, patent_id: str) -> dict:
@@ -268,7 +270,9 @@ def remove_patent_from_error_list(user_id: str, patent_id: str) -> dict:
     error_patents = user.get('error_patents', [])
     fetching_patents = user.get('fetching_patents', [])
     if patent_id in error_patents:
-        error_patents.remove(patent_id)
+        for value in error_patents:
+            if value == patent_id:
+                error_patents.remove(value)
     return update_user_fetching_patents(user_id, fetching_patents, error_patents, replace=True)
 
 def set_patent_to_error_list(user_id: str, patent_id: str) -> dict:
