@@ -1,5 +1,6 @@
 import re
 from database import *
+from datetime import datetime as dt
 from models.documents import getDocumentById
 from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
@@ -336,6 +337,62 @@ def get_case_creator(case_id):
     """
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     return case.get('created_by')
+
+def update_infringement_analysis_status(
+    case_id:str,
+    status:str,
+    update_type:str = "patent",
+    generic_bucket:str = None,
+    asset_bucket:str = None, 
+    independent_bucket:str = None, 
+    core_bucket:str = None, 
+    pivotal_bucket:str = None):
+    default_status = ""
+    if status.strip().lower() == "completed":
+        default_status = "Completed"
+    elif status.strip().lower() == "error":
+        default_status = "Error"
+    else:
+        default_status = "Started"
+    
+    generic_key = f'generic_claims_{update_type}_analysis'
+    assert_key = f'asserted_claims_{update_type}_analysis'
+    independent_key = f'independent_claims_{update_type}_analysis'
+    core_key = f'core_claims_{update_type}_analysis'
+    pivotal_key = f'pivotal_claims_{update_type}_analysis'
+
+    status_key = f'{update_type}_status_flags'
+
+    case_data = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    old_status_flags = case_data.get(status_key, {})
+    if old_status_flags is None or old_status_flags == {}:
+        old_status_flags = {
+            generic_key: default_status,
+            assert_key: default_status,
+            independent_key: default_status,
+            core_key: default_status,
+            pivotal_key: default_status
+        }
+
+    if generic_bucket is not None:
+        old_status_flags[generic_key] = generic_bucket
+    if asset_bucket is not None:
+        old_status_flags[assert_key] = asset_bucket
+    if independent_bucket is not None:
+        old_status_flags[independent_key] = independent_bucket
+    if core_bucket is not None:
+        old_status_flags[core_key] = core_bucket
+    if pivotal_bucket is not None:
+        old_status_flags[pivotal_key] = pivotal_bucket
+
+    update_data_new = {
+        'last_updated': dt.now()
+    }
+    update_data_new[status_key] = old_status_flags
+    if status.strip().lower() == "started":
+        update_data_new['infringement_analysis_status'] = "Started"
+    update_case(case_id, update_data_new)
+    return True
 
 def _chart_error(error_code: str):
     return [], [], [], error_code
