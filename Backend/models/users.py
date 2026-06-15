@@ -275,7 +275,7 @@ def remove_patent_from_error_list(user_id: str, patent_id: str) -> dict:
                 error_patents.remove(value)
     return update_user_fetching_patents(user_id, fetching_patents, error_patents, replace=True)
 
-def set_patent_to_error_list(user_id: str, patent_id: str) -> dict:
+def set_patent_to_error_list(user_id: str, patent_id: str, error_message: str = 'Unknown Error') -> dict:
     """
     Set a patent to the user's error list.
     """
@@ -287,8 +287,14 @@ def set_patent_to_error_list(user_id: str, patent_id: str) -> dict:
         }
     existing_error_patents = user.get('error_patents', [])
     existing_fetching_patents = user.get('fetching_patents', [])
-    if patent_id not in existing_error_patents:
-        existing_error_patents.append(patent_id)
+    existing_error_found = False
+    for key, _ in existing_error_patents.items():
+        if key == patent_id:
+            existing_error_patents[key] = error_message
+            existing_error_found = True
+            break
+    if not existing_error_found:
+        existing_error_patents[patent_id] = error_message
     if patent_id in existing_fetching_patents:
         existing_fetching_patents.remove(patent_id)
     return update_user_fetching_patents(user_id, existing_fetching_patents, existing_error_patents, replace=True)

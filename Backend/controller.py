@@ -894,8 +894,8 @@ def fetchById(app, patent_id:str, user_id:str):
                     raise Exception("No Data found through Free Patents Online")
             except Exception as e:
                 print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
-                set_patent_to_error_list(user_id, patent_id)
                 error_message = str(e)
+                set_patent_to_error_list(user_id, patent_id, error_message)
                 free_patents_error = True
 
         errorReturn = {
@@ -903,7 +903,7 @@ def fetchById(app, patent_id:str, user_id:str):
             'message': f"Failed to find patent with ID {patent_id}",
             'error_message': error_message
         }
-        set_patent_to_error_list(user_id, patent_id)
+        set_patent_to_error_list(user_id, patent_id, error_message)
         return errorReturn, 500
 
 def bulk_fetch_by_ids(app, patent_ids: list[str], records: list[list[str]], user_id: str):
