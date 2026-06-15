@@ -1964,26 +1964,36 @@ def live_similarity_analysis(case_id):
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
 
   # Filter original claims into buckets
-  asserted_claims = []
-  independent_claims = []
-  core_claims = []
-  pivotal_claims = []
+  original_lang_asserted_claims = []
+  original_lang_independent_claims = []
+  original_lang_core_claims = []
+  original_lang_pivotal_claims = []
+
+  # Filter market language claims into buckets
+  market_lang_asserted_claims = []
+  market_lang_independent_claims = []
+  market_lang_core_claims = []
+  market_lang_pivotal_claims = []
 
   search_type = 'bucketed'
   if isinstance(ref_claims, list):
     search_type = 'generic'
     for claim in ref_claims:
-      asserted_claims.append(claim)
+      original_lang_asserted_claims.append(claim)
   if isinstance(ref_claims, dict):
     for _, claimData in ref_claims.items():
       if claimData.get('claim_type') == 'asserted_claim':
-        asserted_claims.append(claimData.get('documented_claim', ''))
+        original_lang_asserted_claims.append(claimData.get('documented_claim', ''))
+        market_lang_asserted_claims.append(claimData.get('market_language_claim', ''))
       elif claimData.get('claim_type') == 'independent_claim':
-        independent_claims.append(claimData.get('documented_claim', ''))
+        original_lang_independent_claims.append(claimData.get('documented_claim', ''))
+        market_lang_independent_claims.append(claimData.get('market_language_claim', ''))
       elif claimData.get('claim_type') == 'core_claim':
-        core_claims.append(claimData.get('documented_claim', ''))
+        original_lang_core_claims.append(claimData.get('documented_claim', ''))
+        market_lang_core_claims.append(claimData.get('market_language_claim', ''))
       elif claimData.get('claim_type') == 'pivotal_claim':
-        pivotal_claims.append(claimData.get('documented_claim', ''))
+        original_lang_pivotal_claims.append(claimData.get('documented_claim', ''))
+        market_lang_pivotal_claims.append(claimData.get('market_language_claim', ''))
 
   # Start Live Patent Search in background thread
   update_case(case_id, {'infringements': []})
@@ -1999,36 +2009,14 @@ def live_similarity_analysis(case_id):
       titles_to_avoid, 
       ids_to_avoid, 
       search_type,
-      asserted_claims, 
-      independent_claims, 
-      core_claims, 
-      pivotal_claims, 
+      original_lang_asserted_claims, 
+      original_lang_independent_claims, 
+      original_lang_core_claims, 
+      original_lang_pivotal_claims, 
       context),
     daemon=False,
   )
   patent_thread.start()
-
-  # Filter market language claims into buckets
-  asserted_claims = []
-  independent_claims = []
-  core_claims = []
-  pivotal_claims = []
-
-  search_type = 'bucketed'
-  if isinstance(ref_claims, list):
-    search_type = 'generic'
-    for claim in ref_claims:
-      asserted_claims.append(claim)
-  if isinstance(ref_claims, dict):
-    for _, claimData in ref_claims.items():
-      if claimData.get('claim_type') == 'asserted_claim':
-        asserted_claims.append(claimData.get('market_language_claim', ''))
-      elif claimData.get('claim_type') == 'independent_claim':
-        independent_claims.append(claimData.get('market_language_claim', ''))
-      elif claimData.get('claim_type') == 'core_claim':
-        core_claims.append(claimData.get('market_language_claim', ''))
-      elif claimData.get('claim_type') == 'pivotal_claim':
-        pivotal_claims.append(claimData.get('market_language_claim', ''))
 
   # Start Live Patent Search in background thread
   product_thread = threading.Thread(
@@ -2039,10 +2027,10 @@ def live_similarity_analysis(case_id):
       keywords, 
       owners, 
       search_limitations, 
-      asserted_claims, 
-      independent_claims, 
-      core_claims, 
-      pivotal_claims, 
+      market_lang_asserted_claims, 
+      market_lang_independent_claims, 
+      market_lang_core_claims, 
+      market_lang_pivotal_claims, 
       search_type,
       context),
     daemon=False,
