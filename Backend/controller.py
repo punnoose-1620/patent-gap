@@ -408,8 +408,7 @@ def start_patent_analysis(
     asserted_claims: list[dict] = [], 
     independent_claims: list[dict] = [], 
     core_claims: list[dict] = [], 
-    pivotal_claims: list[dict] = [], 
-    context: str = ''
+    pivotal_claims: list[dict] = []
     ):
     start_time = time.time()
     if search_type == 'bucketed':
@@ -745,7 +744,6 @@ def start_product_analysis(
             time_in_hours = int(time_in_minutes // 60)
             time_in_seconds = time_in_seconds % 60
             time_in_minutes = int(time_in_minutes % 60)
-            asserted_bucket = 'Error' if asserted_product_details_list==[] else 'Completed'
             update_infringement_analysis_status(
                 case_id,
                 update_type="product",

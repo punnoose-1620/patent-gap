@@ -73,11 +73,16 @@ class Gemini:
         self, 
         patent_content:str, 
         model_name:str = 'gemini-2.5-flash', 
-        count:int = 0
+        default_source:str = None,
+        count:int = 0,
+        error_message:str = ""
         ):
+        if count >= MAX_ATTEMPTS:
+            raise Exception(f"Patent_Metadata_Error: Failed to extract patent metadata after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
         final_prompt = PATENT_METADATA_EXTRACTOR + "\nHere's the content : \n" + str(patent_content)
-        if count > 0:
-            final_prompt += "\n\nPlease try again. You haven't extracted valid patent metadata yet."
+        if error_message != "":
+            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+            final_prompt += "Do not repeat the same mistake and try again."
 
         schema = _rename_schema_keys_for_api(
             _strip_unsupported_schema_keys(_schema_without_defs(LiveSearchResults.model_json_schema()))
@@ -91,7 +96,15 @@ class Gemini:
             },
         )
         if "429 RESOURCE_EXHAUSTED" in response.text:
-            raise Exception("Error: Gemini rate limit exceeded")
+            time.sleep(DEFAULT_LLM_DELAY)
+            data = self.extract_patent_metadata(
+                patent_content=patent_content, 
+                model_name=model_name, 
+                default_source=default_source,
+                count=count + 1,
+                error_message=error_message
+            )
+            return LiveSearchResults.model_validate(data)
         data = json.loads(response.text)
         data["_id"] = data.pop("id", data.get("_id", ""))
         data["status"] = data.pop("case_status", data.get("status", ""))
@@ -111,27 +124,41 @@ class Gemini:
             "applicant": "",
             "current_assignee": [],
             "other_ids": [],
+            "source": default_source,
         }
         for key, default in _defaults.items():
             if key not in data or data[key] is None:
                 data[key] = default
-        title = data.get("title", "")
-        filing_date = data.get("filingDate", "")
-        if (title.strip() == "") or (filing_date.strip() == ""):
-            if count >= 3:
-                raise Exception("Error: Failed to extract patent metadata after 3 attempts")
-            return LiveSearchResults.model_validate(self.extract_patent_metadata(patent_content, model_name, count + 1))
-        return LiveSearchResults.model_validate(data)
+        class_data = LiveSearchResults.model_validate(data)
+        validated, error_message = class_data.validate_metadata()
+        if not validated:
+            if count >= MAX_ATTEMPTS:
+                raise Exception(f"Patent_Metadata_Error: Failed to extract patent metadata after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+            time.sleep(DEFAULT_LLM_DELAY)
+            data = self.extract_patent_metadata(
+                patent_content=patent_content, 
+                model_name=model_name, 
+                default_source=default_source,
+                count=count + 1,
+                error_message=error_message
+            )
+            return LiveSearchResults.model_validate(data)
+        return class_data
 
     def extract_claims(
         self, 
         patent_content:str, 
-        model_name:str = 'gemini-2.5-flash'
+        model_name:str = 'gemini-2.5-flash',
+        count:int = 0,
+        error_message:str = ""
         ):
-
-        count = 0
+        if count >= MAX_ATTEMPTS:
+            raise Exception(f"Claims_Isolation_Error: Failed to extract claims after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
         final_prompt = CLAIM_ISOLATOR.replace("<ISOLATED_CLAIMS_RETURN_FORMAT>", IsolatedClaims.get_isolated_claims_description())
         final_prompt = final_prompt + "\nHere's the content : \n" + str(patent_content)
+        if error_message != "":
+            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+            final_prompt += "Do not repeat the same mistake and try again."
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(IsolatedClaims.model_json_schema()))
         response = self._client.models.generate_content(
@@ -142,46 +169,38 @@ class Gemini:
                 "response_json_schema": schema,
             },
         )
-        count += 1
         wrapper = IsolatedClaims.model_validate_json(response.text)
         validated, error_message = wrapper.verify_isolated_claims()
-        while not validated and count < MAX_ATTEMPTS:
-            print(error_message)
-            retry_prompt = (
-                final_prompt
-                + f"\n\nYour previous response failed validation: {error_message}\n"
-                + "Fix every claim. Each claim must have non-empty documented_claim and "
-                + "market_language_claim, and claim_type must be exactly one of: "
-                + "asserted_claim, independent_claim, core_claim, pivotal_claim."
-            )
-            time.sleep(DEFAULT_LLM_DELAY)
-            response = self._client.models.generate_content(
-                model=model_name,
-                contents=retry_prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_json_schema": schema,
-                },
-            )
-            count += 1
-            wrapper = IsolatedClaims.model_validate_json(response.text)
-            validated, error_message = wrapper.verify_isolated_claims()
         if not validated:
-            raise Exception(f"Error: Failed to extract claims after {MAX_ATTEMPTS} attempts. {error_message}")
+            if count >= MAX_ATTEMPTS:
+                raise Exception(f"Claims_Isolation_Error: Failed to extract claims after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.extract_claims(
+                patent_content=patent_content,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message
+            )
         return wrapper
 
     def extract_documented_claims(
         self,
         patent_content: str,
         model_name: str = 'gemini-2.5-flash',
+        count:int = 0,
+        error_message:str = ""
     ):
         """Extract numbered documented claims only (for live-search infringement candidates)."""
-        count = 0
+        if count >= MAX_ATTEMPTS:
+            raise Exception(f"Documented_Claims_Isolation_Error: Failed to extract documented claims after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
         final_prompt = (
             DOCUMENTED_CLAIMS_ISOLATOR
             + "\nHere's the content:\n"
             + str(patent_content)
         )
+        if error_message != "":
+            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+            final_prompt += "Do not repeat the same mistake and try again."
         schema = _strip_unsupported_schema_keys(
             _schema_without_defs(DocumentedClaims.model_json_schema())
         )
@@ -193,31 +212,17 @@ class Gemini:
                 "response_json_schema": schema,
             },
         )
-        count += 1
         wrapper = DocumentedClaims.model_validate_json(response.text)
         validated, error_message = wrapper.verify_documented_claims()
-        while not validated and count < MAX_ATTEMPTS:
-            print(error_message)
-            retry_prompt = (
-                final_prompt
-                + f"\n\nYour previous response failed validation: {error_message}\n"
-                + "Return a non-empty claims array of complete numbered claim strings."
-            )
-            time.sleep(DEFAULT_LLM_DELAY)
-            response = self._client.models.generate_content(
-                model=model_name,
-                contents=retry_prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_json_schema": schema,
-                },
-            )
-            count += 1
-            wrapper = DocumentedClaims.model_validate_json(response.text)
-            validated, error_message = wrapper.verify_documented_claims()
         if not validated:
-            raise Exception(
-                f"Error: Failed to extract documented claims after {MAX_ATTEMPTS} attempts. {error_message}"
+            if count >= MAX_ATTEMPTS:
+                raise Exception(f"Documented_Claims_Isolation_Error: Failed to extract documented claims after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.extract_documented_claims(
+                patent_content=patent_content,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message
             )
         return wrapper
 
@@ -226,12 +231,18 @@ class Gemini:
         reference_claims:list[str], 
         infringing_claims:list[str], 
         context:str,
-        model_name:str = 'gemini-2.5-flash'
+        model_name:str = 'gemini-2.5-flash',
+        count:int = 0,
+        error_message:str = ""
         ):
-        
+        if count >= MAX_ATTEMPTS:
+            raise Exception(f"Infringement_Analysis_Error: Failed to analyze infringements after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
         final_prompt = INFRINGEMENT_ANALYZER.replace("<reference_claims_replacement>", "\n".join(reference_claims))
         final_prompt = final_prompt.replace("<infringing_claims_replacement>", "\n".join(infringing_claims))
         final_prompt = final_prompt.replace("<context_of_reference_claims_replacement>", context)
+        if error_message != "":
+            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+            final_prompt += "Do not repeat the same mistake and try again."
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(InfringementAnalysis.model_json_schema()))
         response = self._client.models.generate_content(
@@ -242,14 +253,29 @@ class Gemini:
                 "response_json_schema": schema,
             },
         )
-        return InfringementAnalysis.model_validate_json(response.text)
+
+        wrapper = InfringementAnalysis.model_validate_json(response.text)
+        validated, error_message = wrapper.validate_infringement_analysis()
+        if not validated:
+            if count >= MAX_ATTEMPTS:
+                raise Exception(f"Infringement_Analysis_Error: Failed to analyze infringements after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.analyze_infringements(
+                reference_claims=reference_claims, 
+                infringing_claims=infringing_claims, 
+                context=context,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message
+            )
+        return wrapper
 
     def get_search_string(
         self, 
         keywords: list[str], 
         owners: list[str], 
         search_limitations: dict,
-        model_name:str = 'gemini-2.5-flash'
+        model_name:str = 'gemini-2.5-flash',
         ):
         
         companies = search_limitations.get('companies', [])
@@ -268,10 +294,18 @@ class Gemini:
         self, 
         search_string: str,
         max_results: int = 30,
-        model_name:str = 'gemini-2.5-flash'
+        model_name:str = 'gemini-2.5-flash',
+        count:int = 0,
+        error_message:str = ""
         ):
+        if count >= MAX_ATTEMPTS:
+            raise Exception(f"Google_Search_Error: Failed to perform Google search after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
         final_prompt = PERFORM_GOOGLE_SEARCH_PROMPT.replace("<search_string_replacement>", search_string)
         final_prompt = final_prompt.replace("<max_results_replacement>", str(max_results))
+        if error_message != "":
+            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+            final_prompt += "Do not repeat the same mistake and try again."
+
         response = self._client.models.generate_content(
             model=model_name,
             contents=final_prompt,
@@ -281,10 +315,34 @@ class Gemini:
             },
         )
         wrapper = GoogleSearchResultsList.model_validate_json(response.text)
+        validated, error_message = wrapper.validate_google_search_results_list()
+        if not validated:
+            if count >= MAX_ATTEMPTS:
+                raise Exception(f"Google_Search_Error: Failed to perform Google search after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.perform_google_search(
+                search_string=search_string,
+                max_results=max_results,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message
+            )
         return wrapper.results
     
-    def get_product_details(self, product_content: str, model_name:str = 'gemini-2.5-flash'):
+    def get_product_details(
+        self, 
+        product_content: str, 
+        model_name:str = 'gemini-2.5-flash',
+        count:int = 0,
+        error_message:str = ""
+        ):
+        if count >= MAX_ATTEMPTS:
+            raise Exception(f"Product_Details_Extraction_Error: Failed to extract product details after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
         final_prompt = PRODUCT_DETAILS_EXTRACTOR + "\nHere's the content : \n" + product_content
+        if error_message != "":
+            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+            final_prompt += "Do not repeat the same mistake and try again."
+
         response = self._client.models.generate_content(
             model=model_name,
             contents=final_prompt,
@@ -293,10 +351,34 @@ class Gemini:
                 "response_json_schema": InfringingProductDetail.model_json_schema(),
             },
         )
-        return InfringingProductDetail.model_validate_json(response.text)
+        wrapper = InfringingProductDetail.model_validate_json(response.text)
+        validated, error_message = wrapper.validate_infringing_product_detail()
+        if not validated:
+            if count >= MAX_ATTEMPTS:
+                raise Exception(f"Product_Details_Extraction_Error: Failed to extract product details after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.get_product_details(
+                product_content=product_content,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message
+            )
+        return wrapper
 
-    def get_patent_sources(self, patent_ids: list[str], model_name:str = 'gemini-2.5-flash'):
+    def get_patent_sources(
+        self, 
+        patent_ids: list[str], 
+        model_name:str = 'gemini-2.5-flash',
+        count:int = 0,
+        error_message:str = ""
+        ):
+        if count >= MAX_ATTEMPTS:
+            raise Exception(f"Patent_Sources_Error: Failed to extract patent sources after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
         final_prompt = SOURCE_LISTER.replace('<ids_replacement>', '\n'.join(patent_ids))
+        if error_message != "":
+            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+            final_prompt += "Do not repeat the same mistake and try again."
+
         response = self._client.models.generate_content(
             model=model_name,
             contents=final_prompt,
@@ -305,16 +387,36 @@ class Gemini:
                 "response_json_schema": PatentSourceList.model_json_schema(),
             },
         )
-        return PatentSourceList.model_validate_json(response.text)
+        wrapper = PatentSourceList.model_validate_json(response.text)
+        validated, error_message = wrapper.validate_patent_source_list()
+        if not validated:
+            if count >= MAX_ATTEMPTS:
+                raise Exception(f"Patent_Sources_Error: Failed to extract patent sources after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.get_patent_sources(
+                patent_ids=patent_ids,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message
+            )
+        return wrapper
 
     def analyze_product_infringements(
-        self, 
-        reference_claims:list[str], 
-        infringing_claims:list[str],
-        model_name:str = 'gemini-2.5-flash'
+            self, 
+            reference_claims:list[str], 
+            infringing_claims:list[str],
+            model_name:str = 'gemini-2.5-flash',
+            count:int = 0,
+            error_message:str = ""
         ):
+        if count >= MAX_ATTEMPTS:
+            raise Exception(f"Product_InfringementAnalysis_Error: Failed to analyze product infringements after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
         final_prompt = PRODUCT_INFRINGEMENT_ANALYZER.replace("<reference_claims_replacement>", "\n".join(reference_claims))
         final_prompt = final_prompt.replace("<infringing_claims_replacement>", "\n".join(infringing_claims))
+        if error_message != "":
+            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+            final_prompt += "Do not repeat the same mistake and try again."
+
         response = self._client.models.generate_content(
             model=model_name,
             contents=final_prompt,
@@ -324,4 +426,16 @@ class Gemini:
             },
         )
         wrapper = ProductSimilarityClaimList.model_validate_json(response.text)
+        validated, error_message = wrapper.validate_product_similarity_claim_list()
+        if not validated:
+            if count >= MAX_ATTEMPTS:
+                raise Exception(f"Product_InfringementAnalysis_Error: Failed to analyze product infringements after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.analyze_product_infringements(
+                reference_claims=reference_claims, 
+                infringing_claims=infringing_claims, 
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message
+            )
         return wrapper.items

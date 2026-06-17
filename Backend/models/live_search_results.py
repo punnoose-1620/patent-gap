@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, field_validator
 
 _ALLOWED_CLAIM_TYPES = frozenset({
@@ -49,6 +50,7 @@ class LiveSearchResults(BaseModel):
     applicant: str = None
     current_assignee: list[str]=[]
     other_ids: list[OtherIdData] = []
+    source: str = None
     # Set Mailing Addresses to an empty list
 
     def created(self, creator: str):
@@ -60,6 +62,31 @@ class LiveSearchResults(BaseModel):
         self.infringements = []
         self.mailing_addresses = []
         return self
+
+    def validate_metadata(self):
+        if self.source is None:
+            return False, "Source is required"
+        if self.filingDate is None:
+            return False, "Filing date is required"
+        if self.keywords is None:
+            return False, "Keywords are required"
+        if self.claims is None:
+            return False, "Claims are required"
+        if self.attorneys is None:
+            return False, "Attorneys are required"
+        if self.inventors is None:
+            return False, "Inventors are required"
+        if self.applicant is None:
+            return False, "Applicant is required"
+        if self.title is None:
+            return False, "Title is required"
+        if self.status is None:
+            return False, "Status is required"
+        if self.description is None:
+            return False, "Description is required"
+        if self.currentStatusCode is None:
+            return False, "Current status code is required"
+        return True, ""
 
 class SingleClaim(BaseModel):
     documented_claim: str
@@ -149,7 +176,6 @@ class DocumentedClaims(BaseModel):
                 return False, f"Claim {i + 1} is empty"
         return True, ""
 
-
 class IsolatedClaims(BaseModel):
     claims: list[SingleClaim]
 
@@ -181,15 +207,47 @@ class InfringementAnalysis(BaseModel):
     claim: str
     similarity_score: float
 
+    def validate_infringement_analysis(self):
+        if self.claim is None:
+            return False, "Claim is required"
+        if self.claim.strip() == "":
+            return False, "Claim is empty"
+        if self.similarity_score is None:
+            return False, "Similarity score is required"
+        if self.similarity_score < 0 or self.similarity_score > 1:
+            return False, "Similarity score must be between 0 and 1"
+        return True, ""
+
 class GoogleSearchResults(BaseModel):
     title: str
     url: str
     website_name: str
     description: str
 
+    def validate_google_search_results(self):
+        if self.title is None:
+            return False, "Title is required"
+        if self.url is None:
+            return False, "URL is required"
+        if self.website_name is None:
+            return False, "Website name is required"
+        if self.description is None:
+            return False, "Description is required"
+        return True, ""
+
 class GoogleSearchResultsList(BaseModel):
     """Wrapper so Gemini receives an object schema (required), not an array."""
     results: list[GoogleSearchResults]
+
+    def validate_google_search_results_list(self):
+        if self.results is None:
+            return False, "Results are required"
+        for index in range(len(self.results)):
+            result = self.results[index]
+            validated, error_message = result.validate_google_search_results()
+            if not validated:
+                return False, "For result "+str(index+1)+": "+error_message
+        return True, ""
 
 class InfringingProductDetail(BaseModel):
     source: str
@@ -199,6 +257,26 @@ class InfringingProductDetail(BaseModel):
     claims: list[str]
     similar_claims: list["ProductSimilarityClaim"] = []
 
+    def validate_infringing_product_detail(self):
+        if self.source is None:
+            return False, "Source is required"
+        if self.product_id is None:
+            return False, "Product ID is required"
+        if self.product_url is None:
+            return False, "Product URL is required"
+        if self.product_name is None:
+            return False, "Product name is required"
+        for index in range(len(self.claims)):
+            claim = self.claims[index]
+            if not isinstance(claim, str) or not claim.strip():
+                return False, "For claim "+str(index+1)+": Claim is empty"
+        for index in range(len(self.similar_claims)):
+            claim = self.similar_claims[index]
+            validated, error_message = claim.validate_product_similarity_claim()
+            if not validated:
+                return False, "For similar claim "+str(index+1)+": "+error_message
+        return True, ""
+
 class ProductSimilarityClaim(BaseModel):
     claim: str
     similarity_score: float
@@ -206,17 +284,59 @@ class ProductSimilarityClaim(BaseModel):
     url_to_claim: str
     justification: str
 
+    def validate_product_similarity_claim(self):
+        if self.claim is None:
+            return False, "Claim is required"
+        if self.similarity_score is None:
+            return False, "Similarity score is required"
+        if self.source is None:
+            return False, "Source is required"
+        if self.url_to_claim is None:
+            return False, "URL to claim is required"
+        if self.justification is None:
+            return False, "Justification is required"
+        return True, ""
+
 class ProductSimilarityClaimList(BaseModel):
     """Wrapper so Gemini receives an object schema (required), not an array."""
     items: list[ProductSimilarityClaim]
+
+    def validate_product_similarity_claim_list(self):
+        if self.items is None:
+            return False, "Similarity claims are required"
+        for index in range(len(self.items)):
+            item = self.items[index]
+            validated, error_message = item.validate_product_similarity_claim()
+            if not validated:
+                return False, "For claim item "+str(index+1)+": "+error_message
+        return True, ""
 
 class PatentSource(BaseModel):
     id: str
     source: str
     country: str
 
+    def validate_patent_source(self):
+        if self.id is None:
+            return False, "Patent ID is required"
+        if self.source is None:
+            return False, "Source is required"
+        if self.country is None:
+            return False, "Country is required"
+        return True, ""
+
 class PatentSourceList(BaseModel):
     patents: list[PatentSource]
+
+    def validate_patent_source_list(self):
+        if self.patents is None:
+            return False, "Patents are required"
+        for index in range(len(self.patents)):
+            patent = self.patents[index]
+            validated, error_message = patent.validate_patent_source()
+            if not validated:
+                return False, "For patent "+str(index+1)+": "+error_message
+        return True, ""
 
 class ClaimTypes(BaseModel):
     asserted_claims: list[str]

@@ -136,6 +136,7 @@ def passToGeminiForMetadata(
     base_delay: float = 2.0,
     attempt: int = 0,
     claims_mode: str = "parent",
+    default_source: str = None,
     ):
     """
     Call Gemini to extract metadata and claims with simple retry/backoff.
@@ -149,7 +150,10 @@ def passToGeminiForMetadata(
     claim_source = claims_content.strip() if claims_content and claims_content.strip() else metadata_content
     while attempt < max_attempts:
         try:
-            case_data = Gemini().extract_patent_metadata(patent_content=metadata_content)
+            case_data = Gemini().extract_patent_metadata(
+                patent_content=metadata_content, 
+                default_source=default_source
+                )
             title = case_data.title
             filing_date = case_data.filingDate
             if (title.strip() == "") or (filing_date.strip() == ""):
@@ -190,6 +194,7 @@ def passToGeminiForMetadata(
                 base_delay,
                 attempt,
                 claims_mode,
+                default_source,
             )
 
 def htmlToText(html:str, selector:str):
@@ -232,12 +237,14 @@ def get_case_datas(
             caseData = passToGeminiForMetadata(
                 metadata_content,
                 claims_content=claims_content,
+                default_source="Google Patents",
                 claims_mode="infringement_candidate",
             )
         else:
             caseDataHtml = fetchCaseData(case_data_url, session, selector)
             caseData = passToGeminiForMetadata(
                 str(caseDataHtml),
+                default_source="Free Patents Online",
                 claims_mode="infringement_candidate",
             )
         if caseData is None:

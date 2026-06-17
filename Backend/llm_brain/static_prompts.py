@@ -32,6 +32,7 @@ The fields to extract are:
   Every entry is:
   - title: one of the allowed labels below.
   - value: a list of exact identifier/code strings for that label.
+  - source: the patent office or country source of the patent (infer source based on the ID of the patent).
 
   Allowed title values and what to place under each:
 
@@ -229,7 +230,12 @@ Return the details in the following format:
     }
   ]
 }
-Do not include any other text or comments.
+Rules:
+- Do not include any other text or comments.
+- Source should be the name of the website from which the product details are extracted.
+- Claims should be the claims of the product in the exact phrasing as in the product details.
+- No claim can be empty or unrelated to the product.
+- Product name, Product ID, Product URL and Source cannot be empty or unrelated to the product.
 """
 
 PRODUCT_INFRINGEMENT_ANALYZER = """
