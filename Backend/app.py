@@ -1999,6 +1999,8 @@ def live_similarity_analysis(case_id):
   update_case(case_id, {'infringements': []})
   patent_thread = threading.Thread(
     target=start_patent_analysis,
+    name=f'patent_analysis_{case_id}',
+    group=str(case_id),
     args=(
       app, 
       case_id, 
@@ -2021,6 +2023,8 @@ def live_similarity_analysis(case_id):
   # Start Live Patent Search in background thread
   product_thread = threading.Thread(
     target=start_product_analysis,
+    name=f'product_analysis_{case_id}',
+    group=str(case_id),
     args=(
       app, 
       case_id, 
