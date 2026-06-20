@@ -1897,46 +1897,69 @@ def get_claims_for_patent(case_id):
 def live_similarity_analysis(case_id):
   data = request.get_json()
   if data is None:
-    return jsonify({'success': False, 'message': 'No data provided'}), 400
+    return jsonify({
+      'success': False, 
+      'message': 'No data provided'
+      }), 400
   user_id = get_user_id()
   if not user_id:
     print('\nERROR: LiveSearch: User ID is not in session')
-    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-  if 'keywords' not in data:
-    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
-  if 'country' not in data:
-    print(f'\nERROR: LiveSearch: Country is required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Country is required'}), 400
-  if 'claims' not in data:
-    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Claims are required'}), 400
-  if 'owners' not in data:
-    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Owners are required'}), 400
-  keywords = data.get('keywords', [])
-  owners = data.get('owners', [])
-  ref_claims = data.get('claims', [])
-  country = data.get('country', '')
-  context = data.get('context', '')
-  search_limitations = data.get('search_limitations', {})
+    return jsonify({
+      'success': False, 
+      'message': 'User ID is not in session'
+      }), 400
   
   if case_id is None:
     print(f'\nERROR: LiveSearch: Case ID is required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+    return jsonify({
+      'success': False, 
+      'message': 'Case ID is required'
+      }), 400
   case_data = get_case_by_id(case_id)
   if case_data is None:
     print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Case not found'}), 404
+    return jsonify({
+      'success': False, 
+      'message': 'Case not found'
+      }), 404
   
+  ref_claims = case_data['claims']
   if 'claims' in case_data:
     temp_claims = case_data['claims']
     ref_claims = temp_claims
+  owners = case_data.get('owners', [])
+  country = case_data.get('country', '')
   keywords = case_data.get('keywords', [])
   ref_case_title = case_data.get('title', '')
+  ids_to_avoid = case_data.get('excluded_case_ids', [])
   ref_case_id = case_data.get('_id', '').split('_')[-1]
   titles_to_avoid = case_data.get('excluded_case_titles', [])
-  ids_to_avoid = case_data.get('excluded_case_ids', [])
+  search_limitations = case_data.get('search_limitations', {})
+
+  if (keywords is None) or (len(keywords) == 0):
+    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
+    return jsonify({
+      'success': False, 
+      'message': 'Keywords are required'
+      }), 400
+  if (country is None) or (len(str(country).strip()) == 0):
+    print(f'\nERROR: LiveSearch: Country is required for user: {user_id}')
+    return jsonify({
+      'success': False, 
+      'message': 'Country is required'
+      }), 400
+  if (ref_claims is None) or (ref_claims == []) or (ref_claims == {}):
+    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+    return jsonify({
+      'success': False, 
+      'message': 'Claims are required'
+      }), 400
+  if (owners is None) or (len(owners) == 0):
+    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
+    return jsonify({
+      'success': False, 
+      'message': 'Owners are required'
+      }), 400  
 
   if (len(keywords) == 0) or (keywords is None):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
@@ -2014,8 +2037,7 @@ def live_similarity_analysis(case_id):
       original_lang_asserted_claims, 
       original_lang_independent_claims, 
       original_lang_core_claims, 
-      original_lang_pivotal_claims, 
-      context),
+      original_lang_pivotal_claims),
     daemon=False,
   )
   patent_thread.start()
@@ -2035,8 +2057,7 @@ def live_similarity_analysis(case_id):
       market_lang_independent_claims, 
       market_lang_core_claims, 
       market_lang_pivotal_claims, 
-      search_type,
-      context),
+      search_type),
     daemon=False,
   )
   product_thread.start()

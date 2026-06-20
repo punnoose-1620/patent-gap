@@ -528,7 +528,7 @@ def searchPatentSources(
     titles_to_avoid: list[str] = [],
     ids_to_avoid: list[str] = [],
     search_type: str = 'generic',
-    parent_case_id: str = '',
+    case_id: str = '',
     ):
     searchResults = []
     infringement_analysis_results = []
@@ -538,12 +538,12 @@ def searchPatentSources(
     try:
         found_ids = []
         results = performLiveSearch(
-            keywords, 
+            keywords=keywords, 
             country=country, 
             ref_case_title=ref_case_title, 
             ref_case_id=ref_case_id,
             titles=titles_to_avoid,
-            ids=ids_to_avoid,
+            ids=ids_to_avoid
             )
         for result in results:
             foundId = result.get('_id') or result.get('case_id')
@@ -566,13 +566,12 @@ def searchPatentSources(
                     break
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
-        case_model.update_case(ref_case_id, {
-          'infringement_analysis_status': 'Started', 
-          'last_updated': datetime.now(),
-          'status_flags': {
-            status_key: 'Live SearchError: ' + str(e)
-          }
-        })
+        case_model.update_infringement_analysis_flags(
+            case_id=case_id,
+            category='patent',
+            update_type='error',
+            error_message='Live SearchError: ' + str(e)
+        )
         raise e
     # Perform Infringement Analysis
     try:
@@ -599,25 +598,24 @@ def searchPatentSources(
             result['_id'] = 'patent_' + str(result.get('_id', '')) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
             creation_result = infringement_model.create_infringement(
                 result,
-                parent_case_id=parent_case_id or None,
+                parent_case_id=case_id or None,
             )
             if creation_result['success']:
                 created_ids.append(creation_result['infringement_id'])
                 sources.append(result.get('source', ''))
             infringement_analysis_results.append(result)
-            if parent_case_id:
-                case_model.update_case(parent_case_id, {'infringement_sources': sources})
+            if case_id:
+                case_model.update_case(case_id, {'infringement_sources': sources})
             # TODO: Create Infringement Record after altering the id
         return infringement_analysis_results, created_ids
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
-        case_model.update_case(ref_case_id, {
-          'infringement_analysis_status': 'Started', 
-          'last_updated': datetime.now(),
-          'status_flags': {
-            status_key: 'Infringement Analysis Error: ' + str(e)
-          }
-        })
+        case_model.update_infringement_analysis_flags(
+            case_id=case_id,
+            category='patent',
+            update_type='error',
+            error_message='Live SearchError: ' + str(e)
+        )
         raise e
     return [], []
 
@@ -710,10 +708,12 @@ def searchProductSources(
 
 # New Search Functions
 
-def searchPatentSourcesNew(keywords:list[str], country:str, reference_claims:list[str], context:str):
-    searchResults = []
-    infringement_analysis_results = []
-
+def searchPatentSourcesNew(
+    keywords:list[str], 
+    country:str, 
+    reference_claims:list[str], 
+    context:str):
+    
     all_patent_details = []
     # TODO: Perform Live Patent Search
     try:

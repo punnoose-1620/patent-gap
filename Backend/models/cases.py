@@ -229,12 +229,9 @@ def get_case_by_id(case_id, show_password=False):
     for case in all_cases:
         if (case.get('_id') == case_id) or (case.get('id') == case_id) or (case.get('case_id') == case_id):
             case = find_document_metadata(case)
+            if not show_password:
+                case.pop('password', None)
             return case
-    return None
-    case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
-    if case is not None:
-        case = find_document_metadata(case)
-        return case
     return None
 
 def get_case_related_to_user(user_id, page=1, paginated=False):
@@ -338,12 +335,56 @@ def get_case_creator(case_id):
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     return case.get('created_by')
 
+def update_infringement_analysis_flags(
+    case_id:str, 
+    category:str = "patent", 
+    update_type:str = 'started',
+    error_message:str = '',
+    time_taken:str = ''
+    ):
+    case_data = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    if case_data is None:
+        return False
+    last_updated = dt.now()
+    next_status = 'Started'
+    update_data = {
+        'last_updated': last_updated,
+        'infringement_analysis_status': next_status
+    }
+    existing_status = case_data.get('infringement_analysis_status', '')
+    if update_type.strip().lower() == 'completed':
+        if category == 'patent':
+            if existing_status == 'Product Sources Completed':
+                next_status = 'Completed'
+                update_data['last_infringement_analysis_date'] = dt.now()
+                update_data[f'patent_analysis_time_taken'] = time_taken
+            else:
+                next_status = 'Patent Sources Completed'
+        elif category == 'product':
+            if existing_status == 'Patent Sources Completed':
+                next_status = 'Completed'
+                update_data['last_infringement_analysis_date'] = dt.now()
+                update_data[f'product_analysis_time_taken'] = time_taken
+            else:
+                next_status = 'Product Sources Completed'
+    elif update_type.strip().lower() == 'error':
+        next_status = 'Error'
+        if error_message != '':
+            next_status += f': {error_message}'
+        if time_taken != '':
+            update_data[f'{category}_analysis_time_taken'] = time_taken
+    else:
+        next_status = 'Started'
+    update_data['infringement_analysis_status'] = next_status
+    update_case(case_id, update_data)
+    return True
+
 def update_infringement_analysis_status(
     case_id:str,
     status:str,
     update_type:str = "patent",
     generic_bucket:str = None,
-    asset_bucket:str = None, 
+    asserted_bucket:str = None, 
     independent_bucket:str = None, 
     core_bucket:str = None, 
     pivotal_bucket:str = None):
@@ -376,8 +417,8 @@ def update_infringement_analysis_status(
 
     if generic_bucket is not None:
         old_status_flags[generic_key] = generic_bucket
-    if asset_bucket is not None:
-        old_status_flags[assert_key] = asset_bucket
+    if asserted_bucket is not None:
+        old_status_flags[assert_key] = asserted_bucket
     if independent_bucket is not None:
         old_status_flags[independent_key] = independent_bucket
     if core_bucket is not None:
