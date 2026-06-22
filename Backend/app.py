@@ -1942,12 +1942,6 @@ def live_similarity_analysis(case_id):
       'success': False, 
       'message': 'Keywords are required'
       }), 400
-  if (country is None) or (len(str(country).strip()) == 0):
-    print(f'\nERROR: LiveSearch: Country is required for user: {user_id}')
-    return jsonify({
-      'success': False, 
-      'message': 'Country is required'
-      }), 400
   if (ref_claims is None) or (ref_claims == []) or (ref_claims == {}):
     print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
     return jsonify({
