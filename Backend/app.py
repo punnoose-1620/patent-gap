@@ -1954,12 +1954,6 @@ def live_similarity_analysis(case_id):
       'success': False, 
       'message': 'Claims are required'
       }), 400
-  if (owners is None) or (len(owners) == 0):
-    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
-    return jsonify({
-      'success': False, 
-      'message': 'Owners are required'
-      }), 400  
 
   if (len(keywords) == 0) or (keywords is None):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')

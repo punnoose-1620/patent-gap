@@ -188,13 +188,13 @@ def passToGeminiForMetadata(
                 return None
             time.sleep(base_delay * attempt)
             passToGeminiForMetadata(
-                metadata_content,
-                claims_content,
-                max_attempts,
-                base_delay,
-                attempt,
-                claims_mode,
-                default_source,
+                text=metadata_content,
+                claims_content=claims_content,
+                max_attempts=max_attempts,
+                base_delay=base_delay,
+                attempt=attempt,
+                claims_mode=claims_mode,
+                default_source=default_source
             )
 
 def htmlToText(html:str, selector:str):
