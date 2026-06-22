@@ -15,18 +15,59 @@ _CLAIM_TYPE_ALIASES = {
     "pivotal": "pivotal_claim",
 }
 
+def validate_string(value):
+    if value is None:
+        return False
+    if not isinstance(value, str):
+        return False
+    if str(value).strip() == "":
+        return False
+    return True
+
+def validate_list(value):
+    if value is None:
+        return False
+    if not isinstance(value, list):
+        return False
+    if len(value) == 0:
+        return False
+    return True
+
 class OtherIdData(BaseModel):
     title: str
     value: list[str]
+
+    def validate_other_id_data(self):
+        if self.title is None:
+            return False, "Title is required"
+        if self.value is None:
+            return False, "Value is required"
+        return True, ""
 
 class DocumentsData(BaseModel):
     url: str
     source: str
 
+    def validate_documents_data(self):
+        if self.url is None:
+            return False, "URL is required"
+        if self.source is None:
+            return False, "Source is required"
+        return True, ""
+
 class AttorneysData(BaseModel):
     name: str
     registrationNumber: str
     contact: list[str]
+
+    def validate_attorneys_data(self):
+        if self.name is None:
+            return False, "Name is required"
+        if self.registrationNumber is None:
+            return False, "Registration number is required"
+        if self.contact is None:
+            return False, "Contact is required"
+        return True, ""
 
 class LiveSearchResults(BaseModel):
     _id: str                # Format : source_userid_patentid
@@ -86,6 +127,105 @@ class LiveSearchResults(BaseModel):
             return False, "Description is required"
         if self.currentStatusCode is None:
             return False, "Current status code is required"
+        return True, ""
+
+    def merge_with_existing(self, existing_results: 'LiveSearchResults'):
+        if existing_results is None:
+            return False, "Existing results are required and cannot be None"
+        if not validate_string(self._id):
+            self._id = existing_results._id
+        else:
+            if validate_string(existing_results._id):
+                if (existing_results._id != self._id):
+                    return False, "Existing results and new results have different IDs"
+        
+        if not validate_string(self.status) and validate_string(existing_results.status):
+            self.status = existing_results.status
+        
+        if validate_string(self.description) and validate_string(existing_results.description):
+            if len(self.description.strip()) < len(existing_results.description.strip()):
+                self.description = existing_results.description
+        if not validate_string(self.description) and validate_string(existing_results.description):
+            self.description = existing_results.description
+        
+        if not validate_string(self.title) and validate_string(existing_results.title):
+            self.title = existing_results.title
+        
+        if not validate_string(self.filingDate) and validate_string(existing_results.filingDate):
+            self.filingDate = existing_results.filingDate
+        
+        if validate_list(self.keywords) and validate_list(existing_results.keywords):
+            for word in existing_results.keywords:
+                if validate_string(word):
+                    if word.strip().lower() not in self.keywords:
+                        self.keywords.append(word.strip())
+        if not validate_list(self.keywords) and validate_list(existing_results.keywords):
+            self.keywords = existing_results.keywords
+        
+        if not validate_list(self.claims) and validate_list(existing_results.claims):
+            self.claims = existing_results.claims
+        
+        if validate_list(self.attorneys) and validate_list(existing_results.attorneys):
+            for attorney in existing_results.attorneys:
+                if attorney is not None:
+                    validated, error_message = attorney.validate_attorneys_data()
+                    if validated:
+                        a_names = [a.name.strip().lower() for a in self.attorneys]
+                        a_registration_numbers = [a.registrationNumber.strip().lower() for a in self.attorneys]
+                        if (attorney.name.strip().lower() not in a_names) and (attorney.registrationNumber.strip().lower() not in a_registration_numbers):
+                            self.attorneys.append(attorney)
+        if not validate_list(self.attorneys) and validate_list(existing_results.attorneys):
+            self.attorneys = existing_results.attorneys
+        
+        if validate_list(self.inventors) and validate_list(existing_results.inventors):
+            for inventor in existing_results.inventors:
+                if validate_string(inventor):
+                    if inventor.strip().lower() not in self.inventors:
+                        self.inventors.append(inventor.strip())
+        if not validate_list(self.inventors) and validate_list(existing_results.inventors):
+            self.inventors = existing_results.inventors
+        
+        if not validate_string(self.applicant) and validate_string(existing_results.applicant):
+            self.applicant = existing_results.applicant
+        
+        if validate_list(self.current_assignee) and validate_list(existing_results.current_assignee):
+            for assignee in existing_results.current_assignee:
+                if assignee is not None:
+                    if assignee.strip() not in self.current_assignee:
+                        self.current_assignee.append(assignee.strip())
+        if not validate_list(self.current_assignee) and validate_list(existing_results.current_assignee):
+            self.current_assignee = existing_results.current_assignee
+        
+        if validate_list(self.other_ids) and validate_list(existing_results.other_ids):
+            for other_id in existing_results.other_ids:
+                if other_id is not None:
+                    validated, error_message = other_id.validate_other_id_data()
+                    if validated:
+                        if other_id.title.strip() not in [o.title for o in self.other_ids]:
+                            self.other_ids.append(other_id)
+        if not validate_list(self.other_ids) and validate_list(existing_results.other_ids):
+            self.other_ids = existing_results.other_ids
+        
+        if not validate_string(self.source) and validate_string(existing_results.source):
+            self.source = existing_results.source
+        
+        if validate_list(self.documents) and validate_list(existing_results.documents):
+            for document in existing_results.documents:
+                if document is not None:
+                    validated, error_message = document.validate_documents_data()
+                    if validated:
+                        if document.url.strip() not in [d.url for d in self.documents]:
+                            self.documents.append(document)
+        if not validate_list(self.documents) and validate_list(existing_results.documents):
+            self.documents = existing_results.documents
+        
+        if validate_list(self.document_urls) and validate_list(existing_results.document_urls):
+            for document_url in existing_results.document_urls:
+                if document_url is not None:
+                    if document_url.strip() not in self.document_urls:
+                        self.document_urls.append(document_url.strip())
+        if not validate_list(self.document_urls) and validate_list(existing_results.document_urls):
+                self.document_urls = existing_results.document_urls
         return True, ""
 
 class SingleClaim(BaseModel):

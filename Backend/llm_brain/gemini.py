@@ -73,77 +73,84 @@ class Gemini:
         self, 
         patent_content:str, 
         model_name:str = 'gemini-2.5-flash', 
-        default_source:str = None,
-        count:int = 0,
-        error_message:str = ""
+        default_source:str = None
         ):
-        if count >= MAX_ATTEMPTS:
-            raise Exception(f"Patent_Metadata_Error: Failed to extract patent metadata after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
-        final_prompt = PATENT_METADATA_EXTRACTOR + "\nHere's the content : \n" + str(patent_content)
-        if error_message != "":
-            final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
-            final_prompt += "Do not repeat the same mistake and try again."
+        count = 0
+        count_429 = 0
+        error_message = ""
 
         schema = _rename_schema_keys_for_api(
             _strip_unsupported_schema_keys(_schema_without_defs(LiveSearchResults.model_json_schema()))
         )
-        response = self._client.models.generate_content(
-            model=model_name,
-            contents=final_prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": schema,
-            },
-        )
-        if "429 RESOURCE_EXHAUSTED" in response.text:
-            time.sleep(DEFAULT_LLM_DELAY)
-            data = self.extract_patent_metadata(
-                patent_content=patent_content, 
-                model_name=model_name, 
-                default_source=default_source,
-                count=count + 1,
-                error_message=error_message
+
+        finalData = LiveSearchResults.model_validate({})
+
+        while count < MAX_ATTEMPTS:
+            final_prompt = PATENT_METADATA_EXTRACTOR + "\nHere's the content : \n" + str(patent_content)
+            if error_message != "":
+                final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
+                final_prompt += "Do not repeat the same mistake and try again."
+
+            response = self._client.models.generate_content(
+                model=model_name,
+                contents=final_prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_json_schema": schema,
+                },
             )
-            return LiveSearchResults.model_validate(data)
-        data = json.loads(response.text)
-        data["_id"] = data.pop("id", data.get("_id", ""))
-        data["status"] = data.pop("case_status", data.get("status", ""))
-        # Fill missing required fields so validation does not fail when LLM omits them
-        _defaults = {
-            "title": "",
-            "description": "",
-            "currentStatusCode": 0,
-            "currentStatusDate": "",
-            "filingDate": "",
-            "documents": [],
-            "document_urls": [],
-            "keywords": [],
-            "claims": [],
-            "attorneys": [],
-            "inventors": [],
-            "applicant": "",
-            "current_assignee": [],
-            "other_ids": [],
-            "source": default_source,
-        }
-        for key, default in _defaults.items():
-            if key not in data or data[key] is None:
-                data[key] = default
-        class_data = LiveSearchResults.model_validate(data)
-        validated, error_message = class_data.validate_metadata()
+            if "429 RESOURCE_EXHAUSTED" in response.text:
+                if count_429 < MAX_ATTEMPTS:
+                    count_429 += 1
+                    time.sleep(DEFAULT_LLM_DELAY * (count_429 + 1))
+                    error_message = response.text+"...A fixed delay has been applied before the next attempt."
+                    continue
+                else:
+                    break
+            
+            data = json.loads(response.text)
+            data["_id"] = data.pop("id", data.get("_id", ""))
+            data["status"] = data.pop("case_status", data.get("status", ""))
+            # Fill missing required fields so validation does not fail when LLM omits them
+            _defaults = {
+                "title": "",
+                "description": "",
+                "currentStatusCode": 0,
+                "currentStatusDate": "",
+                "filingDate": "",
+                "documents": [],
+                "document_urls": [],
+                "keywords": [],
+                "claims": [],
+                "attorneys": [],
+                "inventors": [],
+                "applicant": "",
+                "current_assignee": [],
+                "other_ids": [],
+                "source": default_source,
+            }
+            for key, default in _defaults.items():
+                if key not in data or data[key] is None:
+                    data[key] = default
+            class_data = LiveSearchResults.model_validate(data)
+            merged, merge_error_message = finalData.merge_with_existing(class_data)
+            print(f"LOG: Extracting patent metadata try {count}... Merged with existing data: {merged}\n\tMessage:{merge_error_message}")
+            validated, e_message = finalData.validate_metadata()
+
+            if not validated:
+                count += 1
+                error_message = e_message
+                if count >= MAX_ATTEMPTS:
+                    break
+                time.sleep(DEFAULT_LLM_DELAY)
+                continue
+            else:
+                break
+        validated, e_message = finalData.validate_metadata()
         if not validated:
-            if count >= MAX_ATTEMPTS:
-                raise Exception(f"Patent_Metadata_Error: Failed to extract patent metadata after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
-            time.sleep(DEFAULT_LLM_DELAY)
-            data = self.extract_patent_metadata(
-                patent_content=patent_content, 
-                model_name=model_name, 
-                default_source=default_source,
-                count=count + 1,
-                error_message=error_message
-            )
-            return LiveSearchResults.model_validate(data)
-        return class_data
+            error_message = e_message
+            raise Exception(f"Patent_Metadata_Error: Failed to extract patent metadata after {MAX_ATTEMPTS} attempts.\n\t{e_message}")
+        return finalData
 
     def extract_claims(
         self, 
