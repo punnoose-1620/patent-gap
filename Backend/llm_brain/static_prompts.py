@@ -124,6 +124,7 @@ Rules:
 - Do not include abstract, description, or drawings text.
 - Do not add market language or litigation categories.
 - Return only the JSON object.
+- All claims must be translated to english language.
 """
 
 CLAIM_ISOLATOR = """
@@ -133,6 +134,7 @@ Return the claims in the following format: List of <ISOLATED_CLAIMS_RETURN_FORMA
 
 Rules:
 - Do not include any other text or comments.
+- All claims must be translated to english language. Original language refers to terminology used and not the language itself.
 
 Allowed values for claim_type:
 - "asserted_claim" : This specific claim is often selected for a lawsuit because a competitor's product actively infringes them.

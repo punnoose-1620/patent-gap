@@ -328,7 +328,7 @@ class IsolatedClaims(BaseModel):
 
         Structure of SingleClaim:
         {
-            'documented_claim': str: The claim as documented in the patent.
+            'documented_claim': str: The claim as documented in the patent. Translated to english if in foreign language.
             'market_language_claim': str: Claim translated in to market language using relevant wordings..
             'claim_type': str: The type of claim.
         }
