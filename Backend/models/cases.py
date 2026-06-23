@@ -381,7 +381,7 @@ def update_infringement_analysis_flags(
 
 def update_infringement_analysis_status(
     case_id:str,
-    status:str,
+    status:str = 'started',
     update_type:str = "patent",
     generic_bucket:str = None,
     asserted_bucket:str = None, 
