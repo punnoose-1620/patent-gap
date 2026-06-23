@@ -387,12 +387,16 @@ def update_infringement_analysis_status(
     asserted_bucket:str = None, 
     independent_bucket:str = None, 
     core_bucket:str = None, 
-    pivotal_bucket:str = None):
+    pivotal_bucket:str = None,
+    error_message:str = None
+    ):
     default_status = ""
     if status.strip().lower() == "completed":
         default_status = "Completed"
     elif status.strip().lower() == "error":
         default_status = "Error"
+        if error_message is not None:
+            default_status += f': {error_message}'
     else:
         default_status = "Started"
     

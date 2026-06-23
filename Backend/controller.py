@@ -428,11 +428,12 @@ def start_patent_analysis(
                 case_id=case_id, 
                 category='patent'
                 )
+
             if len(asserted_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
-                    asserted_claims_patent_analysis='Started',
-                    generic_claims_patent_analysis='Started'
+                    asserted_bucket='Started',
+                    generic_bucket='Started'
                 )
                 asserted_patentResults, asserted_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
@@ -447,15 +448,22 @@ def start_patent_analysis(
                     )
                 update_infringement_analysis_status(
                     case_id=case_id,
-                    asserted_claims_patent_analysis='Completed',
-                    generic_claims_patent_analysis='Completed'
+                    asserted_bucket='Completed',
+                    generic_bucket='Completed'
                 )
             else:
                 asserted_patentResults = []
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    asserted_bucket='Error',
+                    generic_bucket='Error',
+                    error_message="No generic/asserted claims provided"
+                )
+            
             if len(independent_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
-                    independent_claims_patent_analysis='Started',
+                    independent_bucket='Started',
                 )
                 independent_patentResults, independent_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
@@ -470,14 +478,20 @@ def start_patent_analysis(
                     )
                 update_infringement_analysis_status(
                     case_id=case_id,
-                    independent_claims_patent_analysis='Completed',
+                    independent_bucket='Completed',
                 )
             else:
                 independent_patentResults = []
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    independent_bucket='Error',
+                    error_message="No independent claims provided"
+                )
+            
             if len(core_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
-                    core_claims_patent_analysis='Started',
+                    core_bucket='Started',
                 )
                 core_patentResults, core_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
@@ -492,14 +506,20 @@ def start_patent_analysis(
                     )
                 update_infringement_analysis_status(
                     case_id=case_id,
-                    core_claims_patent_analysis='Completed',
+                    core_bucket='Completed',
                 )
             else:
                 core_patentResults = []
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    core_bucket='Error',
+                    error_message="No core claims provided"
+                )
+            
             if len(pivotal_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
-                    pivotal_claims_patent_analysis='Started',
+                    pivotal_bucket='Started',
                 )
                 pivotal_patentResults, pivotal_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
@@ -514,10 +534,15 @@ def start_patent_analysis(
                     )
                 update_infringement_analysis_status(
                     case_id=case_id,
-                    pivotal_claims_patent_analysis='Completed',
+                    pivotal_bucket='Completed',
                 )
             else:
                 pivotal_patentResults = []
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    pivotal_bucket='Error',
+                    error_message="No pivotal claims provided"
+                )
             # Avoid duplicates among all patent results
             patentResults = []
             if asserted_patentResults is not None:
@@ -622,12 +647,13 @@ def start_product_analysis(
                 case_id=case_id, 
                 category='product'
                 )
+            
             if len(asserted_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
-                    asserted_claims_product_analysis='Started',
-                    generic_claims_product_analysis='Started'
+                    asserted_bucket='Started',
+                    generic_bucket='Started'
                 )
                 asserted_product_details_list, asserted_created_product_ids = searchProductSources(
                     keywords=keywords, 
@@ -639,16 +665,24 @@ def start_product_analysis(
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
-                    asserted_claims_product_analysis='Completed',
-                    generic_claims_product_analysis='Completed'
+                    asserted_bucket='Completed',
+                    generic_bucket='Completed'
                 )
             else:
                 asserted_product_details_list = []
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    update_type="product",
+                    asserted_bucket='Error',
+                    generic_bucket='Error',
+                    error_message="No generic/asserted claims provided"
+                )
+            
             if len(independent_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
-                    independent_claims_product_analysis='Started',
+                    independent_bucket='Started',
                 )
                 independent_product_details_list, independent_created_product_ids = searchProductSources(
                     keywords=keywords, 
@@ -660,15 +694,22 @@ def start_product_analysis(
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
-                    independent_claims_product_analysis='Completed',
+                    independent_bucket='Completed',
                 )
             else:
                 independent_product_details_list = []
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    update_type="product",
+                    independent_bucket='Error',
+                    error_message="No independent claims provided"
+                )
+            
             if len(core_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
-                    core_claims_product_analysis='Started',
+                    core_bucket='Started',
                 )
                 core_product_details_list, core_created_product_ids = searchProductSources(
                     keywords=keywords, 
@@ -680,15 +721,22 @@ def start_product_analysis(
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
-                    core_claims_product_analysis='Completed',
+                    core_bucket='Completed',
                 )
             else:
                 core_product_details_list = []
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    update_type="product",
+                    core_bucket='Error',
+                    error_message="No core claims provided"
+                )
+            
             if len(pivotal_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
-                    pivotal_claims_product_analysis='Started',
+                    pivotal_bucket='Started',
                 )
                 pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
                     keywords=keywords, 
@@ -700,10 +748,16 @@ def start_product_analysis(
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
-                    pivotal_claims_product_analysis='Completed',
+                    pivotal_bucket='Completed',
                 )
             else:
                 pivotal_product_details_list = []
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    update_type="product",
+                    pivotal_bucket='Error',
+                    error_message="No pivotal claims provided"
+                )
                     
             productResults = []
             if asserted_product_details_list is not None:
