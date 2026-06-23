@@ -1709,6 +1709,7 @@ def fetch_patent_from_uspto():
   
   user_data = get_user_profile(user_id, show_password=False) 
   fetching_patents = user_data.get('fetching_patents', [])
+  patent_id = str(patent_id).strip().upper()
   if patent_id in fetching_patents:
     return jsonify({
         'success': False,
@@ -1718,7 +1719,12 @@ def fetch_patent_from_uspto():
 
   print(f'\nFetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
 
-  update_user_fetching_patents(user_id, [patent_id], [], replace=True)
+  update_user_fetching_patents(
+    user_id=user_id, 
+    fetching_patents=[patent_id], 
+    error_patents=[], 
+    replace=True
+    )
   thread = threading.Thread(
     target=fetchById,
     args=(app, patent_id, user_id),

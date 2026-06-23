@@ -249,13 +249,15 @@ def remove_patent_from_fetching_list(user_id: str, patent_id: str) -> dict:
             'success': False,
             'message': 'User not found',
         }
+    patent_id = str(patent_id).strip().upper()
     existing_fetching_patents = user.get('fetching_patents', [])
+    new_fetching_patents = []
     error_patents = user.get('error_patents', [])
     if patent_id in existing_fetching_patents:
         for value in existing_fetching_patents:
-            if value == patent_id:
-                existing_fetching_patents.remove(value)
-    return update_user_fetching_patents(user_id, existing_fetching_patents, error_patents, replace=True)
+            if value.strip().upper() != patent_id:
+                new_fetching_patents.append(value)
+    return update_user_fetching_patents(user_id, new_fetching_patents, error_patents, replace=True)
 
 def remove_patent_from_error_list(user_id: str, patent_id: str) -> dict:
     """
@@ -267,15 +269,20 @@ def remove_patent_from_error_list(user_id: str, patent_id: str) -> dict:
             'success': False,
             'message': 'User not found',
         }
+    patent_id = str(patent_id).strip().upper()
     error_patents = user.get('error_patents', [])
     fetching_patents = user.get('fetching_patents', [])
     if patent_id in error_patents:
         for value in error_patents:
-            if value == patent_id:
+            if str(value).strip().upper() == patent_id:
                 error_patents.remove(value)
     return update_user_fetching_patents(user_id, fetching_patents, error_patents, replace=True)
 
-def set_patent_to_error_list(user_id: str, patent_id: str, error_message: str = 'Unknown Error') -> dict:
+def set_patent_to_error_list(
+    user_id: str, 
+    patent_id: str, 
+    error_message: str = 'Unknown Error'
+    ) -> dict:
     """
     Set a patent to the user's error list.
     """
@@ -285,6 +292,7 @@ def set_patent_to_error_list(user_id: str, patent_id: str, error_message: str = 
             'success': False,
             'message': 'User not found',
         }
+    patent_id = str(patent_id).strip().upper()
     existing_error_patents = user.get('error_patents', [])
     existing_fetching_patents = user.get('fetching_patents', [])
     existing_error_found = False
