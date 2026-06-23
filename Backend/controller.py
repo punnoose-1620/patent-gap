@@ -575,7 +575,7 @@ def start_patent_analysis(
             time_in_seconds = end_time - start_time
             time_in_minutes = time_in_seconds // 60
             time_in_hours = int(time_in_minutes // 60)
-            time_in_seconds = time_in_seconds % 60
+            time_in_seconds = round(time_in_seconds % 60, 2)
             time_in_minutes = int(time_in_minutes % 60)
             update_infringement_analysis_flags(
                 case_id=case_id, 
@@ -594,7 +594,7 @@ def start_patent_analysis(
             time_in_seconds = current_time - start_time
             time_in_minutes = time_in_seconds // 60
             time_in_hours = int(time_in_minutes // 60)
-            time_in_seconds = time_in_seconds % 60
+            time_in_seconds = round(time_in_seconds % 60, 2)
             time_in_minutes = int(time_in_minutes % 60)
             update_infringement_analysis_status(
                 case_id,
@@ -788,7 +788,7 @@ def start_product_analysis(
             time_in_seconds = end_time - start_time
             time_in_minutes = time_in_seconds // 60
             time_in_hours = int(time_in_minutes // 60)
-            time_in_seconds = time_in_seconds % 60
+            time_in_seconds = round(time_in_seconds % 60, 2)
             time_in_minutes = int(time_in_minutes % 60)
             update_infringement_analysis_flags(
                 case_id=case_id, 
@@ -808,7 +808,7 @@ def start_product_analysis(
             time_in_seconds = end_time - start_time
             time_in_minutes = time_in_seconds // 60
             time_in_hours = int(time_in_minutes // 60)
-            time_in_seconds = time_in_seconds % 60
+            time_in_seconds = round(time_in_seconds % 60, 2)
             time_in_minutes = int(time_in_minutes % 60)
             update_infringement_analysis_status(
                 case_id,
