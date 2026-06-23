@@ -434,7 +434,7 @@ def start_patent_analysis(
                 asserted_patentResults, asserted_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    asserted_claims=asserted_claims, 
+                    reference_claims=asserted_claims, 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
@@ -464,7 +464,7 @@ def start_patent_analysis(
                 independent_patentResults, independent_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    independent_claims=independent_claims, 
+                    reference_claims=independent_claims, 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
@@ -492,7 +492,7 @@ def start_patent_analysis(
                 core_patentResults, core_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    core_claims=core_claims, 
+                    reference_claims=core_claims, 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
@@ -520,7 +520,7 @@ def start_patent_analysis(
                 pivotal_patentResults, pivotal_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    pivotal_claims=pivotal_claims, 
+                    reference_claims=pivotal_claims, 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
@@ -654,7 +654,7 @@ def start_product_analysis(
                 asserted_product_details_list, asserted_created_product_ids = searchProductSources(
                     keywords=keywords, 
                     owners=owners, 
-                    asserted_claims=asserted_claims, 
+                    reference_claims=asserted_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
@@ -683,7 +683,7 @@ def start_product_analysis(
                 independent_product_details_list, independent_created_product_ids = searchProductSources(
                     keywords=keywords, 
                     owners=owners, 
-                    independent_claims=independent_claims, 
+                    reference_claims=independent_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
@@ -710,7 +710,7 @@ def start_product_analysis(
                 core_product_details_list, core_created_product_ids = searchProductSources(
                     keywords=keywords, 
                     owners=owners, 
-                    core_claims=core_claims, 
+                    reference_claims=core_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
@@ -737,7 +737,7 @@ def start_product_analysis(
                 pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
                     keywords=keywords, 
                     owners=owners, 
-                    pivotal_claims=pivotal_claims, 
+                    reference_claims=pivotal_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
