@@ -2011,7 +2011,6 @@ def live_similarity_analysis(case_id):
   patent_thread = threading.Thread(
     target=start_patent_analysis,
     name=f'patent_analysis_{case_id}',
-    group=str(case_id),
     args=(
       app, 
       case_id, 
@@ -2034,7 +2033,6 @@ def live_similarity_analysis(case_id):
   product_thread = threading.Thread(
     target=start_product_analysis,
     name=f'product_analysis_{case_id}',
-    group=str(case_id),
     args=(
       app, 
       case_id, 
