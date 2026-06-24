@@ -568,7 +568,6 @@ def searchPatentSources(
         print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
         case_model.update_infringement_analysis_flags(
             case_id=case_id,
-            category='patent',
             update_type='error',
             error_message='Live SearchError: ' + str(e)
         )
@@ -612,7 +611,6 @@ def searchPatentSources(
         print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
         case_model.update_infringement_analysis_flags(
             case_id=case_id,
-            category='patent',
             update_type='error',
             error_message='Live SearchError: ' + str(e)
         )

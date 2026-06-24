@@ -354,17 +354,19 @@ def update_infringement_analysis_flags(
     existing_status = case_data.get('infringement_analysis_status', '')
     if update_type.strip().lower() == 'completed':
         if category == 'patent':
-            if existing_status == 'Product Sources Completed':
+            if time_taken != '':
+                update_data['patent_analysis_time_taken'] = time_taken
+            if 'product' in existing_status.strip().lower():
                 next_status = 'Completed'
                 update_data['last_infringement_analysis_date'] = dt.now()
-                update_data[f'patent_analysis_time_taken'] = time_taken
             else:
                 next_status = 'Patent Sources Completed'
         elif category == 'product':
-            if existing_status == 'Patent Sources Completed':
+            if time_taken != '':
+                update_data['product_analysis_time_taken'] = time_taken
+            if 'patent' in existing_status.strip().lower():
                 next_status = 'Completed'
                 update_data['last_infringement_analysis_date'] = dt.now()
-                update_data[f'product_analysis_time_taken'] = time_taken
             else:
                 next_status = 'Product Sources Completed'
     elif update_type.strip().lower() == 'error':

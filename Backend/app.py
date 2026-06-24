@@ -2013,7 +2013,11 @@ def live_similarity_analysis(case_id):
         market_lang_pivotal_claims.append(claimData.get('market_language_claim', ''))
 
   # Start Live Patent Search in background thread
-  update_case(case_id, {'infringements': []})
+  update_case(case_id, {
+    'infringements': [],
+    'product_analysis_time_taken': '',
+    'patent_analysis_time_taken': '',
+    })
   patent_thread = threading.Thread(
     target=start_patent_analysis,
     name=f'patent_analysis_{case_id}',
