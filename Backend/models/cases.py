@@ -5,8 +5,13 @@ from models.documents import getDocumentById
 from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
 from scorer import score_infringement_matrix_entry
-
-CLAIM_SIMILARITY_THRESHOLD = 0.85
+from infringement_score_filters import (
+    CLAIM_SIMILARITY_THRESHOLD,
+    apply_infringement_filters_to_case,
+    filter_chart_rows,
+    filter_infringement_entry,
+    filter_infringements_list,
+)
 
 def caseAlreadyExists(case_id:str, user_id: str):
     db = connect_to_database()
@@ -72,11 +77,13 @@ def get_all_cases(page=1, paginated=False):
         all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
         for case in all_cases:
             case = find_document_metadata(case)
+            case = apply_infringement_filters_to_case(case)
         return all_cases
     paged = paginateDataByQuery(connect_to_database(), getCaseDatabaseName(), page=page)
     all_cases = paged.get('items', [])
-    for case in all_cases:
+    for i, case in enumerate(all_cases):
         case = find_document_metadata(case)
+        all_cases[i] = apply_infringement_filters_to_case(case)
     paged['items'] = all_cases
     return paged
 
@@ -92,6 +99,7 @@ def get_open_cases(page=1, paginated=False):
         for case in getAllData(connect_to_database(), getCaseDatabaseName()):
             if case['status'] != 'Completed':
                 case = find_document_metadata(case)
+                case = apply_infringement_filters_to_case(case)
                 open_cases.append(case)
         return open_cases
 
@@ -102,8 +110,9 @@ def get_open_cases(page=1, paginated=False):
         page=page
     )
     open_cases = paged.get('items', [])
-    for case in open_cases:
+    for i, case in enumerate(open_cases):
         case = find_document_metadata(case)
+        open_cases[i] = apply_infringement_filters_to_case(case)
     paged['items'] = open_cases
     return paged
 
@@ -146,6 +155,7 @@ def update_infringements(case_id, fresh_infringements):
     Update the infringements list for a specific case.
     Meant to append infringements from each source without overall replacement
     """
+    fresh_infringements = filter_infringements_list(fresh_infringements or [])
     updated = updateListByIdAndKey(connect_to_database(), getCaseDatabaseName(), fresh_infringements, case_id, 'infringements')
     if updated:
         return {
@@ -231,7 +241,7 @@ def get_case_by_id(case_id, show_password=False):
             case = find_document_metadata(case)
             if not show_password:
                 case.pop('password', None)
-            return case
+            return apply_infringement_filters_to_case(case)
     return None
 
 def get_case_related_to_user(user_id, page=1, paginated=False):
@@ -251,17 +261,17 @@ def get_case_related_to_user(user_id, page=1, paginated=False):
             if ('assigned_to' in keys):
                 if (case['assigned_to'] == user_id):
                     case = find_document_metadata(case)
-                    user_cases.append(case)
+                    user_cases.append(apply_infringement_filters_to_case(case))
                     continue
             if ('accepted_by' in keys):
                 if (case['accepted_by'] == user_id):
                     case = find_document_metadata(case)
-                    user_cases.append(case)
+                    user_cases.append(apply_infringement_filters_to_case(case))
                     continue
             if ('created_by' in keys):
                 if (case['created_by'] == user_id):
                     case = find_document_metadata(case)
-                    user_cases.append(case)
+                    user_cases.append(apply_infringement_filters_to_case(case))
                     continue
         return user_cases
 
@@ -278,8 +288,9 @@ def get_case_related_to_user(user_id, page=1, paginated=False):
         page=page
     )
     user_cases = paged.get('items', [])
-    for case in user_cases:
+    for i, case in enumerate(user_cases):
         case = find_document_metadata(case)
+        user_cases[i] = apply_infringement_filters_to_case(case)
     paged['items'] = user_cases
     return paged
 
@@ -554,6 +565,19 @@ def get_infringement_chart(case_id):
     if entries_with_claims == 0:
         return _chart_error('INFRINGEMENT_CLAIMS_MISSING')
 
+    chart_data = filter_chart_rows(chart_data)
+    patent_chart_data = filter_chart_rows(patent_chart_data)
+    product_chart_data = filter_chart_rows(product_chart_data)
+
+    for infringement_entry in infringements:
+        if not isinstance(infringement_entry, dict):
+            continue
+        filtered_entry = filter_infringement_entry(infringement_entry)
+        if filtered_entry != infringement_entry:
+            infringement_entry.clear()
+            infringement_entry.update(filtered_entry)
+            has_updates = True
+
     if has_updates:
         update_case(case_id, {'infringements': infringements})
 
@@ -561,3 +585,11 @@ def get_infringement_chart(case_id):
         return [], [], [], 'NO_MATCHES_ABOVE_THRESHOLD'
 
     return chart_data, patent_chart_data, product_chart_data, None
+
+
+def refresh_case_infringement_scores(case_id):
+    """
+    Recompute embedding scores for all infringements on a case and persist pairs
+    above CLAIM_SIMILARITY_THRESHOLD. Also strips sub-threshold Gemini rows.
+    """
+    return get_infringement_chart(case_id)

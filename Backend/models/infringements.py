@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from database import *
 from env_controller import getInfringementDatabaseName
+from infringement_score_filters import filter_infringement_entry, filter_infringements_list
 
 
 def _collection_name():
@@ -56,7 +57,7 @@ def get_infringement_by_id(infringement_id, parent_case_id=None):
     return {
         'success': True,
         'message': 'Infringement fetched successfully',
-        'infringement': infringement,
+        'infringement': filter_infringement_entry(infringement),
     }
 
 
@@ -84,7 +85,7 @@ def get_infringements_by_ids(infringement_ids, parent_case_id=None):
         return {
             'success': True,
             'message': 'Infringements fetched successfully',
-            'infringements': ordered,
+            'infringements': filter_infringements_list(ordered),
         }
     except Exception as e:
         print(f'Error fetching infringements by IDs from {_collection_name()}: {e}')
@@ -120,7 +121,7 @@ def get_infringements_by_created_date(parent_case_id, start_date=None, end_date=
         return {
             'success': True,
             'message': 'Infringements fetched successfully',
-            'infringements': documents,
+            'infringements': filter_infringements_list(documents),
         }
     except Exception as e:
         print(f'Error fetching infringements by created date from {_collection_name()}: {e}')
@@ -141,7 +142,7 @@ def get_infringements_by_parent_case_id(parent_case_id):
     return {
         'success': True,
         'message': 'Infringements fetched successfully',
-        'infringements': infringements,
+        'infringements': filter_infringements_list(infringements),
     }
 
 
@@ -152,6 +153,7 @@ def create_infringement(infringement_data, parent_case_id=None):
     document is always tied to the intended case.
     """
     payload = dict(infringement_data or {})
+    payload = filter_infringement_entry(payload)
     if parent_case_id is not None:
         payload['parent_case_id'] = parent_case_id
     if not payload.get('parent_case_id'):

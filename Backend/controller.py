@@ -603,6 +603,10 @@ def start_patent_analysis(
             if search_type != 'generic':
                 search_type = "bucketed"
             update_infringements(case_id, patentResults)
+            try:
+                refresh_case_infringement_scores(case_id)
+            except Exception as score_err:
+                print(f'LOG: refresh_case_infringement_scores failed for {case_id}: {score_err}')
             infringement_details = _merge_infringement_details(case_id, {
                 'patent_ids': {
                     'asserted': asserted_created_patent_ids,
@@ -812,6 +816,10 @@ def start_product_analysis(
                         productResults.append(result)
 
             update_infringements(case_id, productResults)
+            try:
+                refresh_case_infringement_scores(case_id)
+            except Exception as score_err:
+                print(f'LOG: refresh_case_infringement_scores failed for {case_id}: {score_err}')
             infringement_details = _merge_infringement_details(case_id, {
                 'product_ids': {
                     'asserted': asserted_created_product_ids,

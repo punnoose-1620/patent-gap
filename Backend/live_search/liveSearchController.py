@@ -13,6 +13,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 from llm_brain.gemini import Gemini
 import models.infringements as infringement_model
 import models.cases as case_model
+from infringement_score_filters import (
+    filter_infringement_entry,
+    filter_similar_claims,
+    score_meets_threshold,
+)
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
@@ -606,10 +611,16 @@ def searchPatentSources(
                 result['gemini_infringement'] = infringement_analysis.dict()
             else:
                 result['gemini_infringement'] = infringement_analysis
+            gemini_score = None
+            if isinstance(result.get('gemini_infringement'), dict):
+                gemini_score = result['gemini_infringement'].get('similarity_score')
+            if not score_meets_threshold(gemini_score):
+                result.pop('gemini_infringement', None)
             result['infringements'] = []
             result['claims'] = infringing_claims
             
             result['_id'] = 'patent_' + str(result.get('_id', '')) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
+            result = filter_infringement_entry(result)
             creation_result = infringement_model.create_infringement(
                 result,
                 parent_case_id=case_id or None,
@@ -689,6 +700,7 @@ def searchProductSources(
                 item.model_dump() if hasattr(item, "model_dump") else item
                 for item in infringement_analysis
             ]
+            product_details.similar_claims = filter_similar_claims(product_details.similar_claims)
             product_id = product_details.product_id
             product_url = product_details.product_url
             print(f"LOG: Product ID: {product_id}")
@@ -704,6 +716,7 @@ def searchProductSources(
             if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
                 continue
             payload = product_details.model_dump()
+            payload = filter_infringement_entry(payload)
             payload['_id'] = 'product_' + str(product_id) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
             creation_result = infringement_model.create_infringement(
                 payload,
