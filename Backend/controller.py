@@ -17,6 +17,46 @@ from llm_brain.gemini import Gemini
 Controller functions for handling business logic
 """
 
+def _bucket_error_on_analysis_failure(claims, result):
+    """On thread failure: Error only for buckets that had claims but never returned."""
+    if not claims:
+        return None
+    if result is None:
+        return 'Error'
+    return None
+
+def _patent_bucket_error_kwargs(asserted_claims, independent_claims, core_claims, pivotal_claims,
+                                asserted_patentResults, independent_patentResults,
+                                core_patentResults, pivotal_patentResults):
+    kwargs = {}
+    for bucket_key, claims, result in (
+        ('generic_bucket', asserted_claims, asserted_patentResults),
+        ('asserted_bucket', asserted_claims, asserted_patentResults),
+        ('independent_bucket', independent_claims, independent_patentResults),
+        ('core_bucket', core_claims, core_patentResults),
+        ('pivotal_bucket', pivotal_claims, pivotal_patentResults),
+    ):
+        bucket_status = _bucket_error_on_analysis_failure(claims, result)
+        if bucket_status is not None:
+            kwargs[bucket_key] = bucket_status
+    return kwargs
+
+def _product_bucket_error_kwargs(asserted_claims, independent_claims, core_claims, pivotal_claims,
+                                 asserted_product_details_list, independent_product_details_list,
+                                 core_product_details_list, pivotal_product_details_list):
+    kwargs = {}
+    for bucket_key, claims, result in (
+        ('generic_bucket', asserted_claims, asserted_product_details_list),
+        ('asserted_bucket', asserted_claims, asserted_product_details_list),
+        ('independent_bucket', independent_claims, independent_product_details_list),
+        ('core_bucket', core_claims, core_product_details_list),
+        ('pivotal_bucket', pivotal_claims, pivotal_product_details_list),
+    ):
+        bucket_status = _bucket_error_on_analysis_failure(claims, result)
+        if bucket_status is not None:
+            kwargs[bucket_key] = bucket_status
+    return kwargs
+
 # Other Functions
 def get_case_related_patents(case_id):
     """
@@ -448,7 +488,6 @@ def start_patent_analysis(
                     generic_bucket='Completed'
                 )
             else:
-                asserted_patentResults = []
                 update_infringement_analysis_status(
                     case_id=case_id,
                     asserted_bucket='Error',
@@ -476,8 +515,9 @@ def start_patent_analysis(
                     case_id=case_id,
                     independent_bucket='Completed',
                 )
+                if not independent_patentResults:
+                    print(f'LOG: Case {case_id}: independent patent search returned 0 infringements')
             else:
-                independent_patentResults = []
                 update_infringement_analysis_status(
                     case_id=case_id,
                     independent_bucket='Error',
@@ -504,8 +544,9 @@ def start_patent_analysis(
                     case_id=case_id,
                     core_bucket='Completed',
                 )
+                if not core_patentResults:
+                    print(f'LOG: Case {case_id}: core patent search returned 0 infringements')
             else:
-                core_patentResults = []
                 update_infringement_analysis_status(
                     case_id=case_id,
                     core_bucket='Error',
@@ -532,8 +573,9 @@ def start_patent_analysis(
                     case_id=case_id,
                     pivotal_bucket='Completed',
                 )
+                if not pivotal_patentResults:
+                    print(f'LOG: Case {case_id}: pivotal patent search returned 0 infringements')
             else:
-                pivotal_patentResults = []
                 update_infringement_analysis_status(
                     case_id=case_id,
                     pivotal_bucket='Error',
@@ -600,11 +642,11 @@ def start_patent_analysis(
                 case_id,
                 update_type="patent",
                 status='Error',
-                generic_bucket='Error' if asserted_patentResults is None else 'Completed',
-                asserted_bucket="Error" if asserted_patentResults is None else 'Completed',
-                independent_bucket="Error" if independent_patentResults is None else 'Completed',
-                core_bucket="Error" if core_patentResults is None else 'Completed',
-                pivotal_bucket="Error" if pivotal_patentResults is None else 'Completed'
+                **_patent_bucket_error_kwargs(
+                    asserted_claims, independent_claims, core_claims, pivotal_claims,
+                    asserted_patentResults, independent_patentResults,
+                    core_patentResults, pivotal_patentResults,
+                ),
             )
             update_infringement_analysis_flags(
                 case_id=case_id, 
@@ -665,7 +707,6 @@ def start_product_analysis(
                     generic_bucket='Completed'
                 )
             else:
-                asserted_product_details_list = []
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -693,7 +734,6 @@ def start_product_analysis(
                     independent_bucket='Completed',
                 )
             else:
-                independent_product_details_list = []
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -720,7 +760,6 @@ def start_product_analysis(
                     core_bucket='Completed',
                 )
             else:
-                core_product_details_list = []
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -747,7 +786,6 @@ def start_product_analysis(
                     pivotal_bucket='Completed',
                 )
             else:
-                pivotal_product_details_list = []
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -814,11 +852,11 @@ def start_product_analysis(
                 case_id,
                 update_type="product",
                 status='Error',
-                generic_bucket='Error' if asserted_product_details_list is None else 'Completed',
-                asserted_bucket="Error" if asserted_product_details_list is None else 'Completed',
-                independent_bucket="Error" if independent_product_details_list is None else 'Completed',
-                core_bucket="Error" if core_product_details_list is None else 'Completed',
-                pivotal_bucket="Error" if pivotal_product_details_list is None else 'Completed'
+                **_product_bucket_error_kwargs(
+                    asserted_claims, independent_claims, core_claims, pivotal_claims,
+                    asserted_product_details_list, independent_product_details_list,
+                    core_product_details_list, pivotal_product_details_list,
+                ),
             )
             update_infringement_analysis_flags(
                 case_id=case_id, 

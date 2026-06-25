@@ -1,5 +1,7 @@
 import time
 import json
+import sys
+import threading
 import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
@@ -34,6 +36,13 @@ SESSION_HEADERS = {
     'Sec-Fetch-Site': 'none',
     'Sec-Fetch-User': '?1'
 }
+
+def _tqdm(iterable, **kwargs):
+    """Avoid tqdm OSError [Errno 22] in Flask background threads on Windows."""
+    disable = kwargs.pop('disable', None)
+    if disable is None:
+        disable = not sys.stdout.isatty() or threading.current_thread() is not threading.main_thread()
+    return tqdm(iterable, disable=disable, **kwargs)
 
 SOURCES = [
     {
@@ -317,9 +326,12 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
     session.close()
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
-    for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
+    for caseDataUrl in _tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
+            if caseData is None:
+                print(f"\nWARN: No case data for URL: {caseDataUrl}")
+                continue
             patent_id = str(caseDataUrl.split('/')[-1]).split('.')[0]
             caseDataDict = _live_result_to_dict(caseData, case_id=patent_id)
             caseDataDict['url'] = caseDataUrl
@@ -389,9 +401,12 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
     session.close()
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
-    for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
+    for caseDataUrl in _tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
+            if caseData is None:
+                print(f"\nWARN: No case data for URL: {caseDataUrl}")
+                continue
             if '/en' in caseDataUrl:
                 patent_id = str(caseDataUrl.split('/')[-2])
             else:
@@ -650,7 +665,7 @@ def searchProductSources(
     created_ids = []
     results_to_process = google_search_results[:max_product_results]
     # Iterate through Google Search Results
-    for result in tqdm(results_to_process, desc="Fetching Product Details from Google Search Results"):
+    for result in _tqdm(results_to_process, desc="Fetching Product Details from Google Search Results"):
         website_searched = result.website_name
         if website_searched not in sites_searched.keys():
             sites_searched[website_searched] = 0
@@ -720,7 +735,7 @@ def searchPatentSourcesNew(
         google_patents_urls = google_patents.initial_search_results(keywords)
         print(f"LOG: Google Patents URLs({len(google_patents_urls)})")
         search_urls = []
-        for data in tqdm(google_patents_urls, desc="Fetching Google Patents Details"):
+        for data in _tqdm(google_patents_urls, desc="Fetching Google Patents Details"):
             search_urls.append(data['case_data'])
             case_details = google_patents.get_single_patent_details(data['case_data'])
             if case_details is not None:
@@ -737,7 +752,7 @@ def searchPatentSourcesNew(
         free_patents_urls = free_patents.initial_search_results(keywords)
         print(f"LOG: Free Patents Online URLs({len(free_patents_urls)})")
         search_urls = []
-        for data in tqdm(free_patents_urls, desc="Fetching Free Patents Online Details"):
+        for data in _tqdm(free_patents_urls, desc="Fetching Free Patents Online Details"):
             search_urls.append(data['case_data'])
             case_details = free_patents.get_single_patent_details(data['case_data'])
             if case_details is not None:
@@ -752,7 +767,7 @@ def searchPatentSourcesNew(
             print(f"LOG: Free Patents Online Details({len(all_patent_details)})")
         # Get Details using Gemini
         patent_details_final = []
-        for data in tqdm(all_patent_details, desc="Isolating MetaData"):
+        for data in _tqdm(all_patent_details, desc="Isolating MetaData"):
             case_details = passToGeminiForMetadata(str(data['case_data']))
             if case_details is not None:
                 data.pop('case_data')

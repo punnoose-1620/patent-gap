@@ -83,7 +83,7 @@ class Gemini:
             _strip_unsupported_schema_keys(_schema_without_defs(LiveSearchResults.model_json_schema()))
         )
 
-        finalData = LiveSearchResults.model_validate({})
+        finalData = empty_live_search_results(source=default_source)
 
         while count < MAX_ATTEMPTS:
             final_prompt = PATENT_METADATA_EXTRACTOR + "\nHere's the content : \n" + str(patent_content)

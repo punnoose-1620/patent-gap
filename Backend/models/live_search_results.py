@@ -69,6 +69,29 @@ class AttorneysData(BaseModel):
             return False, "Contact is required"
         return True, ""
 
+def empty_live_search_results(source: str | None = None) -> "LiveSearchResults":
+    """Blank metadata accumulator for incremental Gemini merge (not valid until filled)."""
+    return LiveSearchResults(
+        _id="",
+        title="",
+        status="",
+        description="",
+        currentStatusCode=0,
+        currentStatusDate="",
+        filingDate="",
+        documents=[],
+        document_urls=[],
+        keywords=[],
+        claims=[],
+        attorneys=[],
+        inventors=[],
+        applicant="",
+        current_assignee=[],
+        other_ids=[],
+        source=source,
+    )
+
+
 class LiveSearchResults(BaseModel):
     _id: str                # Format : source_userid_patentid
     title: str
@@ -119,7 +142,7 @@ class LiveSearchResults(BaseModel):
             return False, "Inventors are required"
         if self.applicant is None:
             return False, "Applicant is required"
-        if self.title is None:
+        if not validate_string(self.title):
             return False, "Title is required"
         if self.status is None:
             return False, "Status is required"
@@ -127,6 +150,8 @@ class LiveSearchResults(BaseModel):
             return False, "Description is required"
         if self.currentStatusCode is None:
             return False, "Current status code is required"
+        if not validate_string(self.filingDate):
+            return False, "Filing date is required"
         return True, ""
 
     def merge_with_existing(self, existing_results: 'LiveSearchResults'):
