@@ -302,7 +302,7 @@ def generate_patent_description(case_id):
     
     complete_document_contents = ""
     for content in document_contents:
-        if content.strip() != "":
+        if content is not None and str(content).strip() != "":
             complete_document_contents = f"{complete_document_contents}\n\n{content}"
     
     if complete_document_contents.strip() == "":
@@ -938,12 +938,21 @@ def fetchById(app, patent_id:str, user_id:str):
                     google_patents_details = google_patents.search_by_id(patent_id)
                     if google_patents_details is not None:
                         if isinstance(google_patents_details, dict):
-                            case_data = passToGeminiForMetadata(
+                            extracted = passToGeminiForMetadata(
                                 google_patents_details.get('metadata_content', ''),
                                 claims_content=google_patents_details.get('claims_content'),
-                            ).model_dump()
+                                default_source='google_patents',
+                            )
                         else:
-                            case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
+                            extracted = passToGeminiForMetadata(
+                                str(google_patents_details),
+                                default_source='google_patents',
+                            )
+                        if extracted is None:
+                            raise Exception(
+                                "Failed to extract patent metadata from Google Patents content"
+                            )
+                        case_data = extracted.model_dump()
                         if case_data is not None:
                             patent_page_url = google_patents.get_patent_page_url(patent_id)
                             if patent_page_url:
@@ -991,7 +1000,15 @@ def fetchById(app, patent_id:str, user_id:str):
                     free_patents = FreePatentsOnline()
                     free_patents_details = free_patents.search_by_id(patent_id)
                     if free_patents_details is not None:
-                        case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
+                        extracted = passToGeminiForMetadata(
+                            str(free_patents_details),
+                            default_source='free_patents_online',
+                        )
+                        if extracted is None:
+                            raise Exception(
+                                "Failed to extract patent metadata from Free Patents Online content"
+                            )
+                        case_data = extracted.model_dump()
                         if case_data is not None:
                             case_data['source'] = 'free_patents_online'
                             case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"

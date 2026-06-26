@@ -144,6 +144,17 @@ def claims_to_strings(claims) -> list[str]:
         return strings
     return []
 
+def _normalize_isolated_claims_for_import(isolated_claims):
+    """Backfill missing claim fields so portfolio import validation can pass."""
+    allowed = frozenset({
+        "asserted_claim", "independent_claim", "core_claim", "pivotal_claim",
+    })
+    for i, claim in enumerate(isolated_claims.claims):
+        if not str(claim.market_language_claim or "").strip():
+            claim.market_language_claim = claim.documented_claim
+        if str(claim.claim_type or "").strip().lower() not in allowed:
+            claim.claim_type = "independent_claim" if i == 0 else "pivotal_claim"
+
 def passToGeminiForMetadata(
     text: str,
     claims_content: str | None = None,
@@ -180,6 +191,7 @@ def passToGeminiForMetadata(
                 case_data.claims = documented.claims
             else:
                 isolated_claims = Gemini().extract_claims(patent_content=claim_source)
+                _normalize_isolated_claims_for_import(isolated_claims)
                 validated, error_message = isolated_claims.verify_isolated_claims()
                 if not validated:
                     print(f"Error: Failed to extract claims after {max_attempts} attempts. {error_message}")
@@ -202,7 +214,7 @@ def passToGeminiForMetadata(
                 print(f"\nMAX_ATTEMPTS_ERROR: Failed to extract patent metadata after {max_attempts} attempts")
                 return None
             time.sleep(base_delay * attempt)
-            passToGeminiForMetadata(
+            return passToGeminiForMetadata(
                 text=metadata_content,
                 claims_content=claims_content,
                 max_attempts=max_attempts,

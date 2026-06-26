@@ -83,7 +83,6 @@ class AttorneysData(BaseModel):
 def empty_live_search_results(source: str | None = None) -> "LiveSearchResults":
     """Blank metadata accumulator for incremental Gemini merge (not valid until filled)."""
     return LiveSearchResults(
-        _id="",
         title="",
         status="",
         description="",
@@ -168,13 +167,7 @@ class LiveSearchResults(BaseModel):
     def merge_with_existing(self, existing_results: 'LiveSearchResults'):
         if existing_results is None:
             return False, "Existing results are required and cannot be None"
-        if not validate_string(self._id):
-            self._id = existing_results._id
-        else:
-            if validate_string(existing_results._id):
-                if (existing_results._id != self._id):
-                    return False, "Existing results and new results have different IDs"
-        
+        # Case _id is set after portfolio import; not part of LiveSearchResults fields.
         if not validate_string(self.status) and validate_string(existing_results.status):
             self.status = existing_results.status
         

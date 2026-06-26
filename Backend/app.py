@@ -581,7 +581,7 @@ def profile():
           if not status:
             remove_patent_from_fetching_list(user_id, patent_id)
             if 'not found' in status_message.lower():
-              set_patent_to_error_list(user_id, patent_id, "Thread not found")
+              set_patent_to_error_list(user_id, patent_id, status_message)
         print(f'LOG: Profile Data {user_id}: {profile_data}')
         return jsonify({
             'success': True,

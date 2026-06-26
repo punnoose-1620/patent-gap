@@ -1,6 +1,6 @@
 """Filter infringement claim-pair scores below the similarity threshold."""
 
-CLAIM_SIMILARITY_THRESHOLD = 0.85
+CLAIM_SIMILARITY_THRESHOLD = 0.50
 
 
 def _as_float(value):
