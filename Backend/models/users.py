@@ -295,14 +295,21 @@ def set_patent_to_error_list(
     patent_id = str(patent_id).strip().upper()
     existing_error_patents = user.get('error_patents', [])
     existing_fetching_patents = user.get('fetching_patents', [])
-    existing_error_found = False
-    for key, _ in existing_error_patents.items():
-        if key == patent_id:
-            existing_error_patents[key] = error_message
-            existing_error_found = True
-            break
-    if not existing_error_found:
-        existing_error_patents[patent_id] = error_message
-    if patent_id in existing_fetching_patents:
-        existing_fetching_patents.remove(patent_id)
-    return update_user_fetching_patents(user_id, existing_fetching_patents, existing_error_patents, replace=True)
+    if isinstance(existing_error_patents, dict):
+        existing_error_patents = [
+            str(k).strip().upper() for k in existing_error_patents.keys() if str(k).strip()
+        ]
+    elif not isinstance(existing_error_patents, list):
+        existing_error_patents = []
+    normalized_errors = [
+        str(p).strip().upper() for p in existing_error_patents if str(p).strip()
+    ]
+    if patent_id not in normalized_errors:
+        normalized_errors.append(patent_id)
+    new_fetching_patents = [
+        p for p in existing_fetching_patents
+        if str(p).strip().upper() != patent_id
+    ]
+    return update_user_fetching_patents(
+        user_id, new_fetching_patents, normalized_errors, replace=True
+    )
