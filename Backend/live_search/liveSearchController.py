@@ -18,6 +18,7 @@ from infringement_score_filters import (
     filter_similar_claims,
     score_meets_threshold,
 )
+from models.live_search_results import ProductTargetSources
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
@@ -654,6 +655,54 @@ def resolve_product_search_max_results(search_limitations: dict | None) -> int:
         n = DEFAULT_PRODUCT_SEARCH_MAX_RESULTS
     return max(1, min(n, MAX_PRODUCT_SEARCH_MAX_RESULTS))
 
+
+def normalize_search_limitations(search_limitations) -> dict:
+    if isinstance(search_limitations, dict):
+        return dict(search_limitations)
+    if isinstance(search_limitations, list):
+        if search_limitations and isinstance(search_limitations[0], dict):
+            return dict(search_limitations[0])
+        return {}
+    return {}
+
+
+def resolve_product_target_sources_for_analysis(
+    reference_claims: list[str],
+    search_limitations: dict | None = None,
+) -> dict:
+    """
+    Pick reachable retailer URLs for product search using reference claims,
+    then merge them into search_limitations for downstream Gemini search prompts.
+    """
+    search_limitations = normalize_search_limitations(search_limitations)
+    claims = [
+        claim.strip()
+        for claim in (reference_claims or [])
+        if isinstance(claim, str) and claim.strip()
+    ]
+    if not claims:
+        fallback = ProductTargetSources.default_catalog().filter_reachable()
+        return fallback.merge_urls_into_search_limitations(search_limitations)
+
+    try:
+        isolated = Gemini().isolate_product_target_sources(claims)
+        if isolated.target_sources:
+            print(
+                "LOG: Isolated product target sources:",
+                [source.url for source in isolated.target_sources],
+            )
+            return isolated.merge_urls_into_search_limitations(search_limitations)
+    except Exception as exc:
+        print(f"WARN: isolate_product_target_sources failed: {exc}")
+
+    fallback = ProductTargetSources.default_catalog().filter_reachable()
+    print(
+        "LOG: Using default reachable product target sources:",
+        [source.url for source in fallback.target_sources],
+    )
+    return fallback.merge_urls_into_search_limitations(search_limitations)
+
+
 def searchProductSources(
     keywords:list[str],
     owners:list[str],
@@ -661,14 +710,19 @@ def searchProductSources(
     search_limitations:dict,
     parent_case_id: str = '',
     ):
-    search_limitations = search_limitations or {}
+    search_limitations = normalize_search_limitations(search_limitations)
     max_product_results = resolve_product_search_max_results(search_limitations)
     # Generate Search String using Gemini
     search_string = Gemini().get_search_string(keywords, owners, search_limitations)
     print(f"LOG: Search String: {search_string}")
     print(f"LOG: Product search max results: {max_product_results}")
+    priority_sources = search_limitations.get('priority_target_sources', [])
     # Perform Google Search
-    google_search_results = Gemini().perform_google_search(search_string, max_results=max_product_results)
+    google_search_results = Gemini().perform_google_search(
+        search_string,
+        max_results=max_product_results,
+        priority_target_sources=priority_sources,
+    )
     sites_searched = {}
     product_details_list = []
     session = requests.Session()

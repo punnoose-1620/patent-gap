@@ -685,6 +685,20 @@ def start_product_analysis(
         core_created_product_ids = []
         pivotal_created_product_ids = []
         try:
+            search_limitations = normalize_search_limitations(search_limitations)
+            all_market_claims = []
+            for claim_bucket in (
+                asserted_claims,
+                independent_claims,
+                core_claims,
+                pivotal_claims,
+            ):
+                all_market_claims.extend(claim_bucket or [])
+            search_limitations = resolve_product_target_sources_for_analysis(
+                all_market_claims,
+                search_limitations,
+            )
+
             update_infringement_analysis_flags(
                 case_id=case_id, 
                 category='product'

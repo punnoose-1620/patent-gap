@@ -189,12 +189,40 @@ Owners: <owners_replacement>
 Companies to focus search on: <search_limitations_companies>
 
 Websites to focus search on: <search_limitations_websites>
+
+Priority retailer sources (use site: filters for these domains when possible):
+<priority_target_sources_replacement>
 Do not include any other text or comments.
+"""
+
+ISOLATE_TARGET_SOURCES = """
+You are selecting retailer and marketplace URLs where product infringement searches should focus.
+
+Reference claims (patent / product technology to investigate):
+<reference_claims_replacement>
+
+Available product target sources (you may ONLY choose from this list — do not invent URLs):
+<target_source_structure_replacement>
+
+Return JSON matching this structure (subset of the available sources most relevant to the reference claims):
+<response_structure_replacement>
+
+Rules:
+- Pick sources that can realistically sell products related to the reference claims (same product category and use case).
+- Prefer broad marketplaces and manufacturer storefronts that match the technology domain.
+- Return only entries copied from the Available list (same title and url).
+- Return between 1 and 5 sources.
+- Do not include unrelated retailers (e.g. music, posters, books) unless the claims are about those products.
+- Do not include any other text or comments.
 """
 
 PERFORM_GOOGLE_SEARCH_PROMPT = """
 I am providing you with a search string.
 Perform a google search with the search string.
+
+Priority retailer domains (prefer product results from these sites):
+<priority_target_sources_replacement>
+
 Return the results in the following format:
 {
   "results": [
@@ -208,9 +236,10 @@ Return the results in the following format:
 }
 Rules:
 - Do not include any other text or comments.
-- Return up to <max_results_replacement> distinct product results (prioritize manufacturer and medical-device product pages when relevant).
-- The results should only be live products available for purchase/order. 
-- Do not include any other type of results.
+- Return up to <max_results_replacement> distinct product results.
+- Prefer results from the priority retailer domains listed above.
+- The results should only be live products available for purchase/order.
+- Do not include books, music, posters, wall art, or unrelated accessories unless the search is explicitly for those.
 - Do not assume or build URLs. The URLs should be the exact URLs from the search results.
 
 Here's is the search string to perform the google search:
