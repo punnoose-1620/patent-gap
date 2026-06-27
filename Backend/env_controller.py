@@ -16,6 +16,10 @@ def getEnvKey(key):
         return os.environ.get('OPENAI_API_KEY')
     elif key == 'gemini':
         return os.environ.get('GEMINI_API_KEY')
+    elif key == 'google':
+        return os.environ.get('GOOGLE_API_KEY')
+    elif key == 'google_cse':
+        return os.environ.get('GOOGLE_CSE_ID')
     else:
         return None
 

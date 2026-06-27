@@ -5,6 +5,8 @@ from urllib.parse import urlparse
 import requests
 from pydantic import BaseModel, field_validator
 
+from web_search import match_runtime_block_keyword
+
 _URL_CHECK_TIMEOUT = 10
 _PRODUCT_URL_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -568,6 +570,13 @@ class GoogleSearchResultsList(BaseModel):
                 return False, "For result "+str(index+1)+": "+error_message
         return True, ""
 
+def _reject_error_page_text(field_label: str, text: str):
+    keyword = match_runtime_block_keyword(text)
+    if keyword:
+        return False, f"{field_label} indicates a blocked page ({keyword!r})"
+    return True, ""
+
+
 class InfringingProductDetail(BaseModel):
     source: str
     product_id: str
@@ -585,10 +594,18 @@ class InfringingProductDetail(BaseModel):
             return False, "Product URL is required"
         if self.product_name is None:
             return False, "Product name is required"
+        validated, error_message = _reject_error_page_text("Product name", self.product_name)
+        if not validated:
+            return False, error_message
         for index in range(len(self.claims)):
             claim = self.claims[index]
             if not isinstance(claim, str) or not claim.strip():
                 return False, "For claim "+str(index+1)+": Claim is empty"
+            validated, error_message = _reject_error_page_text(
+                f"Claim {index + 1}", claim
+            )
+            if not validated:
+                return False, error_message
         for index in range(len(self.similar_claims)):
             claim = self.similar_claims[index]
             validated, error_message = claim.validate_product_similarity_claim()

@@ -246,6 +246,45 @@ Here's is the search string to perform the google search:
 <search_string_replacement>
 """
 
+PERFORM_GOOGLE_SEARCH_FROM_CLAIMS_PROMPT = """
+You are performing a Google product search to find live products that may read on the reference claims below.
+
+Reference claims (entire bucket — use full context for the search):
+<reference_claims_replacement>
+
+Patent owners to exclude from results (do not return products sold by these assignees):
+<owners_replacement>
+
+Companies to focus search on:
+<search_limitations_companies>
+
+Websites to focus search on:
+<search_limitations_websites>
+
+Priority retailer domains (strongly prefer product results from these sites):
+<priority_target_sources_replacement>
+
+Return the results in the following format:
+{
+  "results": [
+    {
+      "title": "<string: Title of the result>",
+      "url": "<string: URL of the result>",
+      "website_name": "<string: Name of the website of the result>",
+      "description": "<string: Description of the result>",
+    }
+  ]
+}
+Rules:
+- Do not include any other text or comments.
+- Return up to <max_results_replacement> distinct product results.
+- Prefer results from the priority retailer domains listed above.
+- The results should only be live products available for purchase/order.
+- Do not include books, music, posters, wall art, or unrelated accessories unless the claims are about those.
+- Do not assume or build URLs. The URLs should be the exact URLs from the search results.
+- Exclude products from the patent owners listed above when possible.
+"""
+
 PRODUCT_DETAILS_EXTRACTOR = """
 I am providing you with the content of a product page from a relevant source.
 Extract the essential details of the product from the content.

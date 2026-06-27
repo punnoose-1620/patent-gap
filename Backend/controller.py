@@ -667,10 +667,14 @@ def start_product_analysis(
     keywords: list[str],
     owners: list[str],
     search_limitations: list[dict],
-    asserted_claims: list[dict] = [], 
-    independent_claims: list[dict] = [], 
-    core_claims: list[dict] = [], 
-    pivotal_claims: list[dict] = [],
+    original_asserted_claims: list[dict] = [], 
+    original_independent_claims: list[dict] = [], 
+    original_core_claims: list[dict] = [], 
+    original_pivotal_claims: list[dict] = [],
+    market_asserted_claims: list[dict] = [], 
+    market_independent_claims: list[dict] = [], 
+    market_core_claims: list[dict] = [], 
+    market_pivotal_claims: list[dict] = [],
     search_type: str = 'generic'
     ):
     with app.app_context():
@@ -688,10 +692,10 @@ def start_product_analysis(
             search_limitations = normalize_search_limitations(search_limitations)
             all_market_claims = []
             for claim_bucket in (
-                asserted_claims,
-                independent_claims,
-                core_claims,
-                pivotal_claims,
+                original_asserted_claims,
+                original_independent_claims,
+                original_core_claims,
+                original_pivotal_claims,
             ):
                 all_market_claims.extend(claim_bucket or [])
             search_limitations = resolve_product_target_sources_for_analysis(
@@ -704,7 +708,7 @@ def start_product_analysis(
                 category='product'
                 )
             
-            if len(asserted_claims) > 0:
+            if len(original_asserted_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -714,10 +718,23 @@ def start_product_analysis(
                 asserted_product_details_list, asserted_created_product_ids = searchProductSources(
                     keywords=keywords, 
                     owners=owners, 
-                    reference_claims=asserted_claims, 
+                    reference_claims=original_asserted_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
+                market_asserted_product_details_list, market_asserted_created_product_ids = searchProductSources(
+                    keywords=keywords, 
+                    owners=owners, 
+                    reference_claims=market_asserted_claims, 
+                    search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    )
+                for product_detail in market_asserted_product_details_list:
+                    if product_detail not in asserted_product_details_list:
+                        asserted_product_details_list.append(product_detail)
+                for product_id in market_asserted_created_product_ids:
+                    if product_id not in asserted_created_product_ids:
+                        asserted_created_product_ids.append(product_id)
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -733,7 +750,7 @@ def start_product_analysis(
                     error_message="No generic/asserted claims provided"
                 )
             
-            if len(independent_claims) > 0:
+            if len(original_independent_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -742,10 +759,23 @@ def start_product_analysis(
                 independent_product_details_list, independent_created_product_ids = searchProductSources(
                     keywords=keywords, 
                     owners=owners, 
-                    reference_claims=independent_claims, 
+                    reference_claims=original_independent_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
+                market_independent_product_details_list, market_independent_created_product_ids = searchProductSources(
+                    keywords=keywords, 
+                    owners=owners, 
+                    reference_claims=market_independent_claims, 
+                    search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    )
+                for product_detail in market_independent_product_details_list:
+                    if product_detail not in independent_product_details_list:
+                        independent_product_details_list.append(product_detail)
+                for product_id in market_independent_created_product_ids:
+                    if product_id not in independent_created_product_ids:
+                        independent_created_product_ids.append(product_id)
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -759,7 +789,7 @@ def start_product_analysis(
                     error_message="No independent claims provided"
                 )
             
-            if len(core_claims) > 0:
+            if len(original_core_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -768,10 +798,23 @@ def start_product_analysis(
                 core_product_details_list, core_created_product_ids = searchProductSources(
                     keywords=keywords, 
                     owners=owners, 
-                    reference_claims=core_claims, 
+                    reference_claims=original_core_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
+                market_core_product_details_list, market_core_created_product_ids = searchProductSources(
+                    keywords=keywords, 
+                    owners=owners, 
+                    reference_claims=market_core_claims, 
+                    search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    )
+                for product_detail in market_core_product_details_list:
+                    if product_detail not in core_product_details_list:
+                        core_product_details_list.append(product_detail)
+                for product_id in market_core_created_product_ids:
+                    if product_id not in core_created_product_ids:
+                        core_created_product_ids.append(product_id)
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -785,7 +828,7 @@ def start_product_analysis(
                     error_message="No core claims provided"
                 )
             
-            if len(pivotal_claims) > 0:
+            if len(original_pivotal_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -794,10 +837,23 @@ def start_product_analysis(
                 pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
                     keywords=keywords, 
                     owners=owners, 
-                    reference_claims=pivotal_claims, 
+                    reference_claims=original_pivotal_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
+                market_pivotal_product_details_list, market_pivotal_created_product_ids = searchProductSources(
+                    keywords=keywords, 
+                    owners=owners, 
+                    reference_claims=market_pivotal_claims, 
+                    search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    )
+                for product_detail in market_pivotal_product_details_list:
+                    if product_detail not in pivotal_product_details_list:
+                        pivotal_product_details_list.append(product_detail)
+                for product_id in market_pivotal_created_product_ids:
+                    if product_id not in pivotal_created_product_ids:
+                        pivotal_created_product_ids.append(product_id)
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -875,7 +931,7 @@ def start_product_analysis(
                 update_type="product",
                 status='Error',
                 **_product_bucket_error_kwargs(
-                    asserted_claims, independent_claims, core_claims, pivotal_claims,
+                    original_asserted_claims, original_independent_claims, original_core_claims, original_pivotal_claims,
                     asserted_product_details_list, independent_product_details_list,
                     core_product_details_list, pivotal_product_details_list,
                 ),

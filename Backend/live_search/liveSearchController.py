@@ -19,11 +19,13 @@ from infringement_score_filters import (
     score_meets_threshold,
 )
 from models.live_search_results import ProductTargetSources
+from live_search.googleSearch import is_google_custom_search_configured, productGoogleSearch
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
 from web_scraper.free_patents_online import FreePatentsOnline
 from web_scraper.google_patents import GooglePatents
+from web_search import check_html_for_runtime_errors
 
 TITLE_SIMILARITY_THRESHOLD = 0.85
 DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
@@ -550,6 +552,129 @@ def alreadyExistsInProductDetailsList(product_detail, product_details_list: list
             return True
     return False
 
+
+def _focus_urls_from_search_limitations(search_limitations: dict) -> list[str]:
+    urls = []
+    for entry in search_limitations.get("priority_target_sources") or []:
+        if isinstance(entry, dict) and entry.get("url"):
+            urls.append(entry["url"])
+        elif isinstance(entry, str) and entry.strip():
+            urls.append(entry.strip())
+    for entry in search_limitations.get("urls") or []:
+        if isinstance(entry, str) and entry.strip():
+            urls.append(entry.strip())
+    return list(dict.fromkeys(urls))
+
+
+def _discover_products_via_gemini(
+    reference_claims: list[str],
+    owners: list[str],
+    search_limitations: dict,
+    max_product_results: int,
+):
+    print(
+        "LOG: Gemini product search (full bucket claims; no query-generation LLM)"
+    )
+    google_search_results = Gemini().perform_google_search_from_claims(
+        reference_claims,
+        owners=owners,
+        search_limitations=search_limitations,
+        max_results=max_product_results,
+    )
+    print(f"LOG: Gemini returned {len(google_search_results)} search result(s)")
+    session = requests.Session()
+    session.headers.update(SESSION_HEADERS)
+    extracted = []
+    results_to_process = google_search_results[:max_product_results]
+    for result in _tqdm(
+        results_to_process,
+        desc="Fetching Product Details from Gemini Search Results",
+    ):
+        url = result.url
+        try:
+            html_content = performSearch(url, session)
+        except (
+            ConnectionResetError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.HTTPError,
+        ) as e:
+            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+            continue
+        except Exception as e:
+            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+            continue
+        is_error_page, error_keyword = check_html_for_runtime_errors(
+            html_content, url=url
+        )
+        if is_error_page:
+            print(
+                f"\nERROR: Blocked page content for URL: {url} — {error_keyword}"
+            )
+            continue
+        try:
+            product_details = Gemini().get_product_details(html_content)
+        except Exception as e:
+            print(f"\nERROR: Product details extraction failed for {url}: {str(e)}")
+            continue
+        extracted.append(product_details)
+
+    print(f"LOG: Gemini discovery extracted {len(extracted)} product(s)")
+    return extracted
+
+
+def _persist_extracted_products(
+    extracted_products,
+    reference_claims: list[str],
+    parent_case_id: str,
+    product_details_list: list,
+    created_ids: list,
+    sites_searched: dict,
+):
+    for product_details in extracted_products:
+        website_searched = product_details.source or "unknown"
+        sites_searched[website_searched] = sites_searched.get(website_searched, 0) + 1
+        try:
+            infringement_analysis = Gemini().analyze_product_infringements(
+                reference_claims, product_details.claims
+            )
+            product_details.similar_claims = [
+                item.model_dump() if hasattr(item, "model_dump") else item
+                for item in infringement_analysis
+            ]
+            product_details.similar_claims = filter_similar_claims(product_details.similar_claims)
+            product_id = product_details.product_id
+            product_url = product_details.product_url
+            print(f"LOG: Product ID: {product_id}")
+            print(f"LOG: Product URL: {product_url}")
+            if alreadyExistsInProductDetailsList(product_details, product_details_list):
+                continue
+            if (product_id is None) or (product_url is None):
+                continue
+            if (product_id == "") or (product_url == ""):
+                continue
+            if (str(product_id).lower() == "unknown") or (str(product_url).lower() == "unknown"):
+                continue
+            if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
+                continue
+            payload = product_details.model_dump()
+            payload = filter_infringement_entry(payload)
+            payload["_id"] = (
+                "product_"
+                + str(product_id)
+                + "_"
+                + str(datetime.now().strftime("%Y%m%d%H%M%S"))
+            )
+            creation_result = infringement_model.create_infringement(
+                payload,
+                parent_case_id=parent_case_id or None,
+            )
+            if creation_result["success"]:
+                created_ids.append(creation_result["infringement_id"])
+            product_details_list.append(payload)
+        except Exception as e:
+            print(f"\nERROR: Error analyzing product infringements: {str(e)}")
+            continue
+
 # Final Search Functions
 
 def searchPatentSources(
@@ -682,34 +807,12 @@ def resolve_product_target_sources_for_analysis(
     reference_claims: list[str],
     search_limitations: dict | None = None,
 ) -> dict:
-    """
-    Pick reachable retailer URLs for product search using reference claims,
-    then merge them into search_limitations for downstream Gemini search prompts.
-    """
+    """Merge reachable default retailer URLs into search_limitations (no LLM)."""
+    del reference_claims
     search_limitations = normalize_search_limitations(search_limitations)
-    claims = [
-        claim.strip()
-        for claim in (reference_claims or [])
-        if isinstance(claim, str) and claim.strip()
-    ]
-    if not claims:
-        fallback = ProductTargetSources.default_catalog().filter_reachable()
-        return fallback.merge_urls_into_search_limitations(search_limitations)
-
-    try:
-        isolated = Gemini().isolate_product_target_sources(claims)
-        if isolated.target_sources:
-            print(
-                "LOG: Isolated product target sources:",
-                [source.url for source in isolated.target_sources],
-            )
-            return isolated.merge_urls_into_search_limitations(search_limitations)
-    except Exception as exc:
-        print(f"WARN: isolate_product_target_sources failed: {exc}")
-
     fallback = ProductTargetSources.default_catalog().filter_reachable()
     print(
-        "LOG: Using default reachable product target sources:",
+        "LOG: Product target sources (catalog, no LLM):",
         [source.url for source in fallback.target_sources],
     )
     return fallback.merge_urls_into_search_limitations(search_limitations)
@@ -722,78 +825,53 @@ def searchProductSources(
     search_limitations:dict,
     parent_case_id: str = '',
     ):
+    del keywords
     search_limitations = normalize_search_limitations(search_limitations)
     max_product_results = resolve_product_search_max_results(search_limitations)
-    # Generate Search String using Gemini
-    search_string = Gemini().get_search_string(keywords, owners, search_limitations)
-    print(f"LOG: Search String: {search_string}")
     print(f"LOG: Product search max results: {max_product_results}")
-    priority_sources = search_limitations.get('priority_target_sources', [])
-    # Perform Google Search
-    google_search_results = Gemini().perform_google_search(
-        search_string,
-        max_results=max_product_results,
-        priority_target_sources=priority_sources,
-    )
+    print(f"LOG: Reference claims in bucket: {len(reference_claims or [])}")
     sites_searched = {}
     product_details_list = []
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
     created_ids = []
-    results_to_process = google_search_results[:max_product_results]
-    # Iterate through Google Search Results
-    for result in _tqdm(results_to_process, desc="Fetching Product Details from Google Search Results"):
-        website_searched = result.website_name
-        if website_searched not in sites_searched.keys():
-            sites_searched[website_searched] = 0
-        sites_searched[website_searched] += 1
-        url = result.url
-        # Get HTML Content for each URL from search results
-        try:
-            html_content = performSearch(url, session)
-        except (ConnectionResetError, requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
-            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
-            continue
-        except Exception as e:
-            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
-            continue
-        # Pass HTML Content to Gemini to extract product details
-        product_details = Gemini().get_product_details(html_content)
-        # Analyze Product Infringements
-        try:
-            infringement_analysis = Gemini().analyze_product_infringements(reference_claims, product_details.claims)
-            product_details.similar_claims = [
-                item.model_dump() if hasattr(item, "model_dump") else item
-                for item in infringement_analysis
-            ]
-            product_details.similar_claims = filter_similar_claims(product_details.similar_claims)
-            product_id = product_details.product_id
-            product_url = product_details.product_url
-            print(f"LOG: Product ID: {product_id}")
-            print(f"LOG: Product URL: {product_url}")
-            if alreadyExistsInProductDetailsList(product_details, product_details_list):
-                continue
-            if (product_id is None) or (product_url is None):
-                continue
-            if (product_id == "") or (product_url == ""):
-                continue
-            if (str(product_id).lower() == "unknown") or (str(product_url).lower == "unknown"):
-                continue
-            if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
-                continue
-            payload = product_details.model_dump()
-            payload = filter_infringement_entry(payload)
-            payload['_id'] = 'product_' + str(product_id) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
-            creation_result = infringement_model.create_infringement(
-                payload,
-                parent_case_id=parent_case_id or None,
-            )
-            if creation_result['success']:
-                created_ids.append(creation_result['infringement_id'])
-            product_details_list.append(payload)
-        except Exception as e:
-            print(f"\nERROR: Error analyzing product infringements: {str(e)}")
-            continue
+    focus_urls = _focus_urls_from_search_limitations(search_limitations)
+
+    extracted_products = _discover_products_via_gemini(
+        reference_claims,
+        owners,
+        search_limitations,
+        max_product_results,
+    )
+    _persist_extracted_products(
+        extracted_products,
+        reference_claims,
+        parent_case_id,
+        product_details_list,
+        created_ids,
+        sites_searched,
+    )
+
+    if not product_details_list and is_google_custom_search_configured():
+        print(
+            "LOG: Gemini found no products; falling back to Google Custom Search "
+            "(claim-derived terms)"
+        )
+        extracted_products = productGoogleSearch(
+            reference_claims,
+            focus_urls,
+            owners=owners,
+            max_results=max_product_results,
+        )
+        _persist_extracted_products(
+            extracted_products,
+            reference_claims,
+            parent_case_id,
+            product_details_list,
+            created_ids,
+            sites_searched,
+        )
+    elif not product_details_list:
+        print("LOG: No products found via Gemini; CSE not configured")
+
     print(f"LOG: Product Search Sources: {json.dumps(sites_searched, indent=4)}")
     print(f"LOG: Products Found: {len(product_details_list)}")
     return product_details_list, created_ids

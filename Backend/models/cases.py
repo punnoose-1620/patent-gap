@@ -356,6 +356,9 @@ def update_infringement_analysis_flags(
     case_data = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     if case_data is None:
         return False
+
+    patent_time_taken = case_data.get('patent_analysis_time_taken', '')
+    product_time_taken = case_data.get('product_analysis_time_taken', '')
     last_updated = dt.now()
     next_status = 'Started'
     update_data = {
@@ -364,22 +367,26 @@ def update_infringement_analysis_flags(
     }
     existing_status = case_data.get('infringement_analysis_status', '')
     if update_type.strip().lower() == 'completed':
-        if category == 'patent':
-            if time_taken != '':
-                update_data['patent_analysis_time_taken'] = time_taken
-            if 'product' in existing_status.strip().lower():
-                next_status = 'Completed'
-                update_data['last_infringement_analysis_date'] = dt.now()
-            else:
-                next_status = 'Patent Sources Completed'
-        elif category == 'product':
-            if time_taken != '':
-                update_data['product_analysis_time_taken'] = time_taken
-            if 'patent' in existing_status.strip().lower():
-                next_status = 'Completed'
-                update_data['last_infringement_analysis_date'] = dt.now()
-            else:
-                next_status = 'Product Sources Completed'
+        if patent_time_taken != '' and product_time_taken != '':
+            next_status = 'Completed'
+            update_data['last_infringement_analysis_date'] = dt.now()
+        else:
+            if category == 'patent':
+                if time_taken != '':
+                    update_data[f'{category}_analysis_time_taken'] = time_taken
+                if 'product' in existing_status.strip().lower():
+                    next_status = 'Completed'
+                    update_data['last_infringement_analysis_date'] = dt.now()
+                else:
+                    next_status = 'Patent Sources Completed'
+            elif category == 'product':
+                if time_taken != '':
+                    update_data[f'{category}_analysis_time_taken'] = time_taken
+                if 'patent' in existing_status.strip().lower():
+                    next_status = 'Completed'
+                    update_data['last_infringement_analysis_date'] = dt.now()
+                else:
+                    next_status = 'Product Sources Completed'
     elif update_type.strip().lower() == 'error':
         next_status = 'Error'
         if error_message != '':
