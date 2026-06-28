@@ -1043,15 +1043,37 @@ def api_update_attorney():
       name: attorney_data
       description: Attorney information
       required: true
-    responses:
-      200:
-        description: Attorney updated successfully
-    returns structure:
-      {
-        'success': True,
-        'message': 'User updated successfully',
-        'user_id': 'user_id'
-      }
+  responses:
+    200:
+      description: Attorney updated successfully
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: true
+          message:
+            type: string
+            example: User updated successfully
+          user_id:
+            type: string
+            example: user_123
+    400:
+      description: Invalid input data
+      schema:
+        $ref: '#/definitions/ErrorResponse'
+    401:
+      description: Not authenticated
+      schema:
+        $ref: '#/definitions/ErrorResponse'
+    404:
+      description: Attorney not found
+      schema:
+        $ref: '#/definitions/ErrorResponse'
+    500:
+      description: Server error
+      schema:
+        $ref: '#/definitions/ErrorResponse'
   """
   try:
     data = request.get_json()
@@ -2324,15 +2346,15 @@ def getInfringementChart(case_id):
                   type: string
                   example: "2026-05-01T15:30:00Z"
     401:
-      description: Missing user session (`error_code: NO_SESSION`).
+      description: "Missing user session (`error_code: NO_SESSION`)."
     404:
-      description: Case not found (`error_code: CASE_NOT_FOUND`).
+      description: "Case not found (`error_code: CASE_NOT_FOUND`)."
     422:
       description: |
         Case is missing data needed to build a chart. `error_code` is one of
         `NO_PARENT_CLAIMS`, `NO_INFRINGEMENTS`, or `INFRINGEMENT_CLAIMS_MISSING`.
     500:
-      description: Internal server error (`error_code: INTERNAL_ERROR`).
+      description: "Internal server error (`error_code: INTERNAL_ERROR`)."
   """
   user_id = get_user_id()
   if not user_id:
