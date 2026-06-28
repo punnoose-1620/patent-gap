@@ -287,10 +287,26 @@ class Gemini:
         
         companies = search_limitations.get('companies', [])
         websites = search_limitations.get('urls', [])
+        priority_sources = search_limitations.get('priority_target_sources', [])
+        priority_lines = []
+        for entry in priority_sources:
+            if isinstance(entry, dict):
+                title = entry.get('title', '')
+                url = entry.get('url', '')
+                if title or url:
+                    priority_lines.append(f"- {title}: {url}".strip())
+            elif isinstance(entry, str) and entry.strip():
+                priority_lines.append(f"- {entry.strip()}")
+        if not priority_lines and websites:
+            priority_lines = [f"- {url}" for url in websites if isinstance(url, str) and url.strip()]
         final_prompt = SEARCH_STRING_GENERATOR.replace("<keywords_replacement>", "\n".join(keywords))
         final_prompt = final_prompt.replace("<owners_replacement>", "\n".join(owners))
         final_prompt = final_prompt.replace("<search_limitations_companies>", "\n".join(companies))
         final_prompt = final_prompt.replace("<search_limitations_websites>", "\n".join(websites))
+        final_prompt = final_prompt.replace(
+            "<priority_target_sources_replacement>",
+            "\n".join(priority_lines) if priority_lines else "(none specified)",
+        )
         response = self._client.models.generate_content(
             model=model_name,
             contents=final_prompt,
@@ -301,14 +317,28 @@ class Gemini:
         self, 
         search_string: str,
         max_results: int = 30,
+        priority_target_sources: list | None = None,
         model_name:str = 'gemini-2.5-flash',
         count:int = 0,
         error_message:str = ""
         ):
         if count >= MAX_ATTEMPTS:
             raise Exception(f"Google_Search_Error: Failed to perform Google search after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+        priority_lines = []
+        for entry in priority_target_sources or []:
+            if isinstance(entry, dict):
+                title = entry.get('title', '')
+                url = entry.get('url', '')
+                if title or url:
+                    priority_lines.append(f"- {title}: {url}".strip())
+            elif isinstance(entry, str) and entry.strip():
+                priority_lines.append(f"- {entry.strip()}")
         final_prompt = PERFORM_GOOGLE_SEARCH_PROMPT.replace("<search_string_replacement>", search_string)
         final_prompt = final_prompt.replace("<max_results_replacement>", str(max_results))
+        final_prompt = final_prompt.replace(
+            "<priority_target_sources_replacement>",
+            "\n".join(priority_lines) if priority_lines else "(none specified)",
+        )
         if error_message != "":
             final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
             final_prompt += "Do not repeat the same mistake and try again."
@@ -330,11 +360,183 @@ class Gemini:
             return self.perform_google_search(
                 search_string=search_string,
                 max_results=max_results,
+                priority_target_sources=priority_target_sources,
                 model_name=model_name,
                 count=count + 1,
                 error_message=error_message
             )
         return wrapper.results
+
+    def perform_google_search_from_claims(
+        self,
+        product_name: str,
+        reference_claims: list[str],
+        owners: list[str] | None = None,
+        search_limitations: dict | None = None,
+        max_results: int = 30,
+        model_name: str = 'gemini-2.5-flash',
+        count: int = 0,
+        error_message: str = "",
+    ):
+        if count >= MAX_ATTEMPTS:
+            raise Exception(
+                f"Google_Search_Error: Failed to perform Google search after {MAX_ATTEMPTS} attempts.\n\t{error_message}"
+            )
+        limitations = search_limitations or {}
+        claims_text = "\n".join(
+            claim.strip()
+            for claim in (reference_claims or [])
+            if isinstance(claim, str) and claim.strip()
+        )
+        if not claims_text:
+            return []
+
+        companies = limitations.get("companies", [])
+        websites = limitations.get("urls", [])
+        priority_sources = limitations.get("priority_target_sources", [])
+        priority_lines = []
+        for entry in priority_sources:
+            if isinstance(entry, dict):
+                title = entry.get("title", "")
+                url = entry.get("url", "")
+                if title or url:
+                    priority_lines.append(f"- {title}: {url}".strip())
+            elif isinstance(entry, str) and entry.strip():
+                priority_lines.append(f"- {entry.strip()}")
+        if not priority_lines and websites:
+            priority_lines = [
+                f"- {url}" for url in websites if isinstance(url, str) and url.strip()
+            ]
+
+        final_prompt = PERFORM_GOOGLE_SEARCH_FROM_CLAIMS_PROMPT.replace(
+            "<reference_claims_replacement>", claims_text
+        )
+        final_prompt = final_prompt.replace(
+            "<product_name_replacement>", product_name
+            )
+        final_prompt = final_prompt.replace(
+            "<owners_replacement>",
+            "\n".join(owners or []) or "(none specified)",
+        )
+        final_prompt = final_prompt.replace(
+            "<search_limitations_companies>",
+            "\n".join(companies) if companies else "(none specified)",
+        )
+        final_prompt = final_prompt.replace(
+            "<search_limitations_websites>",
+            "\n".join(websites) if websites else "(none specified)",
+        )
+        final_prompt = final_prompt.replace(
+            "<priority_target_sources_replacement>",
+            "\n".join(priority_lines) if priority_lines else "(none specified)",
+        )
+        final_prompt = final_prompt.replace("<max_results_replacement>", str(max_results))
+        if error_message != "":
+            final_prompt += (
+                "\n\nYour previous response failed validation with the error message: "
+                + error_message
+                + "\n"
+            )
+            final_prompt += "Do not repeat the same mistake and try again."
+
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": GoogleSearchResultsList.model_json_schema(),
+            },
+        )
+        wrapper = GoogleSearchResultsList.model_validate_json(response.text)
+        validated, error_message = wrapper.validate_google_search_results_list()
+        if not validated:
+            if count >= MAX_ATTEMPTS:
+                raise Exception(
+                    f"Google_Search_Error: Failed to perform Google search after {MAX_ATTEMPTS} attempts.\n\t{error_message}"
+                )
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.perform_google_search_from_claims(
+                product_name=product_name,
+                reference_claims=reference_claims,
+                owners=owners,
+                search_limitations=search_limitations,
+                max_results=max_results,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message,
+            )
+        return wrapper.results
+
+    def isolate_product_target_sources(
+        self,
+        reference_claims: list[str],
+        catalog: ProductTargetSources | None = None,
+        model_name: str = 'gemini-2.5-flash',
+        count: int = 0,
+        error_message: str = "",
+    ) -> ProductTargetSources:
+        if count >= MAX_ATTEMPTS:
+            raise Exception(
+                f"Isolate_Product_Target_Sources_Error: Failed after {MAX_ATTEMPTS} attempts.\n\t{error_message}"
+            )
+        catalog = catalog or ProductTargetSources.default_catalog()
+        claims_text = "\n".join(
+            claim.strip() for claim in (reference_claims or []) if isinstance(claim, str) and claim.strip()
+        )
+        if not claims_text:
+            return catalog.filter_reachable()
+
+        available_lines = [
+            f"- {source.title} | {source.url} | scope={', '.join(source.scope or [])}"
+            for source in catalog.target_sources
+        ]
+        final_prompt = ISOLATE_TARGET_SOURCES.replace("<reference_claims_replacement>", claims_text)
+        final_prompt = final_prompt.replace(
+            "<target_source_structure_replacement>",
+            "\n".join(available_lines),
+        )
+        final_prompt = final_prompt.replace(
+            "<response_structure_replacement>",
+            ProductTargetSources.get_description(),
+        )
+        if error_message:
+            final_prompt += (
+                "\n\nYour previous response failed validation with the error message: "
+                + error_message
+                + "\nDo not repeat the same mistake and try again."
+            )
+
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": ProductTargetSources.model_json_schema(),
+            },
+        )
+        isolated = ProductTargetSources.model_validate_json(response.text)
+        schema_ok, schema_err = isolated.validate_against_catalog(catalog)
+        if not schema_ok:
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.isolate_product_target_sources(
+                reference_claims=reference_claims,
+                catalog=catalog,
+                model_name=model_name,
+                count=count + 1,
+                error_message=schema_err,
+            )
+
+        reachable = isolated.filter_reachable()
+        if not reachable.target_sources:
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.isolate_product_target_sources(
+                reference_claims=reference_claims,
+                catalog=catalog,
+                model_name=model_name,
+                count=count + 1,
+                error_message="No selected target sources passed URL validation",
+            )
+        return reachable
     
     def get_product_details(
         self, 

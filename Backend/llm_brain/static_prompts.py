@@ -189,12 +189,41 @@ Owners: <owners_replacement>
 Companies to focus search on: <search_limitations_companies>
 
 Websites to focus search on: <search_limitations_websites>
+
+Priority retailer sources (use site: filters for these domains when possible):
+<priority_target_sources_replacement>
 Do not include any other text or comments.
+"""
+
+ISOLATE_TARGET_SOURCES = """
+You are selecting retailer and marketplace URLs where product infringement searches should focus.
+
+Reference claims (patent / product technology to investigate):
+<reference_claims_replacement>
+
+Available product target sources (you may ONLY choose from this list — do not invent URLs):
+<target_source_structure_replacement>
+
+Return JSON matching this structure (subset of the available sources most relevant to the reference claims):
+<response_structure_replacement>
+
+Rules:
+- Pick sources that can realistically sell products related to the reference claims (same product category and use case).
+- Prefer broad marketplaces and manufacturer storefronts that match the technology domain.
+- Return only entries copied from the Available list (same title and url).
+- Return between 1 and 5 sources.
+- Do not include unrelated retailers (e.g. music, posters, books) unless the claims are about those products.
+- Do not include any other text or comments.
+- Avoid broader sites like Amazon, eBay, Walmart, etc. Only include specific retailer sites.
 """
 
 PERFORM_GOOGLE_SEARCH_PROMPT = """
 I am providing you with a search string.
 Perform a google search with the search string.
+
+Priority retailer domains (prefer product results from these sites):
+<priority_target_sources_replacement>
+
 Return the results in the following format:
 {
   "results": [
@@ -208,13 +237,59 @@ Return the results in the following format:
 }
 Rules:
 - Do not include any other text or comments.
-- Return up to <max_results_replacement> distinct product results (prioritize manufacturer and medical-device product pages when relevant).
-- The results should only be live products available for purchase/order. 
-- Do not include any other type of results.
+- Return up to <max_results_replacement> distinct product results.
+- Prefer results from the priority retailer domains listed above.
+- The results should only be live products available for purchase/order.
+- Do not include books, music, posters, wall art, or unrelated accessories unless the search is explicitly for those.
 - Do not assume or build URLs. The URLs should be the exact URLs from the search results.
 
 Here's is the search string to perform the google search:
 <search_string_replacement>
+"""
+
+PERFORM_GOOGLE_SEARCH_FROM_CLAIMS_PROMPT = """
+You are performing a Google product search to find live products that may read on the reference claims below.
+
+Product name to search for:
+<product_name_replacement>
+
+Reference claims (entire bucket — use full context for the search):
+<reference_claims_replacement>
+
+Patent owners to exclude from results (do not return products sold by these assignees):
+<owners_replacement>
+
+Companies to focus search on:
+<search_limitations_companies>
+
+Websites to focus search on:
+<search_limitations_websites>
+
+Priority retailer domains (strongly prefer product results from these sites):
+<priority_target_sources_replacement>
+
+Return the results in the following format:
+{
+  "results": [
+    {
+      "title": "<string: Title of the result>",
+      "url": "<string: URL of the result>",
+      "website_name": "<string: Name of the website of the result>",
+      "description": "<string: Description of the result>",
+    }
+  ]
+}
+Rules:
+- Do not include any other text or comments.
+- Return up to <max_results_replacement> distinct product results.
+- Prefer results from the priority retailer domains listed above.
+- The results should only be live products available for purchase/order.
+- DO not build URLs. The URLs should be the exact URLs from the search results.
+- Do not include books, music, posters, wall art, or unrelated accessories unless the claims are about those.
+- Do not assume or build URLs. The URLs should be the exact URLs from the search results.
+- Exclude products from the patent owners listed above when possible.
+- Only include products directly related to the reference claims and the product name.
+- Avoid non-product pages like search results like /music, /books, etc.
 """
 
 PRODUCT_DETAILS_EXTRACTOR = """

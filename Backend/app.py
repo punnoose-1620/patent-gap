@@ -574,6 +574,14 @@ def profile():
     print(f'LOG: {user_id} Get Profile Data')
     try:
         profile_data = get_user_profile(user_id)
+        fetching_patents = profile_data.get('fetching_patents', [])
+        for patent_id in fetching_patents:
+          thread_name = f'{patent_id}-{user_id}'
+          status, status_message = check_thread_status(thread_name)
+          if not status:
+            remove_patent_from_fetching_list(user_id, patent_id)
+            if 'not found' in status_message.lower():
+              set_patent_to_error_list(user_id, patent_id, status_message)
         print(f'LOG: Profile Data {user_id}: {profile_data}')
         return jsonify({
             'success': True,
@@ -1749,6 +1757,7 @@ def fetch_patent_from_uspto():
     )
   thread = threading.Thread(
     target=fetchById,
+    name=f'{patent_id}-{user_id}',
     args=(app, patent_id, user_id),
     daemon=True,
   )
@@ -1760,6 +1769,18 @@ def fetch_patent_from_uspto():
   }
   return jsonify(responseBody), 200
 
+@app.route('/api/check-fetching-thread-status/<patent_id>', methods=['GET'])
+def check_fetching_thread_status(patent_id):
+  user_id = get_user_id()
+  if not user_id:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {user_id} Checking Fetching Thread Status for Patent: {patent_id}')
+
+  status, message = check_thread_status(f'{patent_id}-{user_id}')
+  status_code = 200 if status else 400
+  return jsonify({'success': status, 'message': message}), status_code
+  
 @app.route('/api/bulk-fetch', methods=['POST'])
 def bulk_fetch():
   """
@@ -2068,13 +2089,18 @@ def live_similarity_analysis(case_id):
     args=(
       app, 
       case_id, 
+      ref_case_title,
       keywords, 
       owners, 
       search_limitations, 
-      market_lang_asserted_claims, 
-      market_lang_independent_claims, 
-      market_lang_core_claims, 
-      market_lang_pivotal_claims, 
+      original_lang_asserted_claims, 
+      original_lang_independent_claims, 
+      original_lang_core_claims, 
+      original_lang_pivotal_claims,
+      market_lang_asserted_claims,
+      market_lang_independent_claims,
+      market_lang_core_claims,
+      market_lang_pivotal_claims,
       search_type),
     daemon=False,
   )

@@ -1,6 +1,7 @@
 import uuid
 import time
 import json
+import threading
 from datetime import datetime as dt
 
 from sources.Gemini import *
@@ -301,7 +302,7 @@ def generate_patent_description(case_id):
     
     complete_document_contents = ""
     for content in document_contents:
-        if content.strip() != "":
+        if content is not None and str(content).strip() != "":
             complete_document_contents = f"{complete_document_contents}\n\n{content}"
     
     if complete_document_contents.strip() == "":
@@ -428,7 +429,6 @@ def _merge_infringement_details(case_id: str, partial: dict) -> dict:
         else:
             details[key] = value
     return details
-
 
 # Functions for Infringement Analysis
 def start_patent_analysis(
@@ -664,13 +664,18 @@ def start_patent_analysis(
 def start_product_analysis(
     app,
     case_id: str,
+    product_name: str,
     keywords: list[str],
     owners: list[str],
     search_limitations: list[dict],
-    asserted_claims: list[dict] = [], 
-    independent_claims: list[dict] = [], 
-    core_claims: list[dict] = [], 
-    pivotal_claims: list[dict] = [],
+    original_asserted_claims: list[dict] = [], 
+    original_independent_claims: list[dict] = [], 
+    original_core_claims: list[dict] = [], 
+    original_pivotal_claims: list[dict] = [],
+    market_asserted_claims: list[dict] = [], 
+    market_independent_claims: list[dict] = [], 
+    market_core_claims: list[dict] = [], 
+    market_pivotal_claims: list[dict] = [],
     search_type: str = 'generic'
     ):
     with app.app_context():
@@ -685,12 +690,26 @@ def start_product_analysis(
         core_created_product_ids = []
         pivotal_created_product_ids = []
         try:
+            search_limitations = normalize_search_limitations(search_limitations)
+            all_market_claims = []
+            for claim_bucket in (
+                original_asserted_claims,
+                original_independent_claims,
+                original_core_claims,
+                original_pivotal_claims,
+            ):
+                all_market_claims.extend(claim_bucket or [])
+            search_limitations = resolve_product_target_sources_for_analysis(
+                all_market_claims,
+                search_limitations,
+            )
+
             update_infringement_analysis_flags(
                 case_id=case_id, 
                 category='product'
                 )
             
-            if len(asserted_claims) > 0:
+            if len(original_asserted_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -698,12 +717,27 @@ def start_product_analysis(
                     generic_bucket='Started'
                 )
                 asserted_product_details_list, asserted_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
-                    reference_claims=asserted_claims, 
+                    reference_claims=original_asserted_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
+                market_asserted_product_details_list, market_asserted_created_product_ids = searchProductSources(
+                    product_name=product_name,
+                    keywords=keywords, 
+                    owners=owners, 
+                    reference_claims=market_asserted_claims, 
+                    search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    )
+                for product_detail in market_asserted_product_details_list:
+                    if product_detail not in asserted_product_details_list:
+                        asserted_product_details_list.append(product_detail)
+                for product_id in market_asserted_created_product_ids:
+                    if product_id not in asserted_created_product_ids:
+                        asserted_created_product_ids.append(product_id)
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -719,19 +753,34 @@ def start_product_analysis(
                     error_message="No generic/asserted claims provided"
                 )
             
-            if len(independent_claims) > 0:
+            if len(original_independent_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
                     independent_bucket='Started',
                 )
                 independent_product_details_list, independent_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
-                    reference_claims=independent_claims, 
+                    reference_claims=original_independent_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
+                market_independent_product_details_list, market_independent_created_product_ids = searchProductSources(
+                    product_name=product_name,
+                    keywords=keywords, 
+                    owners=owners, 
+                    reference_claims=market_independent_claims, 
+                    search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    )
+                for product_detail in market_independent_product_details_list:
+                    if product_detail not in independent_product_details_list:
+                        independent_product_details_list.append(product_detail)
+                for product_id in market_independent_created_product_ids:
+                    if product_id not in independent_created_product_ids:
+                        independent_created_product_ids.append(product_id)
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -745,19 +794,34 @@ def start_product_analysis(
                     error_message="No independent claims provided"
                 )
             
-            if len(core_claims) > 0:
+            if len(original_core_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
                     core_bucket='Started',
                 )
                 core_product_details_list, core_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
-                    reference_claims=core_claims, 
+                    reference_claims=original_core_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
+                market_core_product_details_list, market_core_created_product_ids = searchProductSources(
+                    product_name=product_name,
+                    keywords=keywords, 
+                    owners=owners, 
+                    reference_claims=market_core_claims, 
+                    search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    )
+                for product_detail in market_core_product_details_list:
+                    if product_detail not in core_product_details_list:
+                        core_product_details_list.append(product_detail)
+                for product_id in market_core_created_product_ids:
+                    if product_id not in core_created_product_ids:
+                        core_created_product_ids.append(product_id)
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -771,19 +835,34 @@ def start_product_analysis(
                     error_message="No core claims provided"
                 )
             
-            if len(pivotal_claims) > 0:
+            if len(original_pivotal_claims) > 0:
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
                     pivotal_bucket='Started',
                 )
                 pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
-                    reference_claims=pivotal_claims, 
+                    reference_claims=original_pivotal_claims, 
                     search_limitations=search_limitations,
                     parent_case_id=case_id,
                     )
+                market_pivotal_product_details_list, market_pivotal_created_product_ids = searchProductSources(
+                    product_name=product_name,
+                    keywords=keywords, 
+                    owners=owners, 
+                    reference_claims=market_pivotal_claims, 
+                    search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    )
+                for product_detail in market_pivotal_product_details_list:
+                    if product_detail not in pivotal_product_details_list:
+                        pivotal_product_details_list.append(product_detail)
+                for product_id in market_pivotal_created_product_ids:
+                    if product_id not in pivotal_created_product_ids:
+                        pivotal_created_product_ids.append(product_id)
                 update_infringement_analysis_status(
                     case_id=case_id,
                     update_type="product",
@@ -861,7 +940,7 @@ def start_product_analysis(
                 update_type="product",
                 status='Error',
                 **_product_bucket_error_kwargs(
-                    asserted_claims, independent_claims, core_claims, pivotal_claims,
+                    original_asserted_claims, original_independent_claims, original_core_claims, original_pivotal_claims,
                     asserted_product_details_list, independent_product_details_list,
                     core_product_details_list, pivotal_product_details_list,
                 ),
@@ -876,145 +955,186 @@ def start_product_analysis(
 
 # Function to fetch Patent by ID with multiple sources
 def fetchById(app, patent_id:str, user_id:str):
+    patent_id = str(patent_id).strip().upper()
     uspto_error = False
     google_error = False
     free_patents_error = False
     error_message = ""
+    fetch_succeeded = False
     with app.app_context():
         try:
-            uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
-            uspto_data = uspto_instance.get_complete_patent_info(patent_id)
-            if uspto_data is None:
+            try:
+                uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
+                uspto_data = uspto_instance.get_complete_patent_info(patent_id)
+                if uspto_data is None:
+                    uspto_error = True
+                    raise Exception("No Data found through USPTO")
+                else:
+                    uspto_data['created_by'] = user_id
+                    uspto_data['_id'] = f"uspto_{user_id}_{patent_id}"
+                    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
+                    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
+                    creationResult = create_case(uspto_data)
+                    print(f"TEST 1.1: Creation Result: {json.dumps(creationResult, indent=4)}")
+                    descriptionResult = generate_patent_description(f"uspto_{user_id}_{patent_id}")
+                    print(f"TEST 1.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                    claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
+                    print(f"TEST 1.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
+                    remove_patent_from_fetching_list(user_id, patent_id)
+                    remove_patent_from_error_list(user_id, patent_id)
+                    fetch_succeeded = True
+                    returnValue = {
+                        'success': True,
+                        'message': 'Patent data imported successfully',
+                        'case_id': f"uspto_{user_id}_{patent_id}",
+                        'keywords': uspto_data.get('keywords', []),
+                        'case_data': uspto_data
+                    }
+                    return returnValue, 200
+            except Exception as e:
+                print(f'\nError getting patent data from USPTO: {str(e)}')
                 uspto_error = True
-                raise Exception("No Data found through USPTO")
-            else:
-                uspto_data['created_by'] = user_id
-                uspto_data['_id'] = f"uspto_{user_id}_{patent_id}"
-                uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-                print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
-                creationResult = create_case(uspto_data)
-                print(f"TEST 1.1: Creation Result: {json.dumps(creationResult, indent=4)}")
-                descriptionResult = generate_patent_description(f"uspto_{user_id}_{patent_id}")
-                print(f"TEST 1.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
-                claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
-                print(f"TEST 1.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
-                remove_patent_from_fetching_list(user_id, patent_id)
-                remove_patent_from_error_list(user_id, patent_id)
-                returnValue = {
-                    'success': True,
-                    'message': 'Patent data imported successfully',
-                    'case_id': f"uspto_{user_id}_{patent_id}",
-                    'keywords': uspto_data.get('keywords', []),
-                    'case_data': uspto_data
-                }
-                return returnValue, 200
-        except Exception as e:
-            print(f'\nError getting patent data from USPTO: {str(e)}')
-            uspto_error = True
-            error_message = str(e)
-        # Try searching patent id using Google Patents
-        if uspto_error:
-            time.sleep(180)
-            try:
-                google_patents = GooglePatents()
-                google_patents_details = google_patents.search_by_id(patent_id)
-                if google_patents_details is not None:
-                    if isinstance(google_patents_details, dict):
-                        case_data = passToGeminiForMetadata(
-                            google_patents_details.get('metadata_content', ''),
-                            claims_content=google_patents_details.get('claims_content'),
-                        ).model_dump()
+                error_message = str(e)
+            # Try searching patent id using Google Patents
+            if uspto_error:
+                time.sleep(5)
+                try:
+                    google_patents = GooglePatents()
+                    google_patents_details = google_patents.search_by_id(patent_id)
+                    if google_patents_details is not None:
+                        if isinstance(google_patents_details, dict):
+                            extracted = passToGeminiForMetadata(
+                                google_patents_details.get('metadata_content', ''),
+                                claims_content=google_patents_details.get('claims_content'),
+                                default_source='google_patents',
+                            )
+                        else:
+                            extracted = passToGeminiForMetadata(
+                                str(google_patents_details),
+                                default_source='google_patents',
+                            )
+                        if extracted is None:
+                            raise Exception(
+                                "Failed to extract patent metadata from Google Patents content"
+                            )
+                        case_data = extracted.model_dump()
+                        if case_data is not None:
+                            patent_page_url = google_patents.get_patent_page_url(patent_id)
+                            if patent_page_url:
+                                case_data['document_urls'] = [patent_page_url]
+                                case_data['documents'] = [
+                                    {'url': patent_page_url, 'source': 'google_patents'}
+                                ]
+                            case_data['source'] = 'google_patents'
+                            case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
+                            case_data['created_by'] = user_id
+                            if case_data.get('current_status', '') == '':
+                                case_data['current_status'] = 'Granted'
+                            case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                            created_id = case_data.get('_id', '')
+                            creationResult = create_case(case_data)
+                            print(f"TEST 2.1: Creation Result: {json.dumps(creationResult, indent=4)}")
+                            created_id = case_data.get('_id', '')
+                            if 'DocumentCreationError' in created_id:
+                                raise Exception("Document Creation Error")
+                            descriptionResult = generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
+                            print(f"TEST 2.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                            claimsResult = isolate_claims(f"googlepatents_{user_id}_{patent_id}")
+                            print(f"TEST 2.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
+                            remove_patent_from_fetching_list(user_id, patent_id)
+                            remove_patent_from_error_list(user_id, patent_id)
+                            fetch_succeeded = True
+                            returnValue = {
+                                'success': True,
+                                'message': 'Patent data imported successfully',
+                                'case_id': created_id,
+                                'keywords': case_data.get('keywords', []),
+                                'case_data': case_data
+                            }
+                            return returnValue, 200
                     else:
-                        case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
-                    if case_data is not None:
-                        patent_page_url = google_patents.get_patent_page_url(patent_id)
-                        if patent_page_url:
-                            case_data['document_urls'] = [patent_page_url]
-                            case_data['documents'] = [
-                                {'url': patent_page_url, 'source': 'google_patents'}
-                            ]
-                        case_data['source'] = 'google_patents'
-                        case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
-                        case_data['created_by'] = user_id
-                        if case_data.get('current_status', '') == '':
-                            case_data['current_status'] = 'Granted'
-                        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
-                        created_id = case_data.get('_id', '')
-                        creationResult = create_case(case_data)
-                        print(f"TEST 2.1: Creation Result: {json.dumps(creationResult, indent=4)}")
-                        created_id = case_data.get('_id', '')
-                        if 'DocumentCreationError' in created_id:
-                            raise Exception("Document Creation Error")
-                        descriptionResult = generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
-                        print(f"TEST 2.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
-                        claimsResult = isolate_claims(f"googlepatents_{user_id}_{patent_id}")
-                        print(f"TEST 2.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
-                        remove_patent_from_fetching_list(user_id, patent_id)
-                        remove_patent_from_error_list(user_id, patent_id)
-                        returnValue = {
-                            'success': True,
-                            'message': 'Patent data imported successfully',
-                            'case_id': created_id,
-                            'keywords': case_data.get('keywords', []),
-                            'case_data': case_data
-                        }
-                        return returnValue, 200
-                else:
-                    raise Exception("No Data found through Google Patents")
-            except Exception as e:
-                print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
-                error_message = str(e)
-                google_error = True
-        # Patent not found using Google Patents, try using Free Patents Online
-        if google_error and uspto_error:
-            time.sleep(180)
-            try:
-                free_patents = FreePatentsOnline()
-                free_patents_details = free_patents.search_by_id(patent_id)
-                if free_patents_details is not None:
-                    case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
-                    if case_data is not None:
-                        case_data['source'] = 'free_patents_online'
-                        case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
-                        case_data['created_by'] = user_id
-                        if case_data.get('current_status', '') == '':
-                            case_data['current_status'] = 'Granted'
-                        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
-                        creationResult = create_case(case_data)
-                        print(f"TEST 3.1: Creation Result: {json.dumps(creationResult, indent=4)}")
-                        created_id = case_data.get('_id', '')
-                        if 'DocumentCreationError' in created_id:
-                            returnValue = {'success': False, 'message': created_id}
-                            raise Exception("Document Creation Error")
-                        descriptionResult = generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
-                        print(f"TEST 3.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
-                        claimsResult = isolate_claims(f"freepatentsonline_{user_id}_{patent_id}")
-                        print(f"TEST 3.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
-                        remove_patent_from_error_list(user_id, patent_id)
-                        remove_patent_from_fetching_list(user_id, patent_id)
-                        returnValue = {
-                            'success': True,
-                            'message': 'Patent data imported successfully',
-                            'case_id': created_id,
-                            'keywords': case_data.get('keywords', []),
-                            'case_data': case_data
-                        }
-                        return returnValue, 200
-                else:
-                    raise Exception("No Data found through Free Patents Online")
-            except Exception as e:
-                print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
-                error_message = str(e)
-                set_patent_to_error_list(user_id, patent_id, error_message)
-                free_patents_error = True
+                        raise Exception("No Data found through Google Patents")
+                except Exception as e:
+                    print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
+                    error_message = str(e)
+                    google_error = True
+            # Patent not found using Google Patents, try using Free Patents Online
+            if google_error and uspto_error:
+                time.sleep(5)
+                try:
+                    free_patents = FreePatentsOnline()
+                    free_patents_details = free_patents.search_by_id(patent_id)
+                    if free_patents_details is not None:
+                        extracted = passToGeminiForMetadata(
+                            str(free_patents_details),
+                            default_source='free_patents_online',
+                        )
+                        if extracted is None:
+                            raise Exception(
+                                "Failed to extract patent metadata from Free Patents Online content"
+                            )
+                        case_data = extracted.model_dump()
+                        if case_data is not None:
+                            case_data['source'] = 'free_patents_online'
+                            case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
+                            case_data['created_by'] = user_id
+                            if case_data.get('current_status', '') == '':
+                                case_data['current_status'] = 'Granted'
+                            case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                            creationResult = create_case(case_data)
+                            print(f"TEST 3.1: Creation Result: {json.dumps(creationResult, indent=4)}")
+                            created_id = case_data.get('_id', '')
+                            if 'DocumentCreationError' in created_id:
+                                returnValue = {'success': False, 'message': created_id}
+                                raise Exception("Document Creation Error")
+                            descriptionResult = generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
+                            print(f"TEST 3.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                            claimsResult = isolate_claims(f"freepatentsonline_{user_id}_{patent_id}")
+                            print(f"TEST 3.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
+                            remove_patent_from_error_list(user_id, patent_id)
+                            remove_patent_from_fetching_list(user_id, patent_id)
+                            fetch_succeeded = True
+                            returnValue = {
+                                'success': True,
+                                'message': 'Patent data imported successfully',
+                                'case_id': created_id,
+                                'keywords': case_data.get('keywords', []),
+                                'case_data': case_data
+                            }
+                            return returnValue, 200
+                    else:
+                        raise Exception("No Data found through Free Patents Online")
+                except Exception as e:
+                    print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
+                    error_message = str(e)
+                    free_patents_error = True
 
-        errorReturn = {
-            'success': False,
-            'message': f"Failed to find patent with ID {patent_id}",
-            'error_message': error_message
-        }
-        set_patent_to_error_list(user_id, patent_id, error_message)
-        return errorReturn, 500
+            errorReturn = {
+                'success': False,
+                'message': f"Failed to find patent with ID {patent_id}",
+                'error_message': error_message
+            }
+            return errorReturn, 500
+        finally:
+            if not fetch_succeeded:
+                try:
+                    set_patent_to_error_list(
+                        user_id,
+                        patent_id,
+                        error_message or 'Failed to import patent',
+                    )
+                except Exception as cleanup_err:
+                    print(f'ERROR: Failed to update fetch error state: {cleanup_err}')
+                    remove_patent_from_fetching_list(user_id, patent_id)
+
+def check_thread_status(thread_name: str):
+  for thread in threading.enumerate():
+    if thread.name == thread_name:
+      if thread.is_alive():
+        return True, "Thread is running"
+      else:
+        return False, "Thread is not running"
+  return False, "Thread was not found"
 
 def bulk_fetch_by_ids(app, patent_ids: list[str], records: list[list[str]], user_id: str):
     """

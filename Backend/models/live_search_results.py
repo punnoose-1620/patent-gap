@@ -1,5 +1,18 @@
 from datetime import datetime
+import json
+from urllib.parse import urlparse
+
+import requests
 from pydantic import BaseModel, field_validator
+
+from web_search import match_runtime_block_keyword
+
+_URL_CHECK_TIMEOUT = 10
+_PRODUCT_URL_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+}
 
 _ALLOWED_CLAIM_TYPES = frozenset({
     "asserted_claim",
@@ -72,7 +85,6 @@ class AttorneysData(BaseModel):
 def empty_live_search_results(source: str | None = None) -> "LiveSearchResults":
     """Blank metadata accumulator for incremental Gemini merge (not valid until filled)."""
     return LiveSearchResults(
-        _id="",
         title="",
         status="",
         description="",
@@ -157,13 +169,7 @@ class LiveSearchResults(BaseModel):
     def merge_with_existing(self, existing_results: 'LiveSearchResults'):
         if existing_results is None:
             return False, "Existing results are required and cannot be None"
-        if not validate_string(self._id):
-            self._id = existing_results._id
-        else:
-            if validate_string(existing_results._id):
-                if (existing_results._id != self._id):
-                    return False, "Existing results and new results have different IDs"
-        
+        # Case _id is set after portfolio import; not part of LiveSearchResults fields.
         if not validate_string(self.status) and validate_string(existing_results.status):
             self.status = existing_results.status
         
@@ -383,6 +389,156 @@ class InfringementAnalysis(BaseModel):
             return False, "Similarity score must be between 0 and 1"
         return True, ""
 
+class ProductTargetSource(BaseModel):
+    title: str
+    url: str
+    scope: list[str] = []
+
+    @classmethod
+    def get_description(cls) -> str:
+        return json.dumps(
+            {
+                "title": "Human-readable name of the retailer, marketplace, or manufacturer storefront",
+                "url": "Homepage or canonical shopping URL (must be real and reachable; do not invent URLs)",
+                "scope": "List of country/region codes where products ship (e.g. US, UK, EU)",
+            },
+            indent=2,
+        )
+
+    @staticmethod
+    def normalize_hostname(url: str) -> str:
+        try:
+            host = urlparse(url.strip()).netloc.lower()
+            if host.startswith("www."):
+                host = host[4:]
+            return host
+        except Exception:
+            return ""
+
+    def validate_url_exists(self, session: requests.Session | None = None) -> tuple[bool, str]:
+        if not self.url or not str(self.url).strip():
+            return False, "URL is empty"
+        owns_session = session is None
+        if owns_session:
+            session = requests.Session()
+            session.headers.update(_PRODUCT_URL_HEADERS)
+        try:
+            response = session.head(
+                self.url.strip(),
+                timeout=_URL_CHECK_TIMEOUT,
+                allow_redirects=True,
+            )
+            if response.status_code >= 400:
+                response = session.get(
+                    self.url.strip(),
+                    timeout=_URL_CHECK_TIMEOUT,
+                    allow_redirects=True,
+                )
+            if response.status_code < 400:
+                return True, ""
+            return False, f"HTTP {response.status_code}"
+        except Exception as exc:
+            return False, str(exc)
+        finally:
+            if owns_session:
+                session.close()
+
+    def validate_product_target_source(self) -> tuple[bool, str]:
+        if not validate_string(self.title):
+            return False, "Title is required"
+        if not validate_string(self.url):
+            return False, "URL is required"
+        if self.scope is None:
+            return False, "Scope is required"
+        if not isinstance(self.scope, list):
+            return False, "Scope must be a list"
+        return True, ""
+
+
+class ProductTargetSources(BaseModel):
+    target_sources: list[ProductTargetSource]
+
+    @classmethod
+    def get_description(cls) -> str:
+        return json.dumps(
+            {
+                "target_sources": [
+                    json.loads(ProductTargetSource.get_description()),
+                ],
+            },
+            indent=2,
+        )
+
+    @classmethod
+    def default_catalog(cls) -> "ProductTargetSources":
+        return cls(
+            target_sources=[
+                ProductTargetSource(title="Amazon US", url="https://www.amazon.com", scope=["US"]),
+                ProductTargetSource(title="Amazon UK", url="https://www.amazon.co.uk", scope=["UK"]),
+                ProductTargetSource(title="Walmart", url="https://www.walmart.com", scope=["US"]),
+                ProductTargetSource(title="eBay US", url="https://www.ebay.com", scope=["US"]),
+                ProductTargetSource(title="Target", url="https://www.target.com", scope=["US"]),
+                ProductTargetSource(title="Best Buy", url="https://www.bestbuy.com", scope=["US"]),
+                ProductTargetSource(title="Home Depot", url="https://www.homedepot.com", scope=["US"]),
+                ProductTargetSource(title="Lowe's", url="https://www.lowes.com", scope=["US"]),
+            ]
+        )
+
+    def catalog_urls(self) -> list[str]:
+        return [source.url.strip() for source in self.target_sources if source.url]
+
+    def filter_reachable(self, session: requests.Session | None = None) -> "ProductTargetSources":
+        kept = []
+        owns_session = session is None
+        if owns_session:
+            session = requests.Session()
+            session.headers.update(_PRODUCT_URL_HEADERS)
+        try:
+            for source in self.target_sources:
+                ok, err = source.validate_url_exists(session=session)
+                if ok:
+                    kept.append(source)
+                else:
+                    print(f"WARN: Unreachable product target source {source.url}: {err}")
+        finally:
+            if owns_session:
+                session.close()
+        return ProductTargetSources(target_sources=kept)
+
+    def validate_against_catalog(
+        self,
+        catalog: "ProductTargetSources",
+    ) -> tuple[bool, str]:
+        if self.target_sources is None:
+            return False, "target_sources is required"
+        allowed_hosts = {
+            ProductTargetSource.normalize_hostname(url)
+            for url in catalog.catalog_urls()
+        }
+        for index, source in enumerate(self.target_sources):
+            valid, message = source.validate_product_target_source()
+            if not valid:
+                return False, f"For target source {index + 1}: {message}"
+            host = ProductTargetSource.normalize_hostname(source.url)
+            if host not in allowed_hosts:
+                return False, (
+                    f"For target source {index + 1}: URL host {host!r} is not in the allowed catalog"
+                )
+        return True, ""
+
+    def merge_urls_into_search_limitations(self, search_limitations: dict) -> dict:
+        merged = dict(search_limitations or {})
+        existing = merged.get("urls") or []
+        if not isinstance(existing, list):
+            existing = [existing] if existing else []
+        isolated_urls = self.catalog_urls()
+        merged["urls"] = list(dict.fromkeys([*existing, *isolated_urls]))
+        merged["priority_target_sources"] = [
+            source.model_dump() for source in self.target_sources
+        ]
+        return merged
+
+
 class GoogleSearchResults(BaseModel):
     title: str
     url: str
@@ -414,6 +570,13 @@ class GoogleSearchResultsList(BaseModel):
                 return False, "For result "+str(index+1)+": "+error_message
         return True, ""
 
+def _reject_error_page_text(field_label: str, text: str):
+    keyword = match_runtime_block_keyword(text)
+    if keyword:
+        return False, f"{field_label} indicates a blocked page ({keyword!r})"
+    return True, ""
+
+
 class InfringingProductDetail(BaseModel):
     source: str
     product_id: str
@@ -431,10 +594,18 @@ class InfringingProductDetail(BaseModel):
             return False, "Product URL is required"
         if self.product_name is None:
             return False, "Product name is required"
+        validated, error_message = _reject_error_page_text("Product name", self.product_name)
+        if not validated:
+            return False, error_message
         for index in range(len(self.claims)):
             claim = self.claims[index]
             if not isinstance(claim, str) or not claim.strip():
                 return False, "For claim "+str(index+1)+": Claim is empty"
+            validated, error_message = _reject_error_page_text(
+                f"Claim {index + 1}", claim
+            )
+            if not validated:
+                return False, error_message
         for index in range(len(self.similar_claims)):
             claim = self.similar_claims[index]
             validated, error_message = claim.validate_product_similarity_claim()

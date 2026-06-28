@@ -169,9 +169,11 @@ def score_infringement_matrix_entry(reference_claims, infringing_claims, existin
         if h in cache and _cached_row_valid(cache[h], h):
             row = cache[h]
             calc = float(row["calculated_similarity_score"])
-            if calc > threshold:
-                stored_rows.append(row)
-                chart_rows.append(_chart_row_from_storage(row))
+            stored_rows.append(row)
+            chart_rows.append(_chart_row_from_storage(row))
+            # if calc > threshold:
+            #     stored_rows.append(row)
+            #     chart_rows.append(_chart_row_from_storage(row))
             continue
 
         score = float(pair_scores[(ref, inf)])
