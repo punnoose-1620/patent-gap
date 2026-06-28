@@ -369,6 +369,7 @@ class Gemini:
 
     def perform_google_search_from_claims(
         self,
+        product_name: str,
         reference_claims: list[str],
         owners: list[str] | None = None,
         search_limitations: dict | None = None,
@@ -411,6 +412,9 @@ class Gemini:
             "<reference_claims_replacement>", claims_text
         )
         final_prompt = final_prompt.replace(
+            "<product_name_replacement>", product_name
+            )
+        final_prompt = final_prompt.replace(
             "<owners_replacement>",
             "\n".join(owners or []) or "(none specified)",
         )
@@ -452,6 +456,7 @@ class Gemini:
                 )
             time.sleep(DEFAULT_LLM_DELAY)
             return self.perform_google_search_from_claims(
+                product_name=product_name,
                 reference_claims=reference_claims,
                 owners=owners,
                 search_limitations=search_limitations,

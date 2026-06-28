@@ -664,6 +664,7 @@ def start_patent_analysis(
 def start_product_analysis(
     app,
     case_id: str,
+    product_name: str,
     keywords: list[str],
     owners: list[str],
     search_limitations: list[dict],
@@ -716,6 +717,7 @@ def start_product_analysis(
                     generic_bucket='Started'
                 )
                 asserted_product_details_list, asserted_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
                     reference_claims=original_asserted_claims, 
@@ -723,6 +725,7 @@ def start_product_analysis(
                     parent_case_id=case_id,
                     )
                 market_asserted_product_details_list, market_asserted_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
                     reference_claims=market_asserted_claims, 
@@ -757,6 +760,7 @@ def start_product_analysis(
                     independent_bucket='Started',
                 )
                 independent_product_details_list, independent_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
                     reference_claims=original_independent_claims, 
@@ -764,6 +768,7 @@ def start_product_analysis(
                     parent_case_id=case_id,
                     )
                 market_independent_product_details_list, market_independent_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
                     reference_claims=market_independent_claims, 
@@ -796,6 +801,7 @@ def start_product_analysis(
                     core_bucket='Started',
                 )
                 core_product_details_list, core_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
                     reference_claims=original_core_claims, 
@@ -803,6 +809,7 @@ def start_product_analysis(
                     parent_case_id=case_id,
                     )
                 market_core_product_details_list, market_core_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
                     reference_claims=market_core_claims, 
@@ -835,6 +842,7 @@ def start_product_analysis(
                     pivotal_bucket='Started',
                 )
                 pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
                     reference_claims=original_pivotal_claims, 
@@ -842,6 +850,7 @@ def start_product_analysis(
                     parent_case_id=case_id,
                     )
                 market_pivotal_product_details_list, market_pivotal_created_product_ids = searchProductSources(
+                    product_name=product_name,
                     keywords=keywords, 
                     owners=owners, 
                     reference_claims=market_pivotal_claims, 

@@ -567,6 +567,7 @@ def _focus_urls_from_search_limitations(search_limitations: dict) -> list[str]:
 
 
 def _discover_products_via_gemini(
+    product_name: str,
     reference_claims: list[str],
     owners: list[str],
     search_limitations: dict,
@@ -576,7 +577,8 @@ def _discover_products_via_gemini(
         "LOG: Gemini product search (full bucket claims; no query-generation LLM)"
     )
     google_search_results = Gemini().perform_google_search_from_claims(
-        reference_claims,
+        product_name=product_name,
+        reference_claims=reference_claims,
         owners=owners,
         search_limitations=search_limitations,
         max_results=max_product_results,
@@ -819,6 +821,7 @@ def resolve_product_target_sources_for_analysis(
 
 
 def searchProductSources(
+    product_name: str,
     keywords:list[str],
     owners:list[str],
     reference_claims:list[str],
@@ -836,6 +839,7 @@ def searchProductSources(
     focus_urls = _focus_urls_from_search_limitations(search_limitations)
 
     extracted_products = _discover_products_via_gemini(
+        product_name,
         reference_claims,
         owners,
         search_limitations,

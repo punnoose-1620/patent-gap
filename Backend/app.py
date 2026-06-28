@@ -2067,6 +2067,7 @@ def live_similarity_analysis(case_id):
     args=(
       app, 
       case_id, 
+      ref_case_title,
       keywords, 
       owners, 
       search_limitations, 

@@ -214,6 +214,7 @@ Rules:
 - Return between 1 and 5 sources.
 - Do not include unrelated retailers (e.g. music, posters, books) unless the claims are about those products.
 - Do not include any other text or comments.
+- Avoid broader sites like Amazon, eBay, Walmart, etc. Only include specific retailer sites.
 """
 
 PERFORM_GOOGLE_SEARCH_PROMPT = """
@@ -249,6 +250,9 @@ Here's is the search string to perform the google search:
 PERFORM_GOOGLE_SEARCH_FROM_CLAIMS_PROMPT = """
 You are performing a Google product search to find live products that may read on the reference claims below.
 
+Product name to search for:
+<product_name_replacement>
+
 Reference claims (entire bucket — use full context for the search):
 <reference_claims_replacement>
 
@@ -280,9 +284,12 @@ Rules:
 - Return up to <max_results_replacement> distinct product results.
 - Prefer results from the priority retailer domains listed above.
 - The results should only be live products available for purchase/order.
+- DO not build URLs. The URLs should be the exact URLs from the search results.
 - Do not include books, music, posters, wall art, or unrelated accessories unless the claims are about those.
 - Do not assume or build URLs. The URLs should be the exact URLs from the search results.
 - Exclude products from the patent owners listed above when possible.
+- Only include products directly related to the reference claims and the product name.
+- Avoid non-product pages like search results like /music, /books, etc.
 """
 
 PRODUCT_DETAILS_EXTRACTOR = """
