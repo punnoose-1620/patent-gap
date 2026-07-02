@@ -240,6 +240,9 @@ Rules:
 - Return up to <max_results_replacement> distinct product results.
 - Prefer results from the priority retailer domains listed above.
 - The results should only be live products available for purchase/order.
+- Return only individual product detail pages (PDPs) for a specific purchasable item.
+- Do not return category pages, collection pages, browse pages, or site search result pages (e.g. /dishwashers/, /browse/, /category/, /s?k=).
+- Prefer URLs that identify one product (e.g. Amazon /dp/, Walmart /ip/, Target /p/.../A-, Lowe's /pd/, manufacturer /product/ pages).
 - Do not include books, music, posters, wall art, or unrelated accessories unless the search is explicitly for those.
 - Do not assume or build URLs. The URLs should be the exact URLs from the search results.
 
@@ -284,6 +287,9 @@ Rules:
 - Return up to <max_results_replacement> distinct product results.
 - Prefer results from the priority retailer domains listed above.
 - The results should only be live products available for purchase/order.
+- Return only individual product detail pages (PDPs) for a specific purchasable item.
+- Do not return category pages, collection pages, browse pages, or site search result pages (e.g. /dishwashers/, /browse/, /category/, /s?k=).
+- Prefer URLs that identify one product (e.g. Amazon /dp/, Walmart /ip/, Target /p/.../A-, Lowe's /pd/, manufacturer /product/ pages).
 - DO not build URLs. The URLs should be the exact URLs from the search results.
 - Do not include books, music, posters, wall art, or unrelated accessories unless the claims are about those.
 - Do not assume or build URLs. The URLs should be the exact URLs from the search results.

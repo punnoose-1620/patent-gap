@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+import re
 from urllib.parse import urlparse
 
 import requests
@@ -577,6 +578,122 @@ def _reject_error_page_text(field_label: str, text: str):
     return True, ""
 
 
+_DUMMY_SENTINELS = frozenset({
+    "not available",
+    "not found",
+    "unknown",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "not extractable",
+    "url not found",
+    "url not found in corrupted content",
+    "not extractable due to data corruption",
+    "product name unreadable due to data corruption",
+})
+
+_SCHEMA_PLACEHOLDER_RE = re.compile(
+    r"<\s*(?:string|list\s*\[\s*str\s*\]|int|float|bool)\s*:",
+    re.IGNORECASE,
+)
+
+
+def _normalize_dummy_token(value: str) -> str:
+    return re.sub(r"[_\s]+", " ", str(value).strip().lower())
+
+
+def is_dummy_product_value(value) -> bool:
+    """True for empty values, LLM schema placeholders, or sentinel not-available strings."""
+    if value is None:
+        return True
+    if not isinstance(value, str) or not value.strip():
+        return True
+    text = value.strip()
+    if _SCHEMA_PLACEHOLDER_RE.search(text):
+        return True
+    if _normalize_dummy_token(text) in _DUMMY_SENTINELS:
+        return True
+    return False
+
+
+def is_valid_product_url(value) -> bool:
+    if is_dummy_product_value(value):
+        return False
+    text = str(value).strip().lower()
+    return text.startswith("http://") or text.startswith("https://")
+
+
+_PDP_URL_MARKERS = (
+    "/dp/",
+    "/gp/product/",
+    "/ip/",
+    "/pd/",
+    "/en/product/",
+    "/product/",
+    "/site/",
+)
+
+_LISTING_URL_MARKERS = (
+    "/browse/",
+    "/category/",
+    "/categories/",
+    "/collections/",
+    "/search",
+    "/s?",
+    "/music/",
+    "/books/",
+    "/clothing/",
+    "/b/",
+    "/sch/",
+)
+
+_LISTING_URL_PATTERNS = (
+    re.compile(r"/dishwashers/?$", re.IGNORECASE),
+    re.compile(r"/[a-z]{2}(?:-[a-z]{2})?/dishwashers/?$", re.IGNORECASE),
+    re.compile(r"/home-appliances/dishwashers/?$", re.IGNORECASE),
+)
+
+_TARGET_PDP_PATTERN = re.compile(r"/p/.+/-/a-\d+", re.IGNORECASE)
+
+
+def is_product_listing_url(url: str) -> bool:
+    """True when URL looks like a category, search, or browse page — not a single product PDP."""
+    if not isinstance(url, str) or not url.strip():
+        return True
+    normalized = url.strip().lower()
+    parsed = urlparse(normalized)
+    path = parsed.path or ""
+    query = parsed.query or ""
+
+    if query and any(token in query for token in ("k=", "keywords=", "search=", "q=")):
+        if "/s?" in normalized or "/search" in path:
+            return True
+
+    for marker in _PDP_URL_MARKERS:
+        if marker in normalized:
+            return False
+    if _TARGET_PDP_PATTERN.search(normalized):
+        return False
+    if "samsung.com" in normalized and "/dishwashers/" in normalized:
+        if len([segment for segment in path.strip("/").split("/") if segment]) >= 4:
+            return False
+
+    for marker in _LISTING_URL_MARKERS:
+        if marker in normalized:
+            return True
+    for pattern in _LISTING_URL_PATTERNS:
+        if pattern.search(path):
+            return True
+    return False
+
+
+def _reject_dummy_product_field(field_label: str, text: str):
+    if is_dummy_product_value(text):
+        return False, f"{field_label} is a dummy or placeholder value ({text!r})"
+    return True, ""
+
+
 class InfringingProductDetail(BaseModel):
     source: str
     product_id: str
@@ -594,6 +711,19 @@ class InfringingProductDetail(BaseModel):
             return False, "Product URL is required"
         if self.product_name is None:
             return False, "Product name is required"
+        for field_label, value in (
+            ("Product ID", self.product_id),
+            ("Product URL", self.product_url),
+            ("Product name", self.product_name),
+            ("Source", self.source),
+        ):
+            validated, error_message = _reject_dummy_product_field(field_label, value)
+            if not validated:
+                return False, error_message
+        if not is_valid_product_url(self.product_url):
+            return False, f"Product URL is not a valid http(s) URL ({self.product_url!r})"
+        if is_product_listing_url(self.product_url):
+            return False, f"Product URL is a category or listing page ({self.product_url!r})"
         validated, error_message = _reject_error_page_text("Product name", self.product_name)
         if not validated:
             return False, error_message
@@ -601,6 +731,11 @@ class InfringingProductDetail(BaseModel):
             claim = self.claims[index]
             if not isinstance(claim, str) or not claim.strip():
                 return False, "For claim "+str(index+1)+": Claim is empty"
+            validated, error_message = _reject_dummy_product_field(
+                f"Claim {index + 1}", claim
+            )
+            if not validated:
+                return False, error_message
             validated, error_message = _reject_error_page_text(
                 f"Claim {index + 1}", claim
             )
