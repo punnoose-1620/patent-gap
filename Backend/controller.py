@@ -713,7 +713,10 @@ def __complete_product_search(
             case_id=case_id, 
             category='product'
             )
-        
+        update_infringement_analysis_status(
+            case_id=case_id,
+            update_type="product"
+        )
         if len(original_asserted_claims) > 0:
             update_infringement_analysis_status(
                 case_id=case_id,
@@ -921,7 +924,6 @@ def start_product_analysis(
     search_type: str = 'generic'
     ):
     with app.app_context():
-        count = 0
         start_time = time.time()
         asserted_product_details_list = None
         independent_product_details_list = None
@@ -949,9 +951,6 @@ def start_product_analysis(
                 market_core_claims=market_core_claims,
                 market_pivotal_claims=market_pivotal_claims
             )
-            if len(productResults) < 2:
-                raise Exception("Failed to complete product search")
-
             update_infringements(case_id, productResults)
             try:
                 refresh_case_infringement_scores(case_id)
