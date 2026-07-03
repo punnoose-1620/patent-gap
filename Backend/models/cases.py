@@ -431,7 +431,7 @@ def update_infringement_analysis_status(
 
     case_data = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     old_status_flags = case_data.get(status_key, {})
-    if old_status_flags is None or old_status_flags == {}:
+    if old_status_flags is None or old_status_flags == {} or reset_flags:
         old_status_flags = {
             generic_key: default_status,
             assert_key: default_status,
