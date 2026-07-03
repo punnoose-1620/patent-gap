@@ -466,6 +466,10 @@ def start_patent_analysis(
                 case_id=case_id, 
                 category='patent'
                 )
+            update_infringement_analysis_status(
+                case_id=case_id,
+                reset_flags=True
+            )
 
             if len(asserted_claims) > 0:
                 update_infringement_analysis_status(
@@ -715,7 +719,8 @@ def __complete_product_search(
             )
         update_infringement_analysis_status(
             case_id=case_id,
-            update_type="product"
+            update_type="product",
+            reset_flags=True
         )
         if len(original_asserted_claims) > 0:
             update_infringement_analysis_status(
