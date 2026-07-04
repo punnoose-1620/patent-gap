@@ -712,6 +712,7 @@ def __complete_product_search(
             all_market_claims,
             search_limitations,
         )
+        saved_product_urls = set()
 
         update_infringement_analysis_flags(
             case_id=case_id, 
@@ -736,6 +737,7 @@ def __complete_product_search(
                 reference_claims=original_asserted_claims, 
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
                 )
             market_asserted_product_details_list, market_asserted_created_product_ids = searchProductSources(
                 product_name=product_name,
@@ -744,6 +746,7 @@ def __complete_product_search(
                 reference_claims=market_asserted_claims, 
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
                 )
             for product_detail in market_asserted_product_details_list:
                 if product_detail not in asserted_product_details_list:
@@ -779,6 +782,7 @@ def __complete_product_search(
                 reference_claims=original_independent_claims, 
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
                 )
             market_independent_product_details_list, market_independent_created_product_ids = searchProductSources(
                 product_name=product_name,
@@ -787,6 +791,7 @@ def __complete_product_search(
                 reference_claims=market_independent_claims, 
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
                 )
             for product_detail in market_independent_product_details_list:
                 if product_detail not in independent_product_details_list:
@@ -820,6 +825,7 @@ def __complete_product_search(
                 reference_claims=original_core_claims, 
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
                 )
             market_core_product_details_list, market_core_created_product_ids = searchProductSources(
                 product_name=product_name,
@@ -828,6 +834,7 @@ def __complete_product_search(
                 reference_claims=market_core_claims, 
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
                 )
             for product_detail in market_core_product_details_list:
                 if product_detail not in core_product_details_list:
@@ -861,6 +868,7 @@ def __complete_product_search(
                 reference_claims=original_pivotal_claims, 
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
                 )
             market_pivotal_product_details_list, market_pivotal_created_product_ids = searchProductSources(
                 product_name=product_name,
@@ -869,6 +877,7 @@ def __complete_product_search(
                 reference_claims=market_pivotal_claims, 
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
                 )
             for product_detail in market_pivotal_product_details_list:
                 if product_detail not in pivotal_product_details_list:

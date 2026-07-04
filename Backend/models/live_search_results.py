@@ -617,11 +617,60 @@ def is_dummy_product_value(value) -> bool:
     return False
 
 
+# Hosts that are never valid product pages (placeholders, consent UIs, etc.).
+BLOCKED_PRODUCT_URL_HOSTS = frozenset({
+    "example.com",
+    "example.org",
+    "example.net",
+    "consent.google.com",
+    "consent.youtube.com",
+})
+
+# Path fragments that indicate consent/cookie pages rather than products.
+BLOCKED_PRODUCT_URL_PATH_MARKERS = (
+    "/cookie-policy",
+    "/cookies-policy",
+    "/cookie_consent",
+    "/cookie-consent",
+    "/privacy-consent",
+)
+
+
+def blocked_product_url_reason(url: str) -> str:
+    """Return a short reason if the URL should be skipped; empty string if allowed."""
+    if not isinstance(url, str) or not url.strip():
+        return "URL is empty"
+    parsed = urlparse(url.strip().lower())
+    host = parsed.netloc
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return "URL has no host"
+    for blocked in BLOCKED_PRODUCT_URL_HOSTS:
+        if host == blocked or host.endswith("." + blocked):
+            return f"Blocked host ({host})"
+    if "consent" in host.split(".")[0]:
+        return f"Blocked consent host ({host})"
+    path = parsed.path or ""
+    for marker in BLOCKED_PRODUCT_URL_PATH_MARKERS:
+        if marker in path:
+            return f"Blocked consent/cookie path ({marker})"
+    return ""
+
+
+def is_blocked_product_url(url: str) -> bool:
+    return bool(blocked_product_url_reason(url))
+
+
 def is_valid_product_url(value) -> bool:
     if is_dummy_product_value(value):
         return False
     text = str(value).strip().lower()
-    return text.startswith("http://") or text.startswith("https://")
+    if not (text.startswith("http://") or text.startswith("https://")):
+        return False
+    if blocked_product_url_reason(text):
+        return False
+    return True
 
 
 _PDP_URL_MARKERS = (
@@ -720,6 +769,9 @@ class InfringingProductDetail(BaseModel):
             validated, error_message = _reject_dummy_product_field(field_label, value)
             if not validated:
                 return False, error_message
+        blocked = blocked_product_url_reason(self.product_url)
+        if blocked:
+            return False, f"Product URL is blocked ({self.product_url!r}): {blocked}"
         if not is_valid_product_url(self.product_url):
             return False, f"Product URL is not a valid http(s) URL ({self.product_url!r})"
         if is_product_listing_url(self.product_url):
