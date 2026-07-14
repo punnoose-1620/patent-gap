@@ -20,6 +20,8 @@ def getEnvKey(key):
         return os.environ.get('GOOGLE_API_KEY')
     elif key == 'google_cse':
         return os.environ.get('GOOGLE_CSE_ID')
+    elif key == 'apify':
+        return os.environ.get('APIFY_API_KEY')
     else:
         return None
 
@@ -32,16 +34,6 @@ def getDatabaseConnectionString():
     load_dotenv()
 
     return os.environ.get('PYTHON_MONGODB_CONNECT_STRING')
-    
-    environment = os.environ.get('ENVIRONMENT')
-    if environment == production:
-        return os.environ.get('DATABASE_CONNECTION_STRING_PROD')
-    elif environment == development:
-        return os.environ.get('DATABASE_CONNECTION_STRING_DEV')
-    elif environment == testing:
-        return os.environ.get('DATABASE_CONNECTION_STRING_TEST')
-    else:
-        return os.environ.get('DATABASE_CONNECTION_STRING_DEV')
 
 def getCaseDatabaseName():
     # Load environment variables

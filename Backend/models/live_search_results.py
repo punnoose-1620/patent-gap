@@ -742,6 +742,59 @@ def _reject_dummy_product_field(field_label: str, text: str):
         return False, f"{field_label} is a dummy or placeholder value ({text!r})"
     return True, ""
 
+class ApifySources(BaseModel):
+    source_title: str
+    source_identifier: str
+    source_url: str
+    country: str
+    countryCode: str
+    catalog_id: str = ""
+
+    def validate_apify_sources(self):
+        if self.source_title is None or self.source_title.strip() == "":
+            return False, "Source title is required"
+        if self.source_identifier is None or self.source_identifier.strip() == "":
+            return False, "Source identifier is required"
+        if self.source_url is None or self.source_url.strip() == "":
+            return False, "Source URL is required"
+        if self.country is None or self.country.strip() == "":
+            return False, "Country is required"
+        if self.countryCode is None or self.countryCode.strip() == "" or len(self.countryCode.strip()) >= 3:
+            return False, "Country code is required"
+        return True, ""
+    
+    def get_apify_sources_description(self):
+        return {
+            "source_title": "Name/Title of the Source to Search on Apify",
+            "source_identifier": "Identifier of the Source to Search on Apify",
+            "source_url": "URL of the Source to Search on Apify",
+            "country": "Country of the Source to Search on Apify",
+            "countryCode": "Country code of the Source to Search on Apify"
+        }
+
+class ApifySearchStrategy(BaseModel):
+    sources: list[ApifySources]
+    search_strings: list[str]
+
+    def validate_apify_search_strategy(self):
+        if self.sources is None or len(self.sources) == 0:
+            return False, "Sources are required"
+        if self.search_strings is None or len(self.search_strings) == 0:
+            return False, "Search strings are required"
+        return True, ""
+
+    def get_apify_search_strategy_description(self):
+        return {
+            "sources": "List of sources to search on Apify",
+            "search_strings": "List of search strings to search on Apify"
+        }
+
+
+class ApifyRuntimeParams(BaseModel):
+    query: str
+    body: dict
+    source_identifier: str = ""
+    catalog_id: str = ""
 
 class InfringingProductDetail(BaseModel):
     source: str

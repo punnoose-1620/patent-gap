@@ -26,7 +26,15 @@ from models.live_search_results import (
     is_product_listing_url,
     is_valid_product_url,
 )
-from live_search.googleSearch import is_google_custom_search_configured, productGoogleSearch
+from live_search.googleSearch import (
+    is_google_custom_search_configured, 
+    productGoogleSearch
+    )
+from live_search.apifySearch import (
+    Apify, 
+    is_apify_configured, 
+    is_apify_enabled_for_case
+    )
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
@@ -41,7 +49,7 @@ PRODUCT_CLAIMS_FOR_RELEVANCE_LIMIT = 12
 PRODUCT_CLAIM_CHARS_FOR_RELEVANCE = 250
 DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
 SEARCH_TIMEOUT = 10
-MAX_SEARCH_ATTEMPTS = 8
+MAX_SEARCH_ATTEMPTS = 10
 DEFAULT_PRODUCT_SEARCH_MAX_RESULTS = 30
 MIN_PRODUCT_SEARCH_MAX_RESULTS = 3
 MAX_PRODUCT_SEARCH_MAX_RESULTS = 100
@@ -1003,6 +1011,8 @@ def searchProductSources(
     search_limitations:dict,
     parent_case_id: str = '',
     saved_product_urls: set | None = None,
+    seen_apify_runs: set | None = None,
+    apify_limit_flag: set | None = None,
 ):
     search_limitations = normalize_search_limitations(search_limitations)
     max_product_results = resolve_product_search_max_results(search_limitations)
@@ -1031,6 +1041,29 @@ def searchProductSources(
         keywords=keywords,
         saved_product_urls=saved_product_urls,
     )
+
+    if is_apify_configured() and is_apify_enabled_for_case(search_limitations):
+        print("LOG: Running Apify retail product search")
+        apify_products = Apify().search(
+            reference_claims=reference_claims,
+            search_limitations=search_limitations,
+            keywords=keywords,
+            product_name=product_name,
+            max_results=max_product_results,
+            seen_runs=seen_apify_runs,
+            limit_flag=apify_limit_flag,
+        )
+        _persist_extracted_products(
+            apify_products,
+            reference_claims,
+            parent_case_id,
+            product_details_list,
+            created_ids,
+            sites_searched,
+            patent_title=product_name,
+            keywords=keywords,
+            saved_product_urls=saved_product_urls,
+        )
 
     if not product_details_list and is_google_custom_search_configured():
         print(

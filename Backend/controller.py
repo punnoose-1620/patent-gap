@@ -713,6 +713,8 @@ def __complete_product_search(
             search_limitations,
         )
         saved_product_urls = set()
+        seen_apify_runs = set()
+        apify_limit_flag = set()
 
         update_infringement_analysis_flags(
             case_id=case_id, 
@@ -738,6 +740,8 @@ def __complete_product_search(
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
                 saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
                 )
             market_asserted_product_details_list, market_asserted_created_product_ids = searchProductSources(
                 product_name=product_name,
@@ -747,6 +751,8 @@ def __complete_product_search(
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
                 saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
                 )
             for product_detail in market_asserted_product_details_list:
                 if product_detail not in asserted_product_details_list:
@@ -783,6 +789,8 @@ def __complete_product_search(
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
                 saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
                 )
             market_independent_product_details_list, market_independent_created_product_ids = searchProductSources(
                 product_name=product_name,
@@ -792,6 +800,8 @@ def __complete_product_search(
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
                 saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
                 )
             for product_detail in market_independent_product_details_list:
                 if product_detail not in independent_product_details_list:
@@ -826,6 +836,8 @@ def __complete_product_search(
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
                 saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
                 )
             market_core_product_details_list, market_core_created_product_ids = searchProductSources(
                 product_name=product_name,
@@ -835,6 +847,8 @@ def __complete_product_search(
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
                 saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
                 )
             for product_detail in market_core_product_details_list:
                 if product_detail not in core_product_details_list:
@@ -869,6 +883,8 @@ def __complete_product_search(
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
                 saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
                 )
             market_pivotal_product_details_list, market_pivotal_created_product_ids = searchProductSources(
                 product_name=product_name,
@@ -878,6 +894,8 @@ def __complete_product_search(
                 search_limitations=search_limitations,
                 parent_case_id=case_id,
                 saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
                 )
             for product_detail in market_pivotal_product_details_list:
                 if product_detail not in pivotal_product_details_list:
