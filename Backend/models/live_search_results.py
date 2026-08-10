@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+import re
 from urllib.parse import urlparse
 
 import requests
@@ -577,6 +578,224 @@ def _reject_error_page_text(field_label: str, text: str):
     return True, ""
 
 
+_DUMMY_SENTINELS = frozenset({
+    "not available",
+    "not found",
+    "unknown",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "not extractable",
+    "url not found",
+    "url not found in corrupted content",
+    "not extractable due to data corruption",
+    "product name unreadable due to data corruption",
+})
+
+_SCHEMA_PLACEHOLDER_RE = re.compile(
+    r"<\s*(?:string|list\s*\[\s*str\s*\]|int|float|bool)\s*:",
+    re.IGNORECASE,
+)
+
+
+def _normalize_dummy_token(value: str) -> str:
+    return re.sub(r"[_\s]+", " ", str(value).strip().lower())
+
+
+def is_dummy_product_value(value) -> bool:
+    """True for empty values, LLM schema placeholders, or sentinel not-available strings."""
+    if value is None:
+        return True
+    if not isinstance(value, str) or not value.strip():
+        return True
+    text = value.strip()
+    if _SCHEMA_PLACEHOLDER_RE.search(text):
+        return True
+    if _normalize_dummy_token(text) in _DUMMY_SENTINELS:
+        return True
+    return False
+
+
+# Hosts that are never valid product pages (placeholders, consent UIs, etc.).
+BLOCKED_PRODUCT_URL_HOSTS = frozenset({
+    "example.com",
+    "example.org",
+    "example.net",
+    "consent.google.com",
+    "consent.youtube.com",
+})
+
+# Path fragments that indicate consent/cookie pages rather than products.
+BLOCKED_PRODUCT_URL_PATH_MARKERS = (
+    "/cookie-policy",
+    "/cookies-policy",
+    "/cookie_consent",
+    "/cookie-consent",
+    "/privacy-consent",
+)
+
+
+def blocked_product_url_reason(url: str) -> str:
+    """Return a short reason if the URL should be skipped; empty string if allowed."""
+    if not isinstance(url, str) or not url.strip():
+        return "URL is empty"
+    parsed = urlparse(url.strip().lower())
+    host = parsed.netloc
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return "URL has no host"
+    for blocked in BLOCKED_PRODUCT_URL_HOSTS:
+        if host == blocked or host.endswith("." + blocked):
+            return f"Blocked host ({host})"
+    if "consent" in host.split(".")[0]:
+        return f"Blocked consent host ({host})"
+    path = parsed.path or ""
+    for marker in BLOCKED_PRODUCT_URL_PATH_MARKERS:
+        if marker in path:
+            return f"Blocked consent/cookie path ({marker})"
+    return ""
+
+
+def is_blocked_product_url(url: str) -> bool:
+    return bool(blocked_product_url_reason(url))
+
+
+def is_valid_product_url(value) -> bool:
+    if is_dummy_product_value(value):
+        return False
+    text = str(value).strip().lower()
+    if not (text.startswith("http://") or text.startswith("https://")):
+        return False
+    if blocked_product_url_reason(text):
+        return False
+    return True
+
+
+_PDP_URL_MARKERS = (
+    "/dp/",
+    "/gp/product/",
+    "/ip/",
+    "/pd/",
+    "/en/product/",
+    "/product/",
+    "/site/",
+)
+
+_LISTING_URL_MARKERS = (
+    "/browse/",
+    "/category/",
+    "/categories/",
+    "/collections/",
+    "/search",
+    "/s?",
+    "/music/",
+    "/books/",
+    "/clothing/",
+    "/b/",
+    "/sch/",
+)
+
+_LISTING_URL_PATTERNS = (
+    re.compile(r"/dishwashers/?$", re.IGNORECASE),
+    re.compile(r"/[a-z]{2}(?:-[a-z]{2})?/dishwashers/?$", re.IGNORECASE),
+    re.compile(r"/home-appliances/dishwashers/?$", re.IGNORECASE),
+)
+
+_TARGET_PDP_PATTERN = re.compile(r"/p/.+/-/a-\d+", re.IGNORECASE)
+
+
+def is_product_listing_url(url: str) -> bool:
+    """True when URL looks like a category, search, or browse page — not a single product PDP."""
+    if not isinstance(url, str) or not url.strip():
+        return True
+    normalized = url.strip().lower()
+    parsed = urlparse(normalized)
+    path = parsed.path or ""
+    query = parsed.query or ""
+
+    if query and any(token in query for token in ("k=", "keywords=", "search=", "q=")):
+        if "/s?" in normalized or "/search" in path:
+            return True
+
+    for marker in _PDP_URL_MARKERS:
+        if marker in normalized:
+            return False
+    if _TARGET_PDP_PATTERN.search(normalized):
+        return False
+    if "samsung.com" in normalized and "/dishwashers/" in normalized:
+        if len([segment for segment in path.strip("/").split("/") if segment]) >= 4:
+            return False
+
+    for marker in _LISTING_URL_MARKERS:
+        if marker in normalized:
+            return True
+    for pattern in _LISTING_URL_PATTERNS:
+        if pattern.search(path):
+            return True
+    return False
+
+
+def _reject_dummy_product_field(field_label: str, text: str):
+    if is_dummy_product_value(text):
+        return False, f"{field_label} is a dummy or placeholder value ({text!r})"
+    return True, ""
+
+class ApifySources(BaseModel):
+    source_title: str
+    source_identifier: str
+    source_url: str
+    country: str
+    countryCode: str
+    catalog_id: str = ""
+
+    def validate_apify_sources(self):
+        if self.source_title is None or self.source_title.strip() == "":
+            return False, "Source title is required"
+        if self.source_identifier is None or self.source_identifier.strip() == "":
+            return False, "Source identifier is required"
+        if self.source_url is None or self.source_url.strip() == "":
+            return False, "Source URL is required"
+        if self.country is None or self.country.strip() == "":
+            return False, "Country is required"
+        if self.countryCode is None or self.countryCode.strip() == "" or len(self.countryCode.strip()) >= 3:
+            return False, "Country code is required"
+        return True, ""
+    
+    def get_apify_sources_description(self):
+        return {
+            "source_title": "Name/Title of the Source to Search on Apify",
+            "source_identifier": "Identifier of the Source to Search on Apify",
+            "source_url": "URL of the Source to Search on Apify",
+            "country": "Country of the Source to Search on Apify",
+            "countryCode": "Country code of the Source to Search on Apify"
+        }
+
+class ApifySearchStrategy(BaseModel):
+    sources: list[ApifySources]
+    search_strings: list[str]
+
+    def validate_apify_search_strategy(self):
+        if self.sources is None or len(self.sources) == 0:
+            return False, "Sources are required"
+        if self.search_strings is None or len(self.search_strings) == 0:
+            return False, "Search strings are required"
+        return True, ""
+
+    def get_apify_search_strategy_description(self):
+        return {
+            "sources": "List of sources to search on Apify",
+            "search_strings": "List of search strings to search on Apify"
+        }
+
+
+class ApifyRuntimeParams(BaseModel):
+    query: str
+    body: dict
+    source_identifier: str = ""
+    catalog_id: str = ""
+
 class InfringingProductDetail(BaseModel):
     source: str
     product_id: str
@@ -594,6 +813,22 @@ class InfringingProductDetail(BaseModel):
             return False, "Product URL is required"
         if self.product_name is None:
             return False, "Product name is required"
+        for field_label, value in (
+            ("Product ID", self.product_id),
+            ("Product URL", self.product_url),
+            ("Product name", self.product_name),
+            ("Source", self.source),
+        ):
+            validated, error_message = _reject_dummy_product_field(field_label, value)
+            if not validated:
+                return False, error_message
+        blocked = blocked_product_url_reason(self.product_url)
+        if blocked:
+            return False, f"Product URL is blocked ({self.product_url!r}): {blocked}"
+        if not is_valid_product_url(self.product_url):
+            return False, f"Product URL is not a valid http(s) URL ({self.product_url!r})"
+        if is_product_listing_url(self.product_url):
+            return False, f"Product URL is a category or listing page ({self.product_url!r})"
         validated, error_message = _reject_error_page_text("Product name", self.product_name)
         if not validated:
             return False, error_message
@@ -601,6 +836,11 @@ class InfringingProductDetail(BaseModel):
             claim = self.claims[index]
             if not isinstance(claim, str) or not claim.strip():
                 return False, "For claim "+str(index+1)+": Claim is empty"
+            validated, error_message = _reject_dummy_product_field(
+                f"Claim {index + 1}", claim
+            )
+            if not validated:
+                return False, error_message
             validated, error_message = _reject_error_page_text(
                 f"Claim {index + 1}", claim
             )

@@ -18,6 +18,8 @@ from llm_brain.gemini import Gemini
 Controller functions for handling business logic
 """
 
+MAX_RETRY = 10
+
 def _bucket_error_on_analysis_failure(claims, result):
     """On thread failure: Error only for buckets that had claims but never returned."""
     if not claims:
@@ -464,6 +466,10 @@ def start_patent_analysis(
                 case_id=case_id, 
                 category='patent'
                 )
+            update_infringement_analysis_status(
+                case_id=case_id,
+                reset_flags=True
+            )
 
             if len(asserted_claims) > 0:
                 update_infringement_analysis_status(
@@ -661,6 +667,277 @@ def start_patent_analysis(
                 )
             print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
 
+def __complete_product_search(
+    case_id: str,
+    product_name: str,
+    keywords: list[str],
+    owners: list[str],
+    search_limitations: list[dict],
+    original_asserted_claims: list[dict] = [], 
+    original_independent_claims: list[dict] = [], 
+    original_core_claims: list[dict] = [], 
+    original_pivotal_claims: list[dict] = [],
+    market_asserted_claims: list[dict] = [], 
+    market_independent_claims: list[dict] = [], 
+    market_core_claims: list[dict] = [], 
+    market_pivotal_claims: list[dict] = []
+    ):
+    
+    productResults = []
+    product_ids = {}
+    errorResults = {}
+    infringement_details = {}
+
+    asserted_product_details_list = None
+    independent_product_details_list = None
+    core_product_details_list = None
+    pivotal_product_details_list = None
+
+    asserted_created_product_ids = []
+    independent_created_product_ids = []
+    core_created_product_ids = []
+    pivotal_created_product_ids = []
+
+    try:
+        search_limitations = normalize_search_limitations(search_limitations)
+        all_market_claims = []
+        for claim_bucket in (
+            original_asserted_claims,
+            original_independent_claims,
+            original_core_claims,
+            original_pivotal_claims,
+        ):
+            all_market_claims.extend(claim_bucket or [])
+        search_limitations = resolve_product_target_sources_for_analysis(
+            all_market_claims,
+            search_limitations,
+        )
+        saved_product_urls = set()
+        seen_apify_runs = set()
+        apify_limit_flag = set()
+
+        update_infringement_analysis_flags(
+            case_id=case_id, 
+            category='product'
+            )
+        update_infringement_analysis_status(
+            case_id=case_id,
+            update_type="product",
+            reset_flags=True
+        )
+        if len(original_asserted_claims) > 0:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                asserted_bucket='Started',
+                generic_bucket='Started'
+            )
+            asserted_product_details_list, asserted_created_product_ids = searchProductSources(
+                product_name=product_name,
+                keywords=keywords, 
+                owners=owners, 
+                reference_claims=original_asserted_claims, 
+                search_limitations=search_limitations,
+                parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
+                )
+            market_asserted_product_details_list, market_asserted_created_product_ids = searchProductSources(
+                product_name=product_name,
+                keywords=keywords, 
+                owners=owners, 
+                reference_claims=market_asserted_claims, 
+                search_limitations=search_limitations,
+                parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
+                )
+            for product_detail in market_asserted_product_details_list:
+                if product_detail not in asserted_product_details_list:
+                    asserted_product_details_list.append(product_detail)
+            for product_id in market_asserted_created_product_ids:
+                if product_id not in asserted_created_product_ids:
+                    asserted_created_product_ids.append(product_id)
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                asserted_bucket='Completed',
+                generic_bucket='Completed'
+            )
+        else:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                asserted_bucket='Error',
+                generic_bucket='Error',
+                error_message="No generic/asserted claims provided"
+            )
+        
+        if len(original_independent_claims) > 0:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                independent_bucket='Started',
+            )
+            independent_product_details_list, independent_created_product_ids = searchProductSources(
+                product_name=product_name,
+                keywords=keywords, 
+                owners=owners, 
+                reference_claims=original_independent_claims, 
+                search_limitations=search_limitations,
+                parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
+                )
+            market_independent_product_details_list, market_independent_created_product_ids = searchProductSources(
+                product_name=product_name,
+                keywords=keywords, 
+                owners=owners, 
+                reference_claims=market_independent_claims, 
+                search_limitations=search_limitations,
+                parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
+                )
+            for product_detail in market_independent_product_details_list:
+                if product_detail not in independent_product_details_list:
+                    independent_product_details_list.append(product_detail)
+            for product_id in market_independent_created_product_ids:
+                if product_id not in independent_created_product_ids:
+                    independent_created_product_ids.append(product_id)
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                independent_bucket='Completed',
+            )
+        else:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                independent_bucket='Error',
+                error_message="No independent claims provided"
+            )
+        
+        if len(original_core_claims) > 0:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                core_bucket='Started',
+            )
+            core_product_details_list, core_created_product_ids = searchProductSources(
+                product_name=product_name,
+                keywords=keywords, 
+                owners=owners, 
+                reference_claims=original_core_claims, 
+                search_limitations=search_limitations,
+                parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
+                )
+            market_core_product_details_list, market_core_created_product_ids = searchProductSources(
+                product_name=product_name,
+                keywords=keywords, 
+                owners=owners, 
+                reference_claims=market_core_claims, 
+                search_limitations=search_limitations,
+                parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
+                )
+            for product_detail in market_core_product_details_list:
+                if product_detail not in core_product_details_list:
+                    core_product_details_list.append(product_detail)
+            for product_id in market_core_created_product_ids:
+                if product_id not in core_created_product_ids:
+                    core_created_product_ids.append(product_id)
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                core_bucket='Completed',
+            )
+        else:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                core_bucket='Error',
+                error_message="No core claims provided"
+            )
+        
+        if len(original_pivotal_claims) > 0:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                pivotal_bucket='Started',
+            )
+            pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
+                product_name=product_name,
+                keywords=keywords, 
+                owners=owners, 
+                reference_claims=original_pivotal_claims, 
+                search_limitations=search_limitations,
+                parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
+                )
+            market_pivotal_product_details_list, market_pivotal_created_product_ids = searchProductSources(
+                product_name=product_name,
+                keywords=keywords, 
+                owners=owners, 
+                reference_claims=market_pivotal_claims, 
+                search_limitations=search_limitations,
+                parent_case_id=case_id,
+                saved_product_urls=saved_product_urls,
+                seen_apify_runs=seen_apify_runs,
+                apify_limit_flag=apify_limit_flag,
+                )
+            for product_detail in market_pivotal_product_details_list:
+                if product_detail not in pivotal_product_details_list:
+                    pivotal_product_details_list.append(product_detail)
+            for product_id in market_pivotal_created_product_ids:
+                if product_id not in pivotal_created_product_ids:
+                    pivotal_created_product_ids.append(product_id)
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                pivotal_bucket='Completed',
+            )
+        else:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                pivotal_bucket='Error',
+                error_message="No pivotal claims provided"
+            )
+                
+        if asserted_product_details_list is not None:
+            for result in asserted_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+        if independent_product_details_list is not None:
+            for result in independent_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+        if core_product_details_list is not None:
+            for result in core_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+        if pivotal_product_details_list is not None:
+            for result in pivotal_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+
+        return productResults, errorResults, product_ids, infringement_details
+    except Exception as e:
+        print(f'LOG: Case {case_id}: Error completing product search: {str(e)}')
+        return productResults, errorResults, product_ids, infringement_details
+
 def start_product_analysis(
     app,
     case_id: str,
@@ -685,227 +962,34 @@ def start_product_analysis(
         core_product_details_list = None
         pivotal_product_details_list = None
 
-        asserted_created_product_ids = []
-        independent_created_product_ids = []
-        core_created_product_ids = []
-        pivotal_created_product_ids = []
+        product_ids = {}
+        productResults = []
+        errorResults = {}
+        # Add logic to get GET error with each URL in errorResults
+        infringement_details = {}
         try:
-            search_limitations = normalize_search_limitations(search_limitations)
-            all_market_claims = []
-            for claim_bucket in (
-                original_asserted_claims,
-                original_independent_claims,
-                original_core_claims,
-                original_pivotal_claims,
-            ):
-                all_market_claims.extend(claim_bucket or [])
-            search_limitations = resolve_product_target_sources_for_analysis(
-                all_market_claims,
-                search_limitations,
+            productResults, errorResults, product_ids, infringement_details = __complete_product_search(
+                case_id=case_id,
+                product_name=product_name,
+                keywords=keywords,
+                owners=owners,
+                search_limitations=search_limitations,
+                original_asserted_claims=original_asserted_claims,
+                original_independent_claims=original_independent_claims,
+                original_core_claims=original_core_claims,
+                original_pivotal_claims=original_pivotal_claims,
+                market_asserted_claims=market_asserted_claims,
+                market_independent_claims=market_independent_claims,
+                market_core_claims=market_core_claims,
+                market_pivotal_claims=market_pivotal_claims
             )
-
-            update_infringement_analysis_flags(
-                case_id=case_id, 
-                category='product'
-                )
-            
-            if len(original_asserted_claims) > 0:
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    asserted_bucket='Started',
-                    generic_bucket='Started'
-                )
-                asserted_product_details_list, asserted_created_product_ids = searchProductSources(
-                    product_name=product_name,
-                    keywords=keywords, 
-                    owners=owners, 
-                    reference_claims=original_asserted_claims, 
-                    search_limitations=search_limitations,
-                    parent_case_id=case_id,
-                    )
-                market_asserted_product_details_list, market_asserted_created_product_ids = searchProductSources(
-                    product_name=product_name,
-                    keywords=keywords, 
-                    owners=owners, 
-                    reference_claims=market_asserted_claims, 
-                    search_limitations=search_limitations,
-                    parent_case_id=case_id,
-                    )
-                for product_detail in market_asserted_product_details_list:
-                    if product_detail not in asserted_product_details_list:
-                        asserted_product_details_list.append(product_detail)
-                for product_id in market_asserted_created_product_ids:
-                    if product_id not in asserted_created_product_ids:
-                        asserted_created_product_ids.append(product_id)
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    asserted_bucket='Completed',
-                    generic_bucket='Completed'
-                )
-            else:
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    asserted_bucket='Error',
-                    generic_bucket='Error',
-                    error_message="No generic/asserted claims provided"
-                )
-            
-            if len(original_independent_claims) > 0:
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    independent_bucket='Started',
-                )
-                independent_product_details_list, independent_created_product_ids = searchProductSources(
-                    product_name=product_name,
-                    keywords=keywords, 
-                    owners=owners, 
-                    reference_claims=original_independent_claims, 
-                    search_limitations=search_limitations,
-                    parent_case_id=case_id,
-                    )
-                market_independent_product_details_list, market_independent_created_product_ids = searchProductSources(
-                    product_name=product_name,
-                    keywords=keywords, 
-                    owners=owners, 
-                    reference_claims=market_independent_claims, 
-                    search_limitations=search_limitations,
-                    parent_case_id=case_id,
-                    )
-                for product_detail in market_independent_product_details_list:
-                    if product_detail not in independent_product_details_list:
-                        independent_product_details_list.append(product_detail)
-                for product_id in market_independent_created_product_ids:
-                    if product_id not in independent_created_product_ids:
-                        independent_created_product_ids.append(product_id)
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    independent_bucket='Completed',
-                )
-            else:
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    independent_bucket='Error',
-                    error_message="No independent claims provided"
-                )
-            
-            if len(original_core_claims) > 0:
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    core_bucket='Started',
-                )
-                core_product_details_list, core_created_product_ids = searchProductSources(
-                    product_name=product_name,
-                    keywords=keywords, 
-                    owners=owners, 
-                    reference_claims=original_core_claims, 
-                    search_limitations=search_limitations,
-                    parent_case_id=case_id,
-                    )
-                market_core_product_details_list, market_core_created_product_ids = searchProductSources(
-                    product_name=product_name,
-                    keywords=keywords, 
-                    owners=owners, 
-                    reference_claims=market_core_claims, 
-                    search_limitations=search_limitations,
-                    parent_case_id=case_id,
-                    )
-                for product_detail in market_core_product_details_list:
-                    if product_detail not in core_product_details_list:
-                        core_product_details_list.append(product_detail)
-                for product_id in market_core_created_product_ids:
-                    if product_id not in core_created_product_ids:
-                        core_created_product_ids.append(product_id)
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    core_bucket='Completed',
-                )
-            else:
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    core_bucket='Error',
-                    error_message="No core claims provided"
-                )
-            
-            if len(original_pivotal_claims) > 0:
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    pivotal_bucket='Started',
-                )
-                pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
-                    product_name=product_name,
-                    keywords=keywords, 
-                    owners=owners, 
-                    reference_claims=original_pivotal_claims, 
-                    search_limitations=search_limitations,
-                    parent_case_id=case_id,
-                    )
-                market_pivotal_product_details_list, market_pivotal_created_product_ids = searchProductSources(
-                    product_name=product_name,
-                    keywords=keywords, 
-                    owners=owners, 
-                    reference_claims=market_pivotal_claims, 
-                    search_limitations=search_limitations,
-                    parent_case_id=case_id,
-                    )
-                for product_detail in market_pivotal_product_details_list:
-                    if product_detail not in pivotal_product_details_list:
-                        pivotal_product_details_list.append(product_detail)
-                for product_id in market_pivotal_created_product_ids:
-                    if product_id not in pivotal_created_product_ids:
-                        pivotal_created_product_ids.append(product_id)
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    pivotal_bucket='Completed',
-                )
-            else:
-                update_infringement_analysis_status(
-                    case_id=case_id,
-                    update_type="product",
-                    pivotal_bucket='Error',
-                    error_message="No pivotal claims provided"
-                )
-                    
-            productResults = []
-            if asserted_product_details_list is not None:
-                for result in asserted_product_details_list:
-                    if result not in productResults:
-                        productResults.append(result)
-            if independent_product_details_list is not None:
-                for result in independent_product_details_list:
-                    if result not in productResults:
-                        productResults.append(result)
-            if core_product_details_list is not None:
-                for result in core_product_details_list:
-                    if result not in productResults:
-                        productResults.append(result)
-            if pivotal_product_details_list is not None:
-                for result in pivotal_product_details_list:
-                    if result not in productResults:
-                        productResults.append(result)
-
             update_infringements(case_id, productResults)
             try:
                 refresh_case_infringement_scores(case_id)
             except Exception as score_err:
                 print(f'LOG: refresh_case_infringement_scores failed for {case_id}: {score_err}')
             infringement_details = _merge_infringement_details(case_id, {
-                'product_ids': {
-                    'asserted': asserted_created_product_ids,
-                    'independent': independent_created_product_ids,
-                    'core': core_created_product_ids,
-                    'pivotal': pivotal_created_product_ids
-                },
+                'product_ids': product_ids,
                 'search_keywords': keywords,
                 'claim_type': search_type,
             })

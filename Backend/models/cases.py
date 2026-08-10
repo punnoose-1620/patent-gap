@@ -408,7 +408,8 @@ def update_infringement_analysis_status(
     independent_bucket:str = None, 
     core_bucket:str = None, 
     pivotal_bucket:str = None,
-    error_message:str = None
+    error_message:str = None,
+    reset_flags:bool = False
     ):
     default_status = ""
     if status.strip().lower() == "completed":
@@ -430,7 +431,7 @@ def update_infringement_analysis_status(
 
     case_data = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     old_status_flags = case_data.get(status_key, {})
-    if old_status_flags is None or old_status_flags == {}:
+    if old_status_flags is None or old_status_flags == {} or reset_flags:
         old_status_flags = {
             generic_key: default_status,
             assert_key: default_status,
@@ -439,16 +440,17 @@ def update_infringement_analysis_status(
             pivotal_key: default_status
         }
 
-    if generic_bucket is not None:
-        old_status_flags[generic_key] = generic_bucket
-    if asserted_bucket is not None:
-        old_status_flags[assert_key] = asserted_bucket
-    if independent_bucket is not None:
-        old_status_flags[independent_key] = independent_bucket
-    if core_bucket is not None:
-        old_status_flags[core_key] = core_bucket
-    if pivotal_bucket is not None:
-        old_status_flags[pivotal_key] = pivotal_bucket
+    if not reset_flags:
+        if generic_bucket is not None:
+            old_status_flags[generic_key] = generic_bucket
+        if asserted_bucket is not None:
+            old_status_flags[assert_key] = asserted_bucket
+        if independent_bucket is not None:
+            old_status_flags[independent_key] = independent_bucket
+        if core_bucket is not None:
+            old_status_flags[core_key] = core_bucket
+        if pivotal_bucket is not None:
+            old_status_flags[pivotal_key] = pivotal_bucket
 
     update_data_new = {
         'last_updated': dt.now()

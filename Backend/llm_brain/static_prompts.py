@@ -172,10 +172,11 @@ SEARCH_STRING_GENERATOR = """
 I am providing you with a list of keywords and a list of owners.
 Generate a search string that will be used to search for products related to the keywords and owners.
 The search string should be a valid Google Search string.
-The result of the google search should yield product pages from various relevant sources like Amazon, eBay, Walmart, etc.
-The result of the google search should not be another search results page, but rather a product page from a relevant source.
+The result of the google search should yield pages for specific named products, equipment, software, or services from relevant sources (marketplaces, manufacturer sites, vendor product pages, spec sites, etc.).
+The result of the google search should not be another search results page, but rather a product or solution detail page from a relevant source.
 If owners firms/companies are provided, prioritize their competitor products in the search results.
 The search string should be a single string, not a list of strings.
+When using site: filters, only target domains from the priority list below — do not invent site paths.
 
 Return the search string in the following format:
 {
@@ -190,7 +191,7 @@ Companies to focus search on: <search_limitations_companies>
 
 Websites to focus search on: <search_limitations_websites>
 
-Priority retailer sources (use site: filters for these domains when possible):
+Priority product source domains (use site: filters for these domains when possible):
 <priority_target_sources_replacement>
 Do not include any other text or comments.
 """
@@ -221,7 +222,7 @@ PERFORM_GOOGLE_SEARCH_PROMPT = """
 I am providing you with a search string.
 Perform a google search with the search string.
 
-Priority retailer domains (prefer product results from these sites):
+Priority product source domains (prefer results from these sites when relevant):
 <priority_target_sources_replacement>
 
 Return the results in the following format:
@@ -238,17 +239,25 @@ Return the results in the following format:
 Rules:
 - Do not include any other text or comments.
 - Return up to <max_results_replacement> distinct product results.
-- Prefer results from the priority retailer domains listed above.
-- The results should only be live products available for purchase/order.
+- Prefer results from the priority product source domains listed above, and from the companies/websites in the search context when provided.
+- Return commercially available products, equipment, software platforms, or services that may read on the search topic — from retail marketplaces OR manufacturer/vendor product pages.
+- Return only individual product or solution detail pages for a specific named item (not broad catalog hubs).
+- Do not return category pages, collection pages, browse pages, or site search result pages (e.g. /dishwashers/, /browse/, /category/, /s?k=).
+- Prefer URLs that identify one product (e.g. Amazon /dp/, Walmart /ip/, Target /p/.../A-, Lowe's /pd/, manufacturer /product/, /solutions/, vendor spec pages).
 - Do not include books, music, posters, wall art, or unrelated accessories unless the search is explicitly for those.
-- Do not assume or build URLs. The URLs should be the exact URLs from the search results.
+- URL integrity (critical):
+  - Every URL must be copied exactly from a real Google search result link you can see — character for character.
+  - Never construct, infer, or guess URLs from product names, SKU patterns, or known site URL templates.
+  - Do not return URLs you did not find in the search results (no fabricated deep paths such as /products/modems/... unless that exact link appeared).
+  - Never use placeholder or example domains (e.g. example.com).
+  - If you cannot confirm a URL appeared in search results, omit that result rather than inventing a link.
 
 Here's is the search string to perform the google search:
 <search_string_replacement>
 """
 
 PERFORM_GOOGLE_SEARCH_FROM_CLAIMS_PROMPT = """
-You are performing a Google product search to find live products that may read on the reference claims below.
+You are performing a Google product search to find live products, equipment, software, or services that may read on the reference claims below.
 
 Product name to search for:
 <product_name_replacement>
@@ -265,7 +274,7 @@ Companies to focus search on:
 Websites to focus search on:
 <search_limitations_websites>
 
-Priority retailer domains (strongly prefer product results from these sites):
+Priority product source domains (prefer results from these sites when relevant):
 <priority_target_sources_replacement>
 
 Return the results in the following format:
@@ -282,19 +291,27 @@ Return the results in the following format:
 Rules:
 - Do not include any other text or comments.
 - Return up to <max_results_replacement> distinct product results.
-- Prefer results from the priority retailer domains listed above.
-- The results should only be live products available for purchase/order.
-- DO not build URLs. The URLs should be the exact URLs from the search results.
+- Strongly prefer results from the companies and websites listed above when they match the reference claims.
+- Also consider priority product source domains (marketplaces and vendor sites) when relevant to the technology.
+- Return commercially available products, devices, network equipment, software platforms, or services — from retail marketplaces OR manufacturer/vendor product and solution pages.
+- Return only individual product or solution detail pages for a specific named item (not broad catalog hubs).
+- Do not return category pages, collection pages, browse pages, or site search result pages (e.g. /dishwashers/, /browse/, /category/, /s?k=).
+- Prefer URLs that identify one product (e.g. Amazon /dp/, Walmart /ip/, Target /p/.../A-, Lowe's /pd/, manufacturer /product/, vendor /solutions/ or /network-products/ pages, device spec pages).
+- URL integrity (critical):
+  - Every URL must be copied exactly from a real Google search result link you can see — character for character.
+  - Never construct, infer, or guess URLs from product names, SKU patterns, or known site URL templates.
+  - Do not return URLs you did not find in the search results (no fabricated deep paths unless that exact link appeared).
+  - Never use placeholder or example domains (e.g. example.com).
+  - If you cannot confirm a URL appeared in search results, omit that result rather than inventing a link.
 - Do not include books, music, posters, wall art, or unrelated accessories unless the claims are about those.
-- Do not assume or build URLs. The URLs should be the exact URLs from the search results.
 - Exclude products from the patent owners listed above when possible.
-- Only include products directly related to the reference claims and the product name.
-- Avoid non-product pages like search results like /music, /books, etc.
+- Only include items directly related to the reference claims and the product name.
+- Avoid non-product pages like /music, /books, generic news articles, or forum threads.
 """
 
 PRODUCT_DETAILS_EXTRACTOR = """
-I am providing you with the content of a product page from a relevant source.
-Extract the essential details of the product from the content.
+I am providing you with the content of a product or solution page from a relevant source.
+Extract the essential details of the product, device, equipment, or software from the content.
 Return the details in the following format:
 {
   "product_details": [
@@ -310,7 +327,7 @@ Return the details in the following format:
 Rules:
 - Do not include any other text or comments.
 - Source should be the name of the website from which the product details are extracted.
-- Claims should be the claims of the product in the exact phrasing as in the product details.
+- Claims should describe product capabilities, features, specifications, or technical functions found on the page — use exact phrasing from the page when possible (marketing bullets, spec tables, feature lists, standards support, security/authentication descriptions).
 - No claim can be empty or unrelated to the product.
 - Product name, Product ID, Product URL and Source cannot be empty or unrelated to the product.
 """

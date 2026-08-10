@@ -377,6 +377,7 @@ class Gemini:
         model_name: str = 'gemini-2.5-flash',
         count: int = 0,
         error_message: str = "",
+        previous_errors: dict = {}
     ):
         if count >= MAX_ATTEMPTS:
             raise Exception(
@@ -431,6 +432,11 @@ class Gemini:
             "\n".join(priority_lines) if priority_lines else "(none specified)",
         )
         final_prompt = final_prompt.replace("<max_results_replacement>", str(max_results))
+        if (previous_errors is not None) and (previous_errors != {}):
+            final_prompt += "\n\nSpecial Rules:"
+            final_prompt += "\n\tYour previous response failed validation with the following error messages for resultant URLs:"
+            final_prompt += f"\n\t{str(previous_errors)}\n"
+            final_prompt += "Do not repeat the same mistake and try again."
         if error_message != "":
             final_prompt += (
                 "\n\nYour previous response failed validation with the error message: "

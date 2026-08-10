@@ -3,6 +3,7 @@ import json
 import sys
 import threading
 import requests
+from urllib.parse import urlparse
 from tqdm import tqdm
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -18,8 +19,22 @@ from infringement_score_filters import (
     filter_similar_claims,
     score_meets_threshold,
 )
-from models.live_search_results import ProductTargetSources
-from live_search.googleSearch import is_google_custom_search_configured, productGoogleSearch
+from models.live_search_results import (
+    ProductTargetSources,
+    blocked_product_url_reason,
+    is_dummy_product_value,
+    is_product_listing_url,
+    is_valid_product_url,
+)
+from live_search.googleSearch import (
+    is_google_custom_search_configured, 
+    productGoogleSearch
+    )
+from live_search.apifySearch import (
+    Apify, 
+    is_apify_configured, 
+    is_apify_enabled_for_case
+    )
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
@@ -28,9 +43,15 @@ from web_scraper.google_patents import GooglePatents
 from web_search import check_html_for_runtime_errors
 
 TITLE_SIMILARITY_THRESHOLD = 0.85
+PRODUCT_TITLE_SIMILARITY_THRESHOLD = 0.10
+PRODUCT_REFERENCE_KEYWORD_LIMIT = 10
+PRODUCT_CLAIMS_FOR_RELEVANCE_LIMIT = 12
+PRODUCT_CLAIM_CHARS_FOR_RELEVANCE = 250
 DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
 SEARCH_TIMEOUT = 10
+MAX_SEARCH_ATTEMPTS = 10
 DEFAULT_PRODUCT_SEARCH_MAX_RESULTS = 30
+MIN_PRODUCT_SEARCH_MAX_RESULTS = 3
 MAX_PRODUCT_SEARCH_MAX_RESULTS = 100
 SESSION_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -99,6 +120,106 @@ def calculate_cosine_similarity(text1: str, text2: str) -> float:
     vectorizer = TfidfVectorizer()
     vectors = vectorizer.fit_transform([text1, text2])
     return cosine_similarity(vectors[0], vectors[1])[0][0]
+
+
+def calculate_product_relevance_similarity(text1: str, text2: str) -> float:
+    """Char n-gram cosine for short patent title/keyword vs product name matching."""
+    vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5))
+    vectors = vectorizer.fit_transform([text1, text2])
+    return cosine_similarity(vectors[0], vectors[1])[0][0]
+
+
+def build_patent_reference_text(
+    patent_title: str,
+    keywords: list[str],
+    max_keywords: int = PRODUCT_REFERENCE_KEYWORD_LIMIT,
+) -> str:
+    parts = []
+    if isinstance(patent_title, str) and patent_title.strip():
+        parts.append(patent_title.strip())
+    for keyword in (keywords or [])[:max_keywords]:
+        if isinstance(keyword, str) and keyword.strip():
+            parts.append(keyword.strip())
+    return " ".join(parts)
+
+
+def build_product_reference_text(
+    product_name: str,
+    product_claims: list[str] | None = None,
+    max_claims: int = PRODUCT_CLAIMS_FOR_RELEVANCE_LIMIT,
+    max_chars_per_claim: int = PRODUCT_CLAIM_CHARS_FOR_RELEVANCE,
+) -> str:
+    parts = []
+    if isinstance(product_name, str) and product_name.strip():
+        parts.append(product_name.strip())
+    for claim in (product_claims or [])[:max_claims]:
+        if isinstance(claim, str) and claim.strip():
+            parts.append(claim.strip()[:max_chars_per_claim])
+    return " ".join(parts)
+
+
+def product_matches_patent_context(
+    patent_title: str,
+    keywords: list[str],
+    product_name: str,
+    product_claims: list[str] | None = None,
+    threshold: float = PRODUCT_TITLE_SIMILARITY_THRESHOLD,
+) -> tuple[bool, float]:
+    reference_text = build_patent_reference_text(patent_title, keywords)
+    if not reference_text:
+        return False, 0.0
+    name_text = (product_name or "").strip()
+    full_text = build_product_reference_text(product_name, product_claims)
+    scores = []
+    try:
+        if name_text:
+            scores.append(
+                float(calculate_product_relevance_similarity(reference_text, name_text))
+            )
+        if full_text and (not name_text or full_text != name_text):
+            scores.append(
+                float(calculate_product_relevance_similarity(reference_text, full_text))
+            )
+    except ValueError:
+        return False, 0.0
+    if not scores:
+        return False, 0.0
+    score = max(scores)
+    return score >= threshold, score
+
+
+def normalize_product_url(url: str) -> str:
+    """Normalize URL for cross-bucket deduplication (host + path, no query/fragment)."""
+    if not isinstance(url, str) or not url.strip():
+        return ""
+    parsed = urlparse(url.strip().lower())
+    host = parsed.netloc
+    if host.startswith("www."):
+        host = host[4:]
+    path = (parsed.path or "").rstrip("/")
+    return f"{host}{path}"
+
+
+def product_url_already_saved(
+    url: str,
+    product_details_list: list,
+    saved_product_urls: set | None = None,
+) -> bool:
+    norm = normalize_product_url(url)
+    if not norm:
+        return False
+    if saved_product_urls is not None and norm in saved_product_urls:
+        return True
+    for product in product_details_list:
+        other_url = (
+            product.get("product_url")
+            if isinstance(product, dict)
+            else getattr(product, "product_url", None)
+        )
+        if normalize_product_url(other_url) == norm:
+            return True
+    return False
+
 
 def checkSimilarTitleExists(title1:str, references: list[str]):
     for reference in references:
@@ -545,10 +666,23 @@ def performInfringementAnalysis(reference_claims:list[str], infringing_claims:li
     return infringement_analysis
 
 def alreadyExistsInProductDetailsList(product_detail, product_details_list: list):
-    pid = getattr(product_detail, "product_id", None) or (product_detail.get("product_id") if isinstance(product_detail, dict) else None)
+    pid = getattr(product_detail, "product_id", None) or (
+        product_detail.get("product_id") if isinstance(product_detail, dict) else None
+    )
+    purl = getattr(product_detail, "product_url", None) or (
+        product_detail.get("product_url") if isinstance(product_detail, dict) else None
+    )
+    norm_url = normalize_product_url(purl) if purl else ""
     for product in product_details_list:
-        other_pid = getattr(product, "product_id", None) or (product.get("product_id") if isinstance(product, dict) else None)
+        other_pid = getattr(product, "product_id", None) or (
+            product.get("product_id") if isinstance(product, dict) else None
+        )
+        other_url = getattr(product, "product_url", None) or (
+            product.get("product_url") if isinstance(product, dict) else None
+        )
         if pid and other_pid and pid == other_pid:
+            return True
+        if norm_url and normalize_product_url(other_url) == norm_url:
             return True
     return False
 
@@ -576,49 +710,67 @@ def _discover_products_via_gemini(
     print(
         "LOG: Gemini product search (full bucket claims; no query-generation LLM)"
     )
-    google_search_results = Gemini().perform_google_search_from_claims(
-        product_name=product_name,
-        reference_claims=reference_claims,
-        owners=owners,
-        search_limitations=search_limitations,
-        max_results=max_product_results,
-    )
-    print(f"LOG: Gemini returned {len(google_search_results)} search result(s)")
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
+    error_results = {}
+    count = 0
     extracted = []
-    results_to_process = google_search_results[:max_product_results]
-    for result in _tqdm(
-        results_to_process,
-        desc="Fetching Product Details from Gemini Search Results",
-    ):
-        url = result.url
-        try:
-            html_content = performSearch(url, session)
-        except (
-            ConnectionResetError,
-            requests.exceptions.ConnectionError,
-            requests.exceptions.HTTPError,
-        ) as e:
-            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
-            continue
-        except Exception as e:
-            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
-            continue
-        is_error_page, error_keyword = check_html_for_runtime_errors(
-            html_content, url=url
+    while (count < MAX_SEARCH_ATTEMPTS) and (len(extracted) < MIN_PRODUCT_SEARCH_MAX_RESULTS):
+        count += 1
+        google_search_results = Gemini().perform_google_search_from_claims(
+            product_name=product_name,
+            reference_claims=reference_claims,
+            owners=owners,
+            search_limitations=search_limitations,
+            max_results=max_product_results,
         )
-        if is_error_page:
-            print(
-                f"\nERROR: Blocked page content for URL: {url} — {error_keyword}"
-            )
-            continue
-        try:
-            product_details = Gemini().get_product_details(html_content)
-        except Exception as e:
-            print(f"\nERROR: Product details extraction failed for {url}: {str(e)}")
-            continue
-        extracted.append(product_details)
+        print(f"LOG: Gemini returned {len(google_search_results)} search result(s)")
+        session = requests.Session()
+        session.headers.update(SESSION_HEADERS)
+        results_to_process = google_search_results[:max_product_results]
+        for result in _tqdm(
+            results_to_process,
+            desc="Fetching Product Details from Gemini Search Results",
+        ):
+            url = str(result.url).strip().lower()
+            if url in error_results:
+                continue
+            if is_product_listing_url(url):
+                print(f"LOG: Skipping listing/category URL: {url}")
+                error_results[url] = "Category or listing page URL"
+                continue
+            blocked = blocked_product_url_reason(url)
+            if blocked:
+                print(f"LOG: Skipping blocked product URL: {url} — {blocked}")
+                error_results[url] = blocked
+                continue
+            try:
+                html_content = performSearch(url, session)
+            except (
+                ConnectionResetError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.HTTPError,
+            ) as e:
+                print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+                error_results[url] = str(e)
+                continue
+            except Exception as e:
+                print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+                error_results[url] = str(e)
+                continue
+            is_error_page, error_keyword = check_html_for_runtime_errors(html_content, url=url)
+            if is_error_page:
+                print(
+                    f"\nERROR: Blocked page content for URL: {url} — {error_keyword}"
+                )
+                error_results[url] = "Bot check blocked page content"
+                continue
+            try:
+                product_details = Gemini().get_product_details(html_content)
+            except Exception as e:
+                print(f"\nERROR: Product details extraction failed for {url}: {str(e)}")
+                continue
+            if alreadyExistsInProductDetailsList(product_details, extracted):
+                continue
+            extracted.append(product_details)
 
     print(f"LOG: Gemini discovery extracted {len(extracted)} product(s)")
     return extracted
@@ -631,11 +783,54 @@ def _persist_extracted_products(
     product_details_list: list,
     created_ids: list,
     sites_searched: dict,
+    patent_title: str = "",
+    keywords: list[str] | None = None,
+    saved_product_urls: set | None = None,
 ):
     for product_details in extracted_products:
         website_searched = product_details.source or "unknown"
         sites_searched[website_searched] = sites_searched.get(website_searched, 0) + 1
         try:
+            product_id = product_details.product_id
+            product_url = product_details.product_url
+            if alreadyExistsInProductDetailsList(product_details, product_details_list):
+                continue
+            if (
+                is_dummy_product_value(product_id)
+                or is_dummy_product_value(product_url)
+                or is_dummy_product_value(product_details.product_name)
+                or is_dummy_product_value(product_details.source)
+            ):
+                continue
+            if not is_valid_product_url(product_url):
+                continue
+            if is_product_listing_url(product_url):
+                print(f"LOG: Skipping listing/category product URL: {product_url}")
+                continue
+            blocked = blocked_product_url_reason(product_url)
+            if blocked:
+                print(f"LOG: Skipping blocked product URL: {product_url} — {blocked}")
+                continue
+            if product_url_already_saved(
+                product_url, product_details_list, saved_product_urls
+            ):
+                print(f"LOG: Skipping duplicate product URL: {product_url}")
+                continue
+            is_relevant, relevance_score = product_matches_patent_context(
+                patent_title,
+                keywords or [],
+                product_details.product_name,
+                product_claims=product_details.claims,
+            )
+            if not is_relevant:
+                print(
+                    "LOG: Skipping product with low relevance "
+                    f"({relevance_score:.3f} < {PRODUCT_TITLE_SIMILARITY_THRESHOLD}): "
+                    f"{product_details.product_name!r}"
+                )
+                continue
+            print(f"LOG: Product ID: {product_id}")
+            print(f"LOG: Product URL: {product_url}")
             infringement_analysis = Gemini().analyze_product_infringements(
                 reference_claims, product_details.claims
             )
@@ -644,20 +839,6 @@ def _persist_extracted_products(
                 for item in infringement_analysis
             ]
             product_details.similar_claims = filter_similar_claims(product_details.similar_claims)
-            product_id = product_details.product_id
-            product_url = product_details.product_url
-            print(f"LOG: Product ID: {product_id}")
-            print(f"LOG: Product URL: {product_url}")
-            if alreadyExistsInProductDetailsList(product_details, product_details_list):
-                continue
-            if (product_id is None) or (product_url is None):
-                continue
-            if (product_id == "") or (product_url == ""):
-                continue
-            if (str(product_id).lower() == "unknown") or (str(product_url).lower() == "unknown"):
-                continue
-            if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
-                continue
             payload = product_details.model_dump()
             payload = filter_infringement_entry(payload)
             payload["_id"] = (
@@ -672,6 +853,8 @@ def _persist_extracted_products(
             )
             if creation_result["success"]:
                 created_ids.append(creation_result["infringement_id"])
+                if saved_product_urls is not None:
+                    saved_product_urls.add(normalize_product_url(product_url))
             product_details_list.append(payload)
         except Exception as e:
             print(f"\nERROR: Error analyzing product infringements: {str(e)}")
@@ -827,8 +1010,10 @@ def searchProductSources(
     reference_claims:list[str],
     search_limitations:dict,
     parent_case_id: str = '',
-    ):
-    del keywords
+    saved_product_urls: set | None = None,
+    seen_apify_runs: set | None = None,
+    apify_limit_flag: set | None = None,
+):
     search_limitations = normalize_search_limitations(search_limitations)
     max_product_results = resolve_product_search_max_results(search_limitations)
     print(f"LOG: Product search max results: {max_product_results}")
@@ -852,7 +1037,33 @@ def searchProductSources(
         product_details_list,
         created_ids,
         sites_searched,
+        patent_title=product_name,
+        keywords=keywords,
+        saved_product_urls=saved_product_urls,
     )
+
+    if is_apify_configured() and is_apify_enabled_for_case(search_limitations):
+        print("LOG: Running Apify retail product search")
+        apify_products = Apify().search(
+            reference_claims=reference_claims,
+            search_limitations=search_limitations,
+            keywords=keywords,
+            product_name=product_name,
+            max_results=max_product_results,
+            seen_runs=seen_apify_runs,
+            limit_flag=apify_limit_flag,
+        )
+        _persist_extracted_products(
+            apify_products,
+            reference_claims,
+            parent_case_id,
+            product_details_list,
+            created_ids,
+            sites_searched,
+            patent_title=product_name,
+            keywords=keywords,
+            saved_product_urls=saved_product_urls,
+        )
 
     if not product_details_list and is_google_custom_search_configured():
         print(
@@ -872,6 +1083,9 @@ def searchProductSources(
             product_details_list,
             created_ids,
             sites_searched,
+            patent_title=product_name,
+            keywords=keywords,
+            saved_product_urls=saved_product_urls,
         )
     elif not product_details_list:
         print("LOG: No products found via Gemini; CSE not configured")

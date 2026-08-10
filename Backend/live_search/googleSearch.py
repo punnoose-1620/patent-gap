@@ -6,7 +6,11 @@ import requests
 
 from env_controller import getEnvKey
 from llm_brain.gemini import Gemini
-from models.live_search_results import GoogleSearchResults, InfringingProductDetail
+from models.live_search_results import (
+    GoogleSearchResults,
+    InfringingProductDetail,
+    blocked_product_url_reason,
+)
 from web_search import check_html_for_runtime_errors, convertHtmlToString
 
 CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
@@ -277,6 +281,11 @@ def productGoogleSearch(
         for result in search_results:
             url = (result.url or "").strip()
             if not url or url in seen_result_urls:
+                continue
+            blocked = blocked_product_url_reason(url)
+            if blocked:
+                print(f"LOG: Skipping blocked product URL: {url} — {blocked}")
+                seen_result_urls.add(url)
                 continue
             seen_result_urls.add(url)
 
