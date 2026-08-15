@@ -543,7 +543,96 @@ class Gemini:
                 error_message="No selected target sources passed URL validation",
             )
         return reachable
-    
+
+    def generate_product_retail_search_params(
+        self,
+        product_name: str,
+        keywords: list[str],
+        reference_claims: list[str],
+        search_limitations: dict | None = None,
+        model_name: str = 'gemini-2.5-flash',
+        count: int = 0,
+        error_message: str = "",
+    ) -> ProductRetailSearchParams:
+        if count >= MAX_ATTEMPTS:
+            raise Exception(
+                f"Generate_Retail_Search_Params_Error: Failed after {MAX_ATTEMPTS} attempts.\n\t{error_message}"
+            )
+
+        search_limitations = search_limitations or {}
+        claims_text = "\n".join(
+            claim.strip()
+            for claim in (reference_claims or [])
+            if isinstance(claim, str) and claim.strip()
+        )
+        keywords_text = "\n".join(
+            keyword.strip()
+            for keyword in (keywords or [])
+            if isinstance(keyword, str) and keyword.strip()
+        ) or "(none)"
+        companies = search_limitations.get("companies") or []
+        if not isinstance(companies, list):
+            companies = [companies] if companies else []
+        companies_text = "\n".join(
+            str(company).strip() for company in companies if str(company).strip()
+        ) or "(none)"
+
+        candidate_urls: list[str] = []
+        for url in (search_limitations.get("urls") or []):
+            if isinstance(url, str) and url.strip():
+                candidate_urls.append(url.strip())
+        for source in ProductTargetSources.default_catalog().target_sources:
+            if source.url and source.url.strip():
+                candidate_urls.append(source.url.strip())
+        # Preserve order while deduping
+        candidate_urls = list(dict.fromkeys(candidate_urls))
+        candidate_sites_text = "\n".join(f"- {url}" for url in candidate_urls) or "(none)"
+
+        final_prompt = GENERATE_RETAIL_SEARCH_PARAMS.replace(
+            "<product_name_replacement>",
+            (product_name or "").strip() or "(untitled)",
+        )
+        final_prompt = final_prompt.replace("<keywords_replacement>", keywords_text)
+        final_prompt = final_prompt.replace(
+            "<reference_claims_replacement>",
+            claims_text or "(none)",
+        )
+        final_prompt = final_prompt.replace("<companies_replacement>", companies_text)
+        final_prompt = final_prompt.replace("<candidate_sites_replacement>", candidate_sites_text)
+        final_prompt = final_prompt.replace(
+            "<response_structure_replacement>",
+            ProductRetailSearchParams.get_description(),
+        )
+        if error_message:
+            final_prompt += (
+                "\n\nYour previous response failed validation with the error message: "
+                + error_message
+                + "\nDo not repeat the same mistake and try again."
+            )
+
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": ProductRetailSearchParams.model_json_schema(),
+            },
+        )
+        wrapper = ProductRetailSearchParams.model_validate_json(response.text)
+        validated, validation_error = wrapper.validate_product_retail_search_params()
+        if not validated:
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.generate_product_retail_search_params(
+                product_name=product_name,
+                keywords=keywords,
+                reference_claims=reference_claims,
+                search_limitations=search_limitations,
+                model_name=model_name,
+                count=count + 1,
+                error_message=validation_error,
+            )
+        return wrapper
+
     def get_product_details(
         self, 
         product_content: str, 
@@ -617,17 +706,34 @@ class Gemini:
         return wrapper
 
     def analyze_product_infringements(
-            self, 
-            reference_claims:list[str], 
-            infringing_claims:list[str],
-            model_name:str = 'gemini-2.5-flash',
-            count:int = 0,
-            error_message:str = ""
+            self,
+            reference_claims: list[str],
+            infringing_claims: list[str],
+            ref_claim_indices: list[int] | None = None,
+            ref_claim_flag: str = "market",
+            model_name: str = 'gemini-2.5-flash',
+            count: int = 0,
+            error_message: str = ""
         ):
         if count >= MAX_ATTEMPTS:
             raise Exception(f"Product_InfringementAnalysis_Error: Failed to analyze product infringements after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
-        final_prompt = PRODUCT_INFRINGEMENT_ANALYZER.replace("<reference_claims_replacement>", "\n".join(reference_claims))
-        final_prompt = final_prompt.replace("<infringing_claims_replacement>", "\n".join(infringing_claims))
+        flag = str(ref_claim_flag or "market").strip().lower()
+        if flag not in ("market", "original"):
+            flag = "market"
+        indices = list(ref_claim_indices) if ref_claim_indices is not None else list(range(len(reference_claims or [])))
+        if len(indices) != len(reference_claims or []):
+            indices = list(range(len(reference_claims or [])))
+        tagged_refs = [
+            f"[index={indices[i]}] {text}"
+            for i, text in enumerate(reference_claims or [])
+        ]
+        final_prompt = PRODUCT_INFRINGEMENT_ANALYZER.replace(
+            "<reference_claims_replacement>", "\n".join(tagged_refs)
+        )
+        final_prompt = final_prompt.replace(
+            "<infringing_claims_replacement>", "\n".join(infringing_claims or [])
+        )
+        final_prompt = final_prompt.replace("<ref_claim_flag_replacement>", flag)
         if error_message != "":
             final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
             final_prompt += "Do not repeat the same mistake and try again."
@@ -641,14 +747,32 @@ class Gemini:
             },
         )
         wrapper = ProductSimilarityClaimList.model_validate_json(response.text)
+        allowed = {int(i) for i in indices}
+        for item in wrapper.items:
+            item.ref_claim_flag = flag
+            try:
+                item.ref_claim_index = int(item.ref_claim_index)
+            except (TypeError, ValueError):
+                pass
         validated, error_message = wrapper.validate_product_similarity_claim_list()
+        if validated:
+            for index, item in enumerate(wrapper.items):
+                if int(item.ref_claim_index) not in allowed:
+                    validated = False
+                    error_message = (
+                        f"For claim item {index + 1}: ref_claim_index "
+                        f"{item.ref_claim_index} is not in the provided reference indices {sorted(allowed)}"
+                    )
+                    break
         if not validated:
             if count >= MAX_ATTEMPTS:
                 raise Exception(f"Product_InfringementAnalysis_Error: Failed to analyze product infringements after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
             time.sleep(DEFAULT_LLM_DELAY)
             return self.analyze_product_infringements(
-                reference_claims=reference_claims, 
-                infringing_claims=infringing_claims, 
+                reference_claims=reference_claims,
+                infringing_claims=infringing_claims,
+                ref_claim_indices=indices,
+                ref_claim_flag=flag,
                 model_name=model_name,
                 count=count + 1,
                 error_message=error_message

@@ -13,12 +13,133 @@ from models.users import *
 from file_controller import *
 from live_search.liveSearchController import *
 from llm_brain.gemini import Gemini
+from models.live_search_results import (
+    ProductRetailSearchParam,
+    ProductRetailSearchParams,
+)
 
 """
 Controller functions for handling business logic
 """
 
 MAX_RETRY = 10
+
+
+def _fallback_retail_search_params(
+    product_name: str,
+    keywords: list[str],
+    search_limitations: dict,
+) -> ProductRetailSearchParams:
+    """One synthetic retail class from the original title/keywords/urls when Gemini fails."""
+    urls = search_limitations.get("urls") or []
+    if not isinstance(urls, list):
+        urls = [urls] if urls else []
+    sites = [url.strip() for url in urls if isinstance(url, str) and url.strip()]
+    if not sites:
+        sites = ["https://www.amazon.com"]
+    retail_keywords = [
+        keyword.strip()
+        for keyword in (keywords or [])
+        if isinstance(keyword, str) and keyword.strip()
+    ]
+    if not retail_keywords:
+        title = (product_name or "").strip()
+        retail_keywords = [title] if title else ["product"]
+    return ProductRetailSearchParams(
+        params=[
+            ProductRetailSearchParam(
+                retail_title=(product_name or "").strip() or "Product",
+                retail_keywords=retail_keywords[:8],
+                sites_to_search=sites[:8],
+            )
+        ]
+    )
+
+
+def _claim_strings_for_retail_params(*claim_buckets) -> list[str]:
+    claims = []
+    for bucket in claim_buckets:
+        for claim in bucket or []:
+            if isinstance(claim, str) and claim.strip():
+                claims.append(claim.strip())
+            elif isinstance(claim, dict):
+                text = (
+                    claim.get("text")
+                    or claim.get("documented_claim")
+                    or claim.get("market_language_claim")
+                    or ""
+                )
+                if isinstance(text, str) and text.strip():
+                    claims.append(text.strip())
+    return list(dict.fromkeys(claims))
+
+
+def _search_products_across_retail_params(
+    *,
+    retail_params: ProductRetailSearchParams,
+    owners: list,
+    original_claims: list,
+    market_claims: list,
+    base_search_limitations: dict,
+    parent_case_id: str,
+    saved_product_urls: set,
+    seen_apify_runs: set,
+    apify_limit_flag: set,
+) -> tuple[list, list]:
+    """Run original + market product search for each retail param on this thread."""
+    product_details_list: list = []
+    created_product_ids: list = []
+
+    for index, param in enumerate(retail_params.params or []):
+        retail_title = (param.retail_title or "").strip()
+        retail_keywords = [
+            keyword.strip()
+            for keyword in (param.retail_keywords or [])
+            if isinstance(keyword, str) and keyword.strip()
+        ]
+        param_limitations = retail_params.apply_to_search_limitations(
+            param, base_search_limitations
+        )
+        print(
+            f"LOG: Retail search class [{index + 1}/{len(retail_params.params)}]: "
+            f"title={retail_title!r} keywords={retail_keywords} "
+            f"sites={param_limitations.get('urls')}"
+        )
+
+        original_details, original_ids = searchProductSources(
+            product_name=retail_title,
+            keywords=retail_keywords,
+            owners=owners,
+            reference_claims=original_claims,
+            search_limitations=param_limitations,
+            parent_case_id=parent_case_id,
+            saved_product_urls=saved_product_urls,
+            seen_apify_runs=seen_apify_runs,
+            apify_limit_flag=apify_limit_flag,
+            ref_claim_flag="original",
+        )
+        market_details, market_ids = searchProductSources(
+            product_name=retail_title,
+            keywords=retail_keywords,
+            owners=owners,
+            reference_claims=market_claims,
+            search_limitations=param_limitations,
+            parent_case_id=parent_case_id,
+            saved_product_urls=saved_product_urls,
+            seen_apify_runs=seen_apify_runs,
+            apify_limit_flag=apify_limit_flag,
+            ref_claim_flag="market",
+        )
+
+        for product_detail in list(original_details or []) + list(market_details or []):
+            if product_detail not in product_details_list:
+                product_details_list.append(product_detail)
+        for product_id in list(original_ids or []) + list(market_ids or []):
+            if product_id not in created_product_ids:
+                created_product_ids.append(product_id)
+
+    return product_details_list, created_product_ids
+
 
 def _bucket_error_on_analysis_failure(claims, result):
     """On thread failure: Error only for buckets that had claims but never returned."""
@@ -480,7 +601,7 @@ def start_patent_analysis(
                 asserted_patentResults, asserted_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    reference_claims=asserted_claims, 
+                    reference_claims=claims_to_strings(asserted_claims), 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
@@ -509,7 +630,7 @@ def start_patent_analysis(
                 independent_patentResults, independent_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    reference_claims=independent_claims, 
+                    reference_claims=claims_to_strings(independent_claims), 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
@@ -538,7 +659,7 @@ def start_patent_analysis(
                 core_patentResults, core_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    reference_claims=core_claims, 
+                    reference_claims=claims_to_strings(core_claims), 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
@@ -567,7 +688,7 @@ def start_patent_analysis(
                 pivotal_patentResults, pivotal_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    reference_claims=pivotal_claims, 
+                    reference_claims=claims_to_strings(pivotal_claims), 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
@@ -709,12 +830,43 @@ def __complete_product_search(
         ):
             all_market_claims.extend(claim_bucket or [])
         search_limitations = resolve_product_target_sources_for_analysis(
-            all_market_claims,
+            claims_to_strings(all_market_claims),
             search_limitations,
         )
         saved_product_urls = set()
         seen_apify_runs = set()
         apify_limit_flag = set()
+
+        retail_claim_texts = _claim_strings_for_retail_params(
+            original_asserted_claims,
+            original_independent_claims,
+            original_core_claims,
+            original_pivotal_claims,
+            market_asserted_claims,
+            market_independent_claims,
+            market_core_claims,
+            market_pivotal_claims,
+        )
+        try:
+            print("LOG: Generating retail product search params via Gemini")
+            retail_params = Gemini().generate_product_retail_search_params(
+                product_name=product_name,
+                keywords=keywords,
+                reference_claims=retail_claim_texts,
+                search_limitations=search_limitations,
+            )
+            print(
+                f"LOG: Generated {len(retail_params.params)} retail search class(es): "
+                + ", ".join(param.retail_title for param in retail_params.params)
+            )
+        except Exception as retail_err:
+            print(
+                f"LOG: Retail search param generation failed; using fallback. "
+                f"Error: {retail_err}"
+            )
+            retail_params = _fallback_retail_search_params(
+                product_name, keywords, search_limitations
+            )
 
         update_infringement_analysis_flags(
             case_id=case_id, 
@@ -732,34 +884,19 @@ def __complete_product_search(
                 asserted_bucket='Started',
                 generic_bucket='Started'
             )
-            asserted_product_details_list, asserted_created_product_ids = searchProductSources(
-                product_name=product_name,
-                keywords=keywords, 
-                owners=owners, 
-                reference_claims=original_asserted_claims, 
-                search_limitations=search_limitations,
-                parent_case_id=case_id,
-                saved_product_urls=saved_product_urls,
-                seen_apify_runs=seen_apify_runs,
-                apify_limit_flag=apify_limit_flag,
+            asserted_product_details_list, asserted_created_product_ids = (
+                _search_products_across_retail_params(
+                    retail_params=retail_params,
+                    owners=owners,
+                    original_claims=original_asserted_claims,
+                    market_claims=market_asserted_claims,
+                    base_search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    saved_product_urls=saved_product_urls,
+                    seen_apify_runs=seen_apify_runs,
+                    apify_limit_flag=apify_limit_flag,
                 )
-            market_asserted_product_details_list, market_asserted_created_product_ids = searchProductSources(
-                product_name=product_name,
-                keywords=keywords, 
-                owners=owners, 
-                reference_claims=market_asserted_claims, 
-                search_limitations=search_limitations,
-                parent_case_id=case_id,
-                saved_product_urls=saved_product_urls,
-                seen_apify_runs=seen_apify_runs,
-                apify_limit_flag=apify_limit_flag,
-                )
-            for product_detail in market_asserted_product_details_list:
-                if product_detail not in asserted_product_details_list:
-                    asserted_product_details_list.append(product_detail)
-            for product_id in market_asserted_created_product_ids:
-                if product_id not in asserted_created_product_ids:
-                    asserted_created_product_ids.append(product_id)
+            )
             update_infringement_analysis_status(
                 case_id=case_id,
                 update_type="product",
@@ -781,34 +918,19 @@ def __complete_product_search(
                 update_type="product",
                 independent_bucket='Started',
             )
-            independent_product_details_list, independent_created_product_ids = searchProductSources(
-                product_name=product_name,
-                keywords=keywords, 
-                owners=owners, 
-                reference_claims=original_independent_claims, 
-                search_limitations=search_limitations,
-                parent_case_id=case_id,
-                saved_product_urls=saved_product_urls,
-                seen_apify_runs=seen_apify_runs,
-                apify_limit_flag=apify_limit_flag,
+            independent_product_details_list, independent_created_product_ids = (
+                _search_products_across_retail_params(
+                    retail_params=retail_params,
+                    owners=owners,
+                    original_claims=original_independent_claims,
+                    market_claims=market_independent_claims,
+                    base_search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    saved_product_urls=saved_product_urls,
+                    seen_apify_runs=seen_apify_runs,
+                    apify_limit_flag=apify_limit_flag,
                 )
-            market_independent_product_details_list, market_independent_created_product_ids = searchProductSources(
-                product_name=product_name,
-                keywords=keywords, 
-                owners=owners, 
-                reference_claims=market_independent_claims, 
-                search_limitations=search_limitations,
-                parent_case_id=case_id,
-                saved_product_urls=saved_product_urls,
-                seen_apify_runs=seen_apify_runs,
-                apify_limit_flag=apify_limit_flag,
-                )
-            for product_detail in market_independent_product_details_list:
-                if product_detail not in independent_product_details_list:
-                    independent_product_details_list.append(product_detail)
-            for product_id in market_independent_created_product_ids:
-                if product_id not in independent_created_product_ids:
-                    independent_created_product_ids.append(product_id)
+            )
             update_infringement_analysis_status(
                 case_id=case_id,
                 update_type="product",
@@ -828,34 +950,19 @@ def __complete_product_search(
                 update_type="product",
                 core_bucket='Started',
             )
-            core_product_details_list, core_created_product_ids = searchProductSources(
-                product_name=product_name,
-                keywords=keywords, 
-                owners=owners, 
-                reference_claims=original_core_claims, 
-                search_limitations=search_limitations,
-                parent_case_id=case_id,
-                saved_product_urls=saved_product_urls,
-                seen_apify_runs=seen_apify_runs,
-                apify_limit_flag=apify_limit_flag,
+            core_product_details_list, core_created_product_ids = (
+                _search_products_across_retail_params(
+                    retail_params=retail_params,
+                    owners=owners,
+                    original_claims=original_core_claims,
+                    market_claims=market_core_claims,
+                    base_search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    saved_product_urls=saved_product_urls,
+                    seen_apify_runs=seen_apify_runs,
+                    apify_limit_flag=apify_limit_flag,
                 )
-            market_core_product_details_list, market_core_created_product_ids = searchProductSources(
-                product_name=product_name,
-                keywords=keywords, 
-                owners=owners, 
-                reference_claims=market_core_claims, 
-                search_limitations=search_limitations,
-                parent_case_id=case_id,
-                saved_product_urls=saved_product_urls,
-                seen_apify_runs=seen_apify_runs,
-                apify_limit_flag=apify_limit_flag,
-                )
-            for product_detail in market_core_product_details_list:
-                if product_detail not in core_product_details_list:
-                    core_product_details_list.append(product_detail)
-            for product_id in market_core_created_product_ids:
-                if product_id not in core_created_product_ids:
-                    core_created_product_ids.append(product_id)
+            )
             update_infringement_analysis_status(
                 case_id=case_id,
                 update_type="product",
@@ -875,34 +982,19 @@ def __complete_product_search(
                 update_type="product",
                 pivotal_bucket='Started',
             )
-            pivotal_product_details_list, pivotal_created_product_ids = searchProductSources(
-                product_name=product_name,
-                keywords=keywords, 
-                owners=owners, 
-                reference_claims=original_pivotal_claims, 
-                search_limitations=search_limitations,
-                parent_case_id=case_id,
-                saved_product_urls=saved_product_urls,
-                seen_apify_runs=seen_apify_runs,
-                apify_limit_flag=apify_limit_flag,
+            pivotal_product_details_list, pivotal_created_product_ids = (
+                _search_products_across_retail_params(
+                    retail_params=retail_params,
+                    owners=owners,
+                    original_claims=original_pivotal_claims,
+                    market_claims=market_pivotal_claims,
+                    base_search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    saved_product_urls=saved_product_urls,
+                    seen_apify_runs=seen_apify_runs,
+                    apify_limit_flag=apify_limit_flag,
                 )
-            market_pivotal_product_details_list, market_pivotal_created_product_ids = searchProductSources(
-                product_name=product_name,
-                keywords=keywords, 
-                owners=owners, 
-                reference_claims=market_pivotal_claims, 
-                search_limitations=search_limitations,
-                parent_case_id=case_id,
-                saved_product_urls=saved_product_urls,
-                seen_apify_runs=seen_apify_runs,
-                apify_limit_flag=apify_limit_flag,
-                )
-            for product_detail in market_pivotal_product_details_list:
-                if product_detail not in pivotal_product_details_list:
-                    pivotal_product_details_list.append(product_detail)
-            for product_id in market_pivotal_created_product_ids:
-                if product_id not in pivotal_created_product_ids:
-                    pivotal_created_product_ids.append(product_id)
+            )
             update_infringement_analysis_status(
                 case_id=case_id,
                 update_type="product",
@@ -1047,6 +1139,24 @@ def fetchById(app, patent_id:str, user_id:str):
     fetch_succeeded = False
     with app.app_context():
         try:
+            try:
+                similar = get_similar_cases(patent_id, user_id)
+                if similar and create_case(similar).get('success'):
+                    remove_patent_from_fetching_list(user_id, patent_id)
+                    remove_patent_from_error_list(user_id, patent_id)
+                    print(f"LOG {patent_id}: Similar Cases Found and merged into a single case: {json.dumps(similar, indent=4)}")
+                    returnVal = {
+                        'success': True,
+                        'message': 'Patent data imported successfully',
+                        'case_id': similar['_id'],
+                        'keywords': similar.get('keywords', []),
+                        'case_data': similar,
+                    }
+                    fetch_succeeded = True
+                    return returnVal, 200
+                print(f"WARNING {patent_id}: No similar cases found, falling through to USPTO → Google → FPO")
+            except Exception as e:
+                print(f"ERROR: Error getting similar cases: {str(e)}")
             try:
                 uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
                 uspto_data = uspto_instance.get_complete_patent_info(patent_id)

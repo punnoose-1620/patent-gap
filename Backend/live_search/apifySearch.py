@@ -523,3 +523,84 @@ def is_apify_enabled_for_case(search_limitations: dict | None) -> bool:
         return False
     limitations = search_limitations or {}
     return limitations.get("use_apify_retail") is not False
+
+
+_catalog_hosts_cache: set[str] | None = None
+
+
+def get_apify_catalog_hosts() -> set[str]:
+    """Hosts covered by apify_retail_catalog.json (www. stripped)."""
+    global _catalog_hosts_cache
+    if _catalog_hosts_cache is not None:
+        return _catalog_hosts_cache
+    hosts: set[str] = set()
+    try:
+        with open(_CATALOG_PATH, encoding="utf-8") as handle:
+            catalog = json.load(handle)
+    except Exception as exc:
+        print(f"WARN: Could not load Apify retail catalog hosts: {exc}")
+        _catalog_hosts_cache = hosts
+        return hosts
+    for entry in catalog or []:
+        if not isinstance(entry, dict):
+            continue
+        for host in entry.get("hosts") or []:
+            normalized = _normalize_host(str(host))
+            if normalized:
+                hosts.add(normalized)
+        source_url = entry.get("source_url")
+        if source_url:
+            normalized = _normalize_host(str(source_url))
+            if normalized:
+                hosts.add(normalized)
+    _catalog_hosts_cache = hosts
+    return hosts
+
+
+def _host_is_apify_catalog(url_or_host: str, catalog_hosts: set[str]) -> bool:
+    host = _normalize_host(url_or_host)
+    if not host:
+        return False
+    if host in catalog_hosts:
+        return True
+    return any(host.endswith("." + blocked) for blocked in catalog_hosts)
+
+
+def search_limitations_excluding_apify_hosts(
+    search_limitations: dict | None,
+) -> dict:
+    """
+    Shallow copy of search_limitations with Apify-catalog marketplace hosts
+    removed from urls and priority_target_sources. Used for Gemini/CSE only.
+    """
+    limitations = dict(search_limitations or {})
+    catalog_hosts = get_apify_catalog_hosts()
+    if not catalog_hosts:
+        return limitations
+
+    urls = limitations.get("urls") or []
+    if isinstance(urls, list):
+        limitations["urls"] = [
+            url
+            for url in urls
+            if isinstance(url, str)
+            and url.strip()
+            and not _host_is_apify_catalog(url, catalog_hosts)
+        ]
+
+    priority = limitations.get("priority_target_sources") or []
+    if isinstance(priority, list):
+        kept = []
+        for entry in priority:
+            if isinstance(entry, dict):
+                url = entry.get("url") or ""
+                if url and _host_is_apify_catalog(str(url), catalog_hosts):
+                    continue
+                kept.append(entry)
+            elif isinstance(entry, str):
+                if _host_is_apify_catalog(entry, catalog_hosts):
+                    continue
+                kept.append(entry)
+        limitations["priority_target_sources"] = kept
+
+    return limitations

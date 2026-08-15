@@ -12,6 +12,16 @@ from models.demo import *
 from models.cases import *
 from models.users import *
 from models.alerts import *
+from models.folders import *
+from models.folders import (
+    add_viewer_to_folder as model_add_viewer_to_folder,
+    remove_viewer_from_folder as model_remove_viewer_from_folder,
+    add_editor_to_folder as model_add_editor_to_folder,
+    remove_editor_from_folder as model_remove_editor_from_folder,
+    add_case_to_folder as model_add_case_to_folder,
+    remove_case_from_folder as model_remove_case_from_folder,
+    get_folder as model_get_folder,
+)
 from models.documents import *
 from models.infringements import *
 from models.search_history import *
@@ -2016,22 +2026,42 @@ def live_similarity_analysis(case_id):
   search_type = 'bucketed'
   if isinstance(ref_claims, list):
     search_type = 'generic'
-    for claim in ref_claims:
-      original_lang_asserted_claims.append(claim)
+    for i, claim in enumerate(ref_claims):
+      if isinstance(claim, str) and claim.strip():
+        original_lang_asserted_claims.append({
+          'ref_claim_index': i,
+          'text': claim.strip(),
+        })
   if isinstance(ref_claims, dict):
-    for _, claimData in ref_claims.items():
+    for key, claimData in ref_claims.items():
+      if not isinstance(claimData, dict):
+        continue
+      try:
+        claim_index = int(key)
+      except (TypeError, ValueError):
+        claim_index = key
+      documented = (claimData.get('documented_claim', '') or '').strip()
+      market = (claimData.get('market_language_claim', '') or '').strip()
       if claimData.get('claim_type') == 'asserted_claim':
-        original_lang_asserted_claims.append(claimData.get('documented_claim', ''))
-        market_lang_asserted_claims.append(claimData.get('market_language_claim', ''))
+        if documented:
+          original_lang_asserted_claims.append({'ref_claim_index': claim_index, 'text': documented})
+        if market:
+          market_lang_asserted_claims.append({'ref_claim_index': claim_index, 'text': market})
       elif claimData.get('claim_type') == 'independent_claim':
-        original_lang_independent_claims.append(claimData.get('documented_claim', ''))
-        market_lang_independent_claims.append(claimData.get('market_language_claim', ''))
+        if documented:
+          original_lang_independent_claims.append({'ref_claim_index': claim_index, 'text': documented})
+        if market:
+          market_lang_independent_claims.append({'ref_claim_index': claim_index, 'text': market})
       elif claimData.get('claim_type') == 'core_claim':
-        original_lang_core_claims.append(claimData.get('documented_claim', ''))
-        market_lang_core_claims.append(claimData.get('market_language_claim', ''))
+        if documented:
+          original_lang_core_claims.append({'ref_claim_index': claim_index, 'text': documented})
+        if market:
+          market_lang_core_claims.append({'ref_claim_index': claim_index, 'text': market})
       elif claimData.get('claim_type') == 'pivotal_claim':
-        original_lang_pivotal_claims.append(claimData.get('documented_claim', ''))
-        market_lang_pivotal_claims.append(claimData.get('market_language_claim', ''))
+        if documented:
+          original_lang_pivotal_claims.append({'ref_claim_index': claim_index, 'text': documented})
+        if market:
+          market_lang_pivotal_claims.append({'ref_claim_index': claim_index, 'text': market})
 
   # Start Live Patent Search in background thread
   update_case(case_id, {
@@ -2470,6 +2500,564 @@ def add_search_history():
   return jsonify({'success': True, 'message': 'Search history added successfully', 'search_results': search_results}), 200
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Endpoints for Folders CRUD Operations
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/folders/list', methods=['GET'])
+def get_folders():
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False, 
+      'message': 'Not authenticated'
+      }), 401
+  folders = list_folders(user_id)
+  return jsonify({
+    'success': True, 
+    'message': 'Folders retrieved successfully', 
+    'folders': folders
+    }), 200
+  
+@app.route('/api/folders/get/<folder_id>', methods=['GET'])
+def api_get_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+  folder = get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Folder not found'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  viewers = folder.get('viewers') or []
+  if (user_id not in editors) and (user_id not in viewers) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Access Permission denied to folder'
+      }), 403
+
+  return jsonify({
+    'success': True,
+    'message': 'Folder retrieved successfully',
+    'folder': folder
+  }), 200
+
+@app.route('/api/folders/create', methods=['POST'])
+def api_create_folder():
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False, 
+      'message': 'Not authenticated'
+      }), 401
+
+  creator_profile = get_user_profile(user_id)
+  if creator_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'folder_name' not in data:
+    return jsonify({'success': False, 'message': 'Folder name is required'}), 400
+  
+  folder_name = data.get('folder_name', '')
+  viewers = data.get('viewers', [])
+  editors = data.get('editors', [])
+  cases = data.get('cases', [])
+
+  profile_update_errors = []
+
+  if len(folder_name.strip()) == 0:
+    return jsonify({'success': False, 'message': 'Folder name cannot be empty'}), 400  
+
+  folder_id = create_folder(user_id, folder_name, viewers, editors, cases)
+  creator_folders = list(creator_profile.get('folders') or [])
+  if folder_id not in creator_folders:
+    creator_folders.append(folder_id)
+  creator_update_result = update_user({'folders': creator_folders}, user_id)
+  if not creator_update_result.get('success'):
+    profile_update_errors.append(f'Failed to update creator profile: {user_id}')
+
+  for viewer_id in viewers:
+    viewer_profile = get_user_profile(viewer_id)
+    if viewer_profile is None:
+      profile_update_errors.append(f'Invalid viewer: {viewer_id}')
+    else:
+      viewer_folders = list(viewer_profile.get('folders') or [])
+      if folder_id not in viewer_folders:
+        viewer_folders.append(folder_id)
+      viewer_update_result = update_user({'folders': viewer_folders}, viewer_id)
+      if not viewer_update_result.get('success'):
+        profile_update_errors.append(f'Failed to update viewer profile: {viewer_id}')
+    
+  for editor_id in editors:
+    editor_profile = get_user_profile(editor_id)
+    if editor_profile is None:
+      profile_update_errors.append(f'Invalid editor: {editor_id}')
+    else:
+      editor_folders = list(editor_profile.get('folders') or [])
+      if folder_id not in editor_folders:
+        editor_folders.append(folder_id)
+      editor_update_result = update_user({'folders': editor_folders}, editor_id)
+      if not editor_update_result.get('success'):
+        profile_update_errors.append(f'Failed to update editor profile: {editor_id}')
+
+  folder = model_get_folder(folder_id)
+  return jsonify({
+    'success': True, 
+    'message': 'Folder created successfully', 
+    'profile_update_errors': profile_update_errors,
+    'folder': folder
+    }), 200
+
+@app.route('/api/folders/add-viewer/<folder_id>', methods=['POST'])
+def api_add_viewer_to_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'viewer_id' not in data:
+    return jsonify({'success': False, 'message': 'Viewer ID is required'}), 400
+
+  viewer_id = str(data.get('viewer_id', '')).strip()
+  if not viewer_id:
+    return jsonify({'success': False, 'message': 'Viewer ID cannot be empty'}), 400
+
+  viewer_profile = get_user_profile(viewer_id)
+  if viewer_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid viewer'
+      }), 400
+
+  try:
+    add_viewer_flag = model_add_viewer_to_folder(folder_id, viewer_id)
+    if not add_viewer_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to add viewer to folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  viewer_folders = list(viewer_profile.get('folders') or [])
+  if folder_id not in viewer_folders:
+    viewer_folders.append(folder_id)
+  update_result = update_user({'folders': viewer_folders}, viewer_id)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update viewer profile')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Viewer added to folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/remove-viewer/<folder_id>', methods=['POST'])
+def api_remove_viewer_from_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'viewer_id' not in data:
+    return jsonify({'success': False, 'message': 'Viewer ID is required'}), 400
+
+  viewer_id = str(data.get('viewer_id', '')).strip()
+  if not viewer_id:
+    return jsonify({'success': False, 'message': 'Viewer ID cannot be empty'}), 400
+
+  viewer_profile = get_user_profile(viewer_id)
+  if viewer_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid viewer'
+      }), 400
+
+  try:
+    add_viewer_flag = model_remove_viewer_from_folder(folder_id, viewer_id)
+    if not add_viewer_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to remove viewer from folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  viewer_folders = list(viewer_profile.get('folders') or [])
+  if folder_id in viewer_folders:
+    viewer_folders.remove(folder_id)
+  update_result = update_user({'folders': viewer_folders}, viewer_id)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update viewer profile')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Viewer removed from folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/add-editor/<folder_id>', methods=['POST'])
+def api_add_editor_to_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'editor_id' not in data:
+    return jsonify({'success': False, 'message': 'Editor ID is required'}), 400
+
+  editor_id = str(data.get('editor_id', '')).strip()
+  if not editor_id:
+    return jsonify({'success': False, 'message': 'Editor ID cannot be empty'}), 400
+
+  editor_profile = get_user_profile(editor_id)
+  if editor_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid editor'
+      }), 400
+
+  try:
+    add_editor_flag = model_add_editor_to_folder(folder_id, editor_id)
+    if not add_editor_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to add editor to folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  editor_folders = list(editor_profile.get('folders') or [])
+  if folder_id not in editor_folders:
+    editor_folders.append(folder_id)
+  update_result = update_user({'folders': editor_folders}, editor_id)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update editor profile')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Editor added to folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/remove-editor/<folder_id>', methods=['POST'])
+def api_remove_editor_from_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'editor_id' not in data:
+    return jsonify({'success': False, 'message': 'Editor ID is required'}), 400
+
+  editor_id = str(data.get('editor_id', '')).strip()
+  if not editor_id:
+    return jsonify({'success': False, 'message': 'Editor ID cannot be empty'}), 400
+
+  editor_profile = get_user_profile(editor_id)
+  if editor_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid editor'
+      }), 400
+
+  try:
+    add_editor_flag = model_remove_editor_from_folder(folder_id, editor_id)
+    if not add_editor_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to remove editor from folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  editor_folders = list(editor_profile.get('folders') or [])
+  if folder_id in editor_folders:
+    editor_folders.remove(folder_id)
+  update_result = update_user({'folders': editor_folders}, editor_id)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update editor profile')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Editor removed from folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/add-case/<folder_id>', methods=['POST'])
+def api_add_case_to_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'case_id' not in data:
+    return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+
+  case_id = str(data.get('case_id', '')).strip()
+  if not case_id:
+    return jsonify({'success': False, 'message': 'Case ID cannot be empty'}), 400
+
+  case_data = get_case_by_id(case_id)
+  if case_data is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+  try:
+    add_case_flag = model_add_case_to_folder(folder_id, case_id)
+    if not add_case_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to add case to folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  case_folders = list(case_data.get('folders') or [])
+  if folder_id not in case_folders:
+    case_folders.append(folder_id)
+  update_body = {
+    'folders': case_folders,
+  }
+  update_result = update_case(case_id, update_body)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update case')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Case added to folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/remove-case/<folder_id>', methods=['POST'])
+def api_remove_case_from_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'case_id' not in data:
+    return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+
+  case_id = str(data.get('case_id', '')).strip()
+  if not case_id:
+    return jsonify({'success': False, 'message': 'Case ID cannot be empty'}), 400
+
+  case_data = get_case_by_id(case_id)
+  if case_data is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+  try:
+    add_case_flag = model_remove_case_from_folder(folder_id, case_id)
+    if not add_case_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to remove case from folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  case_folders = list(case_data.get('folders') or [])
+  if folder_id in case_folders:
+    case_folders.remove(folder_id)
+  update_body = {
+    'folders': case_folders,
+  }
+  update_result = update_case(case_id, update_body)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update case')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Case removed from folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Infringement CRUD endpoints
 #
 # All operations are case-scoped: every endpoint requires a case_id in the
@@ -2507,7 +3095,6 @@ def _resolve_infringement_request(case_id, body_data=None, require_body=False):
     return None, None, (jsonify({'success': False, 'message': 'Case not found'}), 404)
 
   return user_id, case, None
-
 
 @app.route('/api/cases/<case_id>/infringements', methods=['GET'])
 def list_case_infringements(case_id):
@@ -2555,7 +3142,6 @@ def list_case_infringements(case_id):
   status = 200 if result.get('success') else 500
   return jsonify(result), status
 
-
 @app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['GET'])
 def get_case_infringement(case_id, infringement_id):
   """
@@ -2588,7 +3174,6 @@ def get_case_infringement(case_id, infringement_id):
   result = _model_get_infringement_by_id(infringement_id, parent_case_id=case_id)
   status = 200 if result.get('success') else 404
   return jsonify(result), status
-
 
 @app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['PUT'])
 def update_case_infringement(case_id, infringement_id):
@@ -2633,7 +3218,6 @@ def update_case_infringement(case_id, infringement_id):
   result = _model_update_infringement_by_id(infringement_id, update_data, parent_case_id=case_id)
   status = 200 if result.get('success') else 404
   return jsonify(result), status
-
 
 @app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['DELETE'])
 def delete_case_infringement(case_id, infringement_id):

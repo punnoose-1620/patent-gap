@@ -540,6 +540,111 @@ class ProductTargetSources(BaseModel):
         return merged
 
 
+_MAX_RETAIL_SEARCH_PARAMS = 5
+_MAX_RETAIL_KEYWORDS = 8
+_MAX_RETAIL_SITES = 8
+
+
+class ProductRetailSearchParam(BaseModel):
+    """One retail-oriented product class used to drive a product search pass."""
+
+    retail_title: str
+    retail_keywords: list[str] = []
+    sites_to_search: list[str] = []
+
+    @classmethod
+    def get_description(cls) -> str:
+        return json.dumps(
+            {
+                "retail_title": (
+                    "Short product-style title as it might appear in a store catalog "
+                    "(not patent jargon; max ~8 words)"
+                ),
+                "retail_keywords": (
+                    "Short retail search keywords/phrases shoppers or catalogs would use "
+                    "(each phrase max 6 words)"
+                ),
+                "sites_to_search": (
+                    "Base URLs of manufacturer or retailer sites likely to sell this product "
+                    "(homepage or product section roots only)"
+                ),
+            },
+            indent=2,
+        )
+
+    def validate_product_retail_search_param(self) -> tuple[bool, str]:
+        if not validate_string(self.retail_title):
+            return False, "retail_title is required"
+        if len(self.retail_title.strip().split()) > 12:
+            return False, "retail_title is too long"
+        if self.retail_keywords is None or not isinstance(self.retail_keywords, list):
+            return False, "retail_keywords must be a list"
+        if not self.retail_keywords:
+            return False, "retail_keywords must include at least one keyword"
+        if len(self.retail_keywords) > _MAX_RETAIL_KEYWORDS:
+            return False, f"retail_keywords must have at most {_MAX_RETAIL_KEYWORDS} items"
+        for index, keyword in enumerate(self.retail_keywords):
+            if not isinstance(keyword, str) or not keyword.strip():
+                return False, f"retail_keywords[{index}] must be a non-empty string"
+            if len(keyword.strip().split()) > 6:
+                return False, f"retail_keywords[{index}] must be at most 6 words"
+        if self.sites_to_search is None or not isinstance(self.sites_to_search, list):
+            return False, "sites_to_search must be a list"
+        if not self.sites_to_search:
+            return False, "sites_to_search must include at least one URL"
+        if len(self.sites_to_search) > _MAX_RETAIL_SITES:
+            return False, f"sites_to_search must have at most {_MAX_RETAIL_SITES} items"
+        for index, url in enumerate(self.sites_to_search):
+            if not isinstance(url, str) or not url.strip():
+                return False, f"sites_to_search[{index}] must be a non-empty string"
+            if "://" not in url.strip():
+                return False, f"sites_to_search[{index}] must be an absolute URL"
+        return True, ""
+
+
+class ProductRetailSearchParams(BaseModel):
+    """Gemini response: list of retail product search parameter classes."""
+
+    params: list[ProductRetailSearchParam]
+
+    @classmethod
+    def get_description(cls) -> str:
+        return json.dumps(
+            {
+                "params": [json.loads(ProductRetailSearchParam.get_description())],
+            },
+            indent=2,
+        )
+
+    def validate_product_retail_search_params(self) -> tuple[bool, str]:
+        if self.params is None or not isinstance(self.params, list):
+            return False, "params must be a list"
+        if not self.params:
+            return False, "params must include at least one retail search class"
+        if len(self.params) > _MAX_RETAIL_SEARCH_PARAMS:
+            return False, f"params must have at most {_MAX_RETAIL_SEARCH_PARAMS} items"
+        for index, param in enumerate(self.params):
+            ok, message = param.validate_product_retail_search_param()
+            if not ok:
+                return False, f"For params[{index}]: {message}"
+        return True, ""
+
+    def apply_to_search_limitations(self, param: ProductRetailSearchParam, search_limitations: dict) -> dict:
+        """Build search_limitations focused on one retail param's sites."""
+        merged = dict(search_limitations or {})
+        sites = [
+            url.strip()
+            for url in (param.sites_to_search or [])
+            if isinstance(url, str) and url.strip()
+        ]
+        if sites:
+            merged["urls"] = list(dict.fromkeys(sites))
+            merged["priority_target_sources"] = [
+                {"title": param.retail_title, "url": url} for url in sites
+            ]
+        return merged
+
+
 class GoogleSearchResults(BaseModel):
     title: str
     url: str
@@ -859,6 +964,8 @@ class ProductSimilarityClaim(BaseModel):
     source: str
     url_to_claim: str
     justification: str
+    ref_claim_index: int
+    ref_claim_flag: str
 
     def validate_product_similarity_claim(self):
         if self.claim is None:
@@ -871,6 +978,17 @@ class ProductSimilarityClaim(BaseModel):
             return False, "URL to claim is required"
         if self.justification is None:
             return False, "Justification is required"
+        if self.ref_claim_index is None:
+            return False, "Reference claim index is required"
+        try:
+            int(self.ref_claim_index)
+        except (TypeError, ValueError):
+            return False, "Reference claim index must be an integer"
+        flag = str(self.ref_claim_flag or "").strip().lower()
+        if flag not in ("market", "original"):
+            return False, "Reference claim flag must be 'market' or 'original'"
+        self.ref_claim_flag = flag
+        self.ref_claim_index = int(self.ref_claim_index)
         return True, ""
 
 class ProductSimilarityClaimList(BaseModel):

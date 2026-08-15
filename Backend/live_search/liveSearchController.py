@@ -31,10 +31,11 @@ from live_search.googleSearch import (
     productGoogleSearch
     )
 from live_search.apifySearch import (
-    Apify, 
-    is_apify_configured, 
-    is_apify_enabled_for_case
-    )
+    Apify,
+    is_apify_configured,
+    is_apify_enabled_for_case,
+    search_limitations_excluding_apify_hosts,
+)
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
@@ -250,11 +251,24 @@ def _live_result_to_dict(obj, case_id: str = ''):
     return d
 
 def claims_to_strings(claims) -> list[str]:
-    """Normalize case claims (list[str] or dict of SingleClaim) to plain strings for Gemini."""
+    """Normalize case claims (list[str], list[dict], or dict of SingleClaim) to plain strings for Gemini."""
     if not claims:
         return []
     if isinstance(claims, list):
-        return [c.strip() for c in claims if isinstance(c, str) and c.strip()]
+        strings = []
+        for c in claims:
+            if isinstance(c, str) and c.strip():
+                strings.append(c.strip())
+            elif isinstance(c, dict):
+                text = (
+                    c.get("text")
+                    or c.get("documented_claim")
+                    or c.get("market_language_claim")
+                    or ""
+                )
+                if isinstance(text, str) and text.strip():
+                    strings.append(text.strip())
+        return strings
     if isinstance(claims, dict):
         strings = []
         for claim_data in claims.values():
@@ -266,6 +280,43 @@ def claims_to_strings(claims) -> list[str]:
                 strings.append(claim_data.strip())
         return strings
     return []
+
+
+def normalize_reference_claim_entries(claims) -> tuple[list[str], list[int]]:
+    """Split reference claim entries into texts + case claim indices.
+
+    Accepts list[str] or list[{"ref_claim_index"|"index", "text"|...}].
+    """
+    texts: list[str] = []
+    indices: list[int] = []
+    if not claims:
+        return texts, indices
+    for i, entry in enumerate(claims):
+        if isinstance(entry, str):
+            text = entry.strip()
+            if not text:
+                continue
+            texts.append(text)
+            indices.append(i)
+            continue
+        if isinstance(entry, dict):
+            text = (
+                entry.get("text")
+                or entry.get("documented_claim")
+                or entry.get("market_language_claim")
+                or ""
+            )
+            text = text.strip() if isinstance(text, str) else ""
+            if not text:
+                continue
+            raw_idx = entry.get("ref_claim_index", entry.get("index", i))
+            try:
+                idx = int(raw_idx)
+            except (TypeError, ValueError):
+                idx = i
+            texts.append(text)
+            indices.append(idx)
+    return texts, indices
 
 def _normalize_isolated_claims_for_import(isolated_claims):
     """Backfill missing claim fields so portfolio import validation can pass."""
@@ -778,7 +829,7 @@ def _discover_products_via_gemini(
 
 def _persist_extracted_products(
     extracted_products,
-    reference_claims: list[str],
+    reference_claims: list,
     parent_case_id: str,
     product_details_list: list,
     created_ids: list,
@@ -786,7 +837,12 @@ def _persist_extracted_products(
     patent_title: str = "",
     keywords: list[str] | None = None,
     saved_product_urls: set | None = None,
+    ref_claim_flag: str = "market",
 ):
+    ref_texts, ref_indices = normalize_reference_claim_entries(reference_claims)
+    flag = str(ref_claim_flag or "market").strip().lower()
+    if flag not in ("market", "original"):
+        flag = "market"
     for product_details in extracted_products:
         website_searched = product_details.source or "unknown"
         sites_searched[website_searched] = sites_searched.get(website_searched, 0) + 1
@@ -832,7 +888,10 @@ def _persist_extracted_products(
             print(f"LOG: Product ID: {product_id}")
             print(f"LOG: Product URL: {product_url}")
             infringement_analysis = Gemini().analyze_product_infringements(
-                reference_claims, product_details.claims
+                ref_texts,
+                product_details.claims,
+                ref_claim_indices=ref_indices,
+                ref_claim_flag=flag,
             )
             product_details.similar_claims = [
                 item.model_dump() if hasattr(item, "model_dump") else item
@@ -1007,27 +1066,40 @@ def searchProductSources(
     product_name: str,
     keywords:list[str],
     owners:list[str],
-    reference_claims:list[str],
+    reference_claims:list,
     search_limitations:dict,
     parent_case_id: str = '',
     saved_product_urls: set | None = None,
     seen_apify_runs: set | None = None,
     apify_limit_flag: set | None = None,
+    ref_claim_flag: str = "market",
 ):
     search_limitations = normalize_search_limitations(search_limitations)
     max_product_results = resolve_product_search_max_results(search_limitations)
+    ref_texts, _ref_indices = normalize_reference_claim_entries(reference_claims)
     print(f"LOG: Product search max results: {max_product_results}")
-    print(f"LOG: Reference claims in bucket: {len(reference_claims or [])}")
+    print(f"LOG: Reference claims in bucket: {len(ref_texts)} flag={ref_claim_flag}")
     sites_searched = {}
     product_details_list = []
     created_ids = []
-    focus_urls = _focus_urls_from_search_limitations(search_limitations)
+
+    # Gemini/CSE: drop Apify marketplace hosts when Apify will cover them.
+    # Apify keeps the full search_limitations (including Amazon/eBay/etc.).
+    gemini_limitations = search_limitations
+    if is_apify_configured() and is_apify_enabled_for_case(search_limitations):
+        gemini_limitations = search_limitations_excluding_apify_hosts(search_limitations)
+        print(
+            "LOG: Stripped Apify catalog hosts from Gemini/CSE limitations; "
+            f"urls={gemini_limitations.get('urls')}"
+        )
+
+    focus_urls = _focus_urls_from_search_limitations(gemini_limitations)
 
     extracted_products = _discover_products_via_gemini(
         product_name,
-        reference_claims,
+        ref_texts,
         owners,
-        search_limitations,
+        gemini_limitations,
         max_product_results,
     )
     _persist_extracted_products(
@@ -1040,12 +1112,13 @@ def searchProductSources(
         patent_title=product_name,
         keywords=keywords,
         saved_product_urls=saved_product_urls,
+        ref_claim_flag=ref_claim_flag,
     )
 
     if is_apify_configured() and is_apify_enabled_for_case(search_limitations):
         print("LOG: Running Apify retail product search")
         apify_products = Apify().search(
-            reference_claims=reference_claims,
+            reference_claims=ref_texts,
             search_limitations=search_limitations,
             keywords=keywords,
             product_name=product_name,
@@ -1063,6 +1136,7 @@ def searchProductSources(
             patent_title=product_name,
             keywords=keywords,
             saved_product_urls=saved_product_urls,
+            ref_claim_flag=ref_claim_flag,
         )
 
     if not product_details_list and is_google_custom_search_configured():
@@ -1071,7 +1145,7 @@ def searchProductSources(
             "(claim-derived terms)"
         )
         extracted_products = productGoogleSearch(
-            reference_claims,
+            ref_texts,
             focus_urls,
             owners=owners,
             max_results=max_product_results,
@@ -1086,6 +1160,7 @@ def searchProductSources(
             patent_title=product_name,
             keywords=keywords,
             saved_product_urls=saved_product_urls,
+            ref_claim_flag=ref_claim_flag,
         )
     elif not product_details_list:
         print("LOG: No products found via Gemini; CSE not configured")

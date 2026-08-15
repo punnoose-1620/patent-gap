@@ -218,6 +218,41 @@ Rules:
 - Avoid broader sites like Amazon, eBay, Walmart, etc. Only include specific retailer sites.
 """
 
+GENERATE_RETAIL_SEARCH_PARAMS = """
+You translate patent/product-claim language into retail product search classes.
+
+Patent / product title:
+<product_name_replacement>
+
+User-specified keywords (may be legal/technical; rewrite into retail language when needed):
+<keywords_replacement>
+
+Reference claims (use these to understand what commercial products to look for):
+<reference_claims_replacement>
+
+Companies to focus on (prefer manufacturer/vendor sites for these when known):
+<companies_replacement>
+
+Preferred candidate sites (prefer these URLs when relevant; copy them exactly when used):
+<candidate_sites_replacement>
+
+Return JSON matching this structure:
+<response_structure_replacement>
+
+Rules:
+- Return between 1 and 5 distinct retail search classes in "params".
+- Each class is one commercial product type that might read on the claims (not claim restatements).
+- retail_title: short storefront-style product name (max ~8 words). No patent jargon, claim numbers, or legalese.
+- retail_keywords: 2 to 8 short retail search phrases shoppers or catalogs would type (each phrase max 6 words). Prefer concrete product nouns over abstract claim language.
+- sites_to_search: 1 to 8 absolute base URLs (https://...) of sites likely to sell that product.
+  Prefer manufacturer, brand, and specialty-vendor company homepages (or product-section roots) for companies that sell this kind of product — including relevant sellers the user did not list.
+  Candidate marketplace sites above may still be included when useful for retail scrapers, but manufacturer/vendor sites are preferred for discovery quality.
+  Do not invent deep product paths, SKUs, or example.com URLs. Homepage or category-root URLs only.
+- Prefer distinct classes when claims cover multiple product types; do not duplicate near-identical titles/keywords.
+- Do not include books, posters, wall art, or unrelated accessories unless the claims are clearly about those.
+- Do not include any other text or comments.
+"""
+
 PERFORM_GOOGLE_SEARCH_PROMPT = """
 I am providing you with a search string.
 Perform a google search with the search string.
@@ -240,10 +275,11 @@ Rules:
 - Do not include any other text or comments.
 - Return up to <max_results_replacement> distinct product results.
 - Prefer results from the priority product source domains listed above, and from the companies/websites in the search context when provided.
-- Return commercially available products, equipment, software platforms, or services that may read on the search topic — from retail marketplaces OR manufacturer/vendor product pages.
+- Return commercially available products, equipment, software platforms, or services that may read on the search topic — prefer manufacturer/vendor product pages over big-box marketplaces.
+- CRITICAL: Do not return product URLs from Amazon, eBay, Walmart, Target, Best Buy, Home Depot, Lowe's, or similar bot-protected retail marketplaces. Those are covered by a separate retail scraper. Prefer manufacturer, brand, and specialty-vendor product pages.
 - Return only individual product or solution detail pages for a specific named item (not broad catalog hubs).
 - Do not return category pages, collection pages, browse pages, or site search result pages (e.g. /dishwashers/, /browse/, /category/, /s?k=).
-- Prefer URLs that identify one product (e.g. Amazon /dp/, Walmart /ip/, Target /p/.../A-, Lowe's /pd/, manufacturer /product/, /solutions/, vendor spec pages).
+- Prefer URLs that identify one product (e.g. manufacturer /product/, /solutions/, vendor spec pages).
 - Do not include books, music, posters, wall art, or unrelated accessories unless the search is explicitly for those.
 - URL integrity (critical):
   - Every URL must be copied exactly from a real Google search result link you can see — character for character.
@@ -292,11 +328,12 @@ Rules:
 - Do not include any other text or comments.
 - Return up to <max_results_replacement> distinct product results.
 - Strongly prefer results from the companies and websites listed above when they match the reference claims.
-- Also consider priority product source domains (marketplaces and vendor sites) when relevant to the technology.
-- Return commercially available products, devices, network equipment, software platforms, or services — from retail marketplaces OR manufacturer/vendor product and solution pages.
+- Also consider priority product source domains (vendor/manufacturer sites) when relevant to the technology.
+- Return commercially available products, devices, network equipment, software platforms, or services — prefer manufacturer/vendor product and solution pages.
+- CRITICAL: Do not return product URLs from Amazon, eBay, Walmart, Target, Best Buy, Home Depot, Lowe's, or similar bot-protected retail marketplaces. Those are covered by a separate retail scraper. Prefer manufacturer, brand, and specialty-vendor pages. Ignore marketplace domains even if they appear in websites/priority lists.
 - Return only individual product or solution detail pages for a specific named item (not broad catalog hubs).
 - Do not return category pages, collection pages, browse pages, or site search result pages (e.g. /dishwashers/, /browse/, /category/, /s?k=).
-- Prefer URLs that identify one product (e.g. Amazon /dp/, Walmart /ip/, Target /p/.../A-, Lowe's /pd/, manufacturer /product/, vendor /solutions/ or /network-products/ pages, device spec pages).
+- Prefer URLs that identify one product (e.g. manufacturer /product/, vendor /solutions/ or /network-products/ pages, device spec pages).
 - URL integrity (critical):
   - Every URL must be copied exactly from a real Google search result link you can see — character for character.
   - Never construct, infer, or guess URLs from product names, SKU patterns, or known site URL templates.
@@ -334,18 +371,20 @@ Rules:
 
 PRODUCT_INFRINGEMENT_ANALYZER = """
 I am providing you with 2 sets of claims :
-Reference Claims: <list[str]: List of claims of the patent>
-Infringing Claims: <list[str]: List of claims of the patent>
+Reference Claims: numbered patent claims (see indices below). Language flag for this set: <ref_claim_flag_replacement>
+Infringing Claims: product claims
 Analyze the claims and determine if the infringing claims are similar to the reference claims.
 Return the analysis in the following format:
 {
   "items": [
     {
-      "claim": "<string: Claim that is similar to the reference claims>",
+      "claim": "<string: The infringing/product claim text that is similar>",
       "similarity_score": "<number: Similarity score between 0 and 1>",
       "source": "<string: Source of the product details>",
       "url_to_claim": "<string: URL to the claim>",
-      "justification": "<string: Justification for the similarity score>"
+      "justification": "<string: Justification for the similarity score>",
+      "ref_claim_index": "<integer: Exact index of the matched reference claim from the tagged list below>",
+      "ref_claim_flag": "<string: Must be exactly '<ref_claim_flag_replacement>'>"
     }
   ]
 }
@@ -353,15 +392,15 @@ Rules:
 - Similarity score is a number between 0 and 1 that represents the similarity between the infringing claim and the reference claim.
 - The higher the similarity score, the more similar the claims are.
 - The similarity score is calculated using the cosine similarity algorithm.
+- ref_claim_index MUST be one of the integer indices shown on the reference claims (e.g. if a line is tagged [index=3], use 3).
+- ref_claim_flag MUST be exactly "<ref_claim_flag_replacement>" for every item.
+- claim is the infringing/product claim text (not the patent reference claim).
 - Do not include any other text or comments.
 
-Reference Claims : 
+Reference Claims (flag=<ref_claim_flag_replacement>):
 <reference_claims_replacement>
 
-Context of the reference claims :
-<context_of_reference_claims_replacement>
-
-Infringing Claims : 
+Infringing Claims :
 <infringing_claims_replacement>
 """
 

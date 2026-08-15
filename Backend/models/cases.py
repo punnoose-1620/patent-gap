@@ -1,3 +1,4 @@
+import copy
 import re
 from database import *
 from datetime import datetime as dt
@@ -12,6 +13,25 @@ from infringement_score_filters import (
     filter_infringement_entry,
     filter_infringements_list,
 )
+
+_FUZZY_DEDUP_THRESHOLD = 0.9
+_CLAIM_TYPE_KEYS = (
+    'independent_claim',
+    'asserted_claim',
+    'core_claim',
+    'pivotal_claim',
+)
+
+def construct_id_regex(patent_id: str):
+    """
+    The regex constructed here is used to search for a same patent id in the database added by other users.
+    For example, if the patent id is 1234567890, the regex will be _1234567890$.
+    This will search for all additions by all other users.
+    Case ID in database is of the format source_userid_patentid.
+    We only want exact patent id matches, so we use $ at the end of the regex.
+    """
+    patent_id = (patent_id or "").strip()
+    return f'_{re.escape(patent_id)}$'
 
 def caseAlreadyExists(case_id:str, user_id: str):
     db = connect_to_database()
@@ -56,6 +76,315 @@ def string_fuzzy_similarity(s1, s2):
     matcher = SequenceMatcher(None, s1_norm, s2_norm)
     return round(matcher.ratio(), 1)
 
+def _normalize_merge_text(value) -> str:
+    if not isinstance(value, str):
+        return ''
+    return re.sub(r'\s+', ' ', value.strip().lower())
+
+def _normalize_url_key(value) -> str:
+    return _normalize_merge_text(value).rstrip('/')
+
+def _fuzzy_dedupe_strings(values) -> list:
+    """Union strings with case- and light spelling-insensitive dedup."""
+    result = []
+    for raw in values or []:
+        if not isinstance(raw, str):
+            continue
+        text = raw.strip()
+        if not text:
+            continue
+        if any(
+            string_fuzzy_similarity(text, existing) >= _FUZZY_DEDUP_THRESHOLD
+            for existing in result
+        ):
+            continue
+        result.append(text)
+    return result
+
+def _exact_dedupe_strings(values, key_fn=None) -> list:
+    result = []
+    seen = set()
+    key_fn = key_fn or _normalize_merge_text
+    for raw in values or []:
+        if not isinstance(raw, str):
+            continue
+        text = raw.strip()
+        if not text:
+            continue
+        key = key_fn(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+    return result
+
+def _claim_entry_is_filled(claim_data) -> bool:
+    if not isinstance(claim_data, dict):
+        return False
+    documented = (claim_data.get('documented_claim') or '').strip()
+    market = (claim_data.get('market_language_claim') or '').strip()
+    return bool(documented or market)
+
+def _claim_quality_score(claims) -> tuple:
+    """
+    Higher is better. Prefers more filled claims, then category coverage,
+    then independent / asserted / core / pivotal counts.
+    """
+    if isinstance(claims, list):
+        filled = sum(1 for c in claims if isinstance(c, str) and c.strip())
+        return (filled, 0, 0, 0, 0, 0)
+    if not isinstance(claims, dict):
+        return (0, 0, 0, 0, 0, 0)
+
+    counts = {key: 0 for key in _CLAIM_TYPE_KEYS}
+    total = 0
+    for claim_data in claims.values():
+        if not _claim_entry_is_filled(claim_data):
+            continue
+        total += 1
+        claim_type = claim_data.get('claim_type')
+        if claim_type in counts:
+            counts[claim_type] += 1
+
+    categories_filled = sum(1 for count in counts.values() if count > 0)
+    return (
+        total,
+        categories_filled,
+        counts['independent_claim'],
+        counts['asserted_claim'],
+        counts['core_claim'],
+        counts['pivotal_claim'],
+    )
+
+def _pick_best_claims_case(cases: list) -> dict | None:
+    best_case = None
+    best_score = (-1,)
+    for case in cases or []:
+        if not isinstance(case, dict):
+            continue
+        score = _claim_quality_score(case.get('claims'))
+        if score > best_score:
+            best_score = score
+            best_case = case
+    return best_case
+
+def _pick_primary_case(cases: list, claims_case: dict | None) -> dict:
+    if claims_case is not None:
+        return claims_case
+
+    def richness(case):
+        infringements = case.get('infringements') or []
+        keywords = case.get('keywords') or []
+        description = case.get('description') or ''
+        return (
+            len(infringements) if isinstance(infringements, list) else 0,
+            len(keywords) if isinstance(keywords, list) else 0,
+            len(str(description)),
+        )
+
+    return max(cases, key=richness)
+
+def _merge_search_limitations(cases: list) -> dict:
+    companies = []
+    urls = []
+    priority_sources = []
+    other = {}
+
+    for case in cases or []:
+        limitations = case.get('search_limitations') or {}
+        if not isinstance(limitations, dict):
+            continue
+        companies.extend(limitations.get('companies') or [])
+        urls.extend(limitations.get('urls') or [])
+        for source in limitations.get('priority_target_sources') or []:
+            if isinstance(source, dict):
+                priority_sources.append(source)
+            elif isinstance(source, str) and source.strip():
+                priority_sources.append({'url': source.strip()})
+        for key, value in limitations.items():
+            if key in ('companies', 'urls', 'priority_target_sources'):
+                continue
+            if key in other:
+                continue
+            if value in (None, '', [], {}):
+                continue
+            other[key] = copy.deepcopy(value)
+
+    merged = dict(other)
+    merged['companies'] = _fuzzy_dedupe_strings(companies)
+    merged['urls'] = _exact_dedupe_strings(urls, key_fn=_normalize_url_key)
+
+    seen_priority = set()
+    unique_priority = []
+    for source in priority_sources:
+        url = _normalize_url_key(source.get('url') or '')
+        title = _normalize_merge_text(source.get('title') or '')
+        key = url or title
+        if not key or key in seen_priority:
+            continue
+        seen_priority.add(key)
+        unique_priority.append(source)
+    if unique_priority:
+        merged['priority_target_sources'] = unique_priority
+    return merged
+
+def _infringement_dedupe_key(entry) -> tuple | None:
+    if not isinstance(entry, dict):
+        return None
+
+    product_id = str(entry.get('product_id') or '').strip().lower()
+    product_url = _normalize_url_key(
+        entry.get('product_url') or entry.get('url') or ''
+    )
+    if product_id or product_url:
+        return ('product', product_id, product_url)
+
+    patent_ref = (
+        entry.get('entry_id')
+        or entry.get('patent')
+        or entry.get('case_id')
+        or entry.get('patent_id')
+    )
+    if patent_ref:
+        return ('patent', str(patent_ref).strip().lower())
+
+    entry_id = str(entry.get('_id') or '').strip()
+    if entry_id:
+        return ('id', entry_id.lower())
+    return None
+
+def _merge_unique_dict_list(lists, key_fn) -> list:
+    merged = []
+    seen = set()
+    for values in lists:
+        for item in values or []:
+            key = key_fn(item)
+            if key is None:
+                if item not in merged:
+                    merged.append(copy.deepcopy(item))
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(copy.deepcopy(item))
+    return merged
+
+def _case_source_prefix(case: dict) -> str:
+    source = case.get('source')
+    if isinstance(source, str) and source.strip():
+        return source.strip()
+    case_id = str(case.get('_id') or '')
+    if '_' in case_id:
+        return case_id.split('_', 1)[0]
+    return 'googlepatents'
+
+def get_similar_cases(patent_id: str, user_id: str):
+    """
+    Get all cases similar to the given patent id.
+    Combine the infringements and related values from all into a single list.
+    Replace creator id and assigned to id with the given user id.
+    New case ID must be originalSource_newUserId_patentId.
+    Remove the key for 'notes' from the case.
+    Important: Multiple cases can be returned. Use all of them to combine into a
+    single case with no duplicate values for any metadata entries or infringements
+    or chart values.
+    """
+    patent_id = (patent_id or '').strip()
+    user_id = (user_id or '').strip()
+    if not patent_id or not user_id:
+        return None
+
+    regex_id = construct_id_regex(patent_id)
+    cases = getDataContainingIdString(
+        connect_to_database(), getCaseDatabaseName(), regex_id
+    ) or []
+    cases = [case for case in cases if isinstance(case, dict)]
+    if not cases:
+        return None
+
+    claims_case = _pick_best_claims_case(cases)
+    primary = _pick_primary_case(cases, claims_case)
+    combined = copy.deepcopy(primary)
+
+    source = _case_source_prefix(primary)
+    combined['_id'] = f'{source}_{user_id}_{patent_id}'
+    combined['created_by'] = user_id
+    combined['assigned_to'] = user_id
+    combined['source'] = source
+    combined['last_updated'] = dt.now().isoformat()
+    combined.pop('notes', None)
+
+    combined['keywords'] = _fuzzy_dedupe_strings(
+        [kw for case in cases for kw in (case.get('keywords') or [])]
+    )
+    combined['owners'] = _fuzzy_dedupe_strings(
+        [owner for case in cases for owner in (case.get('owners') or [])]
+    )
+    combined['search_limitations'] = _merge_search_limitations(cases)
+    combined['claims'] = copy.deepcopy(
+        (claims_case or primary).get('claims')
+    )
+
+    combined['infringements'] = _merge_unique_dict_list(
+        [case.get('infringements') for case in cases],
+        _infringement_dedupe_key,
+    )
+    combined['documents'] = _merge_unique_dict_list(
+        [case.get('documents') for case in cases],
+        lambda doc: (
+            ('url', _normalize_url_key((doc or {}).get('url') or ''))
+            if isinstance(doc, dict) and (doc.get('url') or '').strip()
+            else None
+        ),
+    )
+    combined['document_urls'] = _exact_dedupe_strings(
+        [url for case in cases for url in (case.get('document_urls') or [])],
+        key_fn=_normalize_url_key,
+    )
+    combined['excluded_case_ids'] = _exact_dedupe_strings(
+        [value for case in cases for value in (case.get('excluded_case_ids') or [])]
+    )
+    combined['excluded_case_titles'] = _fuzzy_dedupe_strings(
+        [value for case in cases for value in (case.get('excluded_case_titles') or [])]
+    )
+    combined['inventors'] = _fuzzy_dedupe_strings(
+        [value for case in cases for value in (case.get('inventors') or [])]
+    )
+    combined['attorneys'] = _fuzzy_dedupe_strings(
+        [value for case in cases for value in (case.get('attorneys') or [])]
+    )
+    combined['current_assignee'] = _fuzzy_dedupe_strings(
+        [value for case in cases for value in (case.get('current_assignee') or [])]
+    )
+    combined['other_ids'] = _exact_dedupe_strings(
+        [value for case in cases for value in (case.get('other_ids') or [])]
+    )
+
+    for scalar_key in (
+        'title',
+        'description',
+        'status',
+        'country',
+        'applicant',
+        'filingDate',
+        'currentStatusDate',
+        'currentStatusCode',
+    ):
+        if combined.get(scalar_key) not in (None, '', [], {}):
+            continue
+        for case in cases:
+            value = case.get(scalar_key)
+            if value not in (None, '', [], {}):
+                combined[scalar_key] = copy.deepcopy(value)
+                break
+
+    combined = find_document_metadata(combined)
+    try:
+        get_infringement_chart(case_data=combined, persist=False)
+    except Exception as score_err:
+        print(f'LOG: in-memory score refresh failed for {combined.get("_id")}: {score_err}')
+    return apply_infringement_filters_to_case(combined)
+
 def find_document_metadata(case_data):
     documents = case_data.get('documents', [])
     for entry in documents:
@@ -71,6 +400,13 @@ def find_document_metadata(case_data):
                 entry['created_by'] = document['document'].get('created_by', '')
     case_data['documents'] = documents
     return case_data
+
+def get_case_by_id(case_id):
+    case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    if case is not None:
+        case = find_document_metadata(case)
+        return apply_infringement_filters_to_case(case)
+    return None
 
 def get_all_cases(page=1, paginated=False):
     if not paginated:
@@ -465,7 +801,7 @@ def _chart_error(error_code: str):
     return [], [], [], error_code
 
 
-def get_infringement_chart(case_id):
+def get_infringement_chart(case_id=None, case_data=None, persist=True):
     """
     Build chart-ready infringement rows for a case.
 
@@ -475,8 +811,13 @@ def get_infringement_chart(case_id):
     - ``([], [], [], 'NO_MATCHES_ABOVE_THRESHOLD')`` when scoring ran but no pair
       met the threshold (rows may still be persisted).
     - ``([], [], [], <ERROR_CODE>)`` for CASE_NOT_FOUND, NO_PARENT_CLAIMS, etc.
+
+    Pass ``case_data`` to score an in-memory case (e.g. before insert).
+    Set ``persist=False`` to mutate ``case_data['infringements']`` without writing to DB.
     """
-    caseData = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+    caseData = case_data
+    if caseData is None:
+        caseData = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     if caseData is None:
         return _chart_error('CASE_NOT_FOUND')
 
@@ -587,7 +928,7 @@ def get_infringement_chart(case_id):
             infringement_entry.update(filtered_entry)
             has_updates = True
 
-    if has_updates:
+    if persist and has_updates and case_id:
         update_case(case_id, {'infringements': infringements})
 
     if len(chart_data) == 0:
@@ -596,9 +937,10 @@ def get_infringement_chart(case_id):
     return chart_data, patent_chart_data, product_chart_data, None
 
 
-def refresh_case_infringement_scores(case_id):
+def refresh_case_infringement_scores(case_id=None, case_data=None, persist=True):
     """
-    Recompute embedding scores for all infringements on a case and persist pairs
-    above CLAIM_SIMILARITY_THRESHOLD. Also strips sub-threshold Gemini rows.
+    Recompute embedding scores for all infringements on a case and optionally
+    persist pairs above CLAIM_SIMILARITY_THRESHOLD. Also strips sub-threshold
+    Gemini rows. Pass case_data with persist=False to score before DB insert.
     """
-    return get_infringement_chart(case_id)
+    return get_infringement_chart(case_id=case_id, case_data=case_data, persist=persist)
