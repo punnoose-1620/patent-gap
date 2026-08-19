@@ -12,7 +12,6 @@ from models.demo import *
 from models.cases import *
 from models.users import *
 from models.alerts import *
-from models.folders import *
 from models.folders import (
     add_viewer_to_folder as model_add_viewer_to_folder,
     remove_viewer_from_folder as model_remove_viewer_from_folder,
@@ -21,6 +20,8 @@ from models.folders import (
     add_case_to_folder as model_add_case_to_folder,
     remove_case_from_folder as model_remove_case_from_folder,
     get_folder as model_get_folder,
+    rename_folder as model_rename_folder,
+    delete_folder as model_delete_folder,
 )
 from models.documents import *
 from models.infringements import *
@@ -2626,7 +2627,7 @@ def api_delete_folder(folder_id):
       return jsonify({'success': False, 'message': 'Delete case IDs are required'}), 400
     delete_case_ids = data.get('delete_case_ids', [])
   try:
-    case_remove_errors, deleted_case_ids = delete_folder(user_id, folder_id, delete_all_cases, delete_case_ids)
+    case_remove_errors, deleted_case_ids = model_delete_folder(user_id, folder_id, delete_all_cases, delete_case_ids)
     if len(case_remove_errors) > 0:
       # Returns list of errors faced and list of cases that were deleted
       return jsonify({
@@ -2786,7 +2787,7 @@ def api_rename_folder(folder_id):
   if not new_name:
     return jsonify({'success': False, 'message': 'New name cannot be empty'}), 400
   try:
-    rename_folder(folder_id, new_name, user_id)
+    model_rename_folder(folder_id, new_name, user_id)
     return jsonify({
       'success': True,
       'message': 'Folder renamed successfully',
