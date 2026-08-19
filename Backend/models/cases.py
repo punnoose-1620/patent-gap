@@ -22,6 +22,32 @@ _CLAIM_TYPE_KEYS = (
     'pivotal_claim',
 )
 
+def has_delete_permission(user_id: str, case_id: str):
+    """
+    Check if the user has delete permission for the case.
+    Only Creator and Owner can delete the case.
+    """
+    case_data = get_case_by_id(case_id)
+    if not case_data:
+        return False
+    created_by = case_data.get('created_by')
+    assigned_editors = case_data.get('assigned_editors') or []
+    owner = case_data.get('owner')
+    return (user_id == created_by) or (user_id == owner)
+
+def has_edit_permission(user_id: str, case_id: str):
+    """
+    Check if the user has edit permission for the case.
+    Only Creator, Owner and Assigned Editors can edit the case.
+    """
+    case_data = get_case_by_id(case_id)
+    if not case_data:
+        return False
+    created_by = case_data.get('created_by')
+    assigned_editors = case_data.get('assigned_editors') or []
+    owner = case_data.get('owner')
+    return (user_id == created_by) or (user_id in assigned_editors) or (user_id == owner)
+
 def construct_id_regex(patent_id: str):
     """
     The regex constructed here is used to search for a same patent id in the database added by other users.
@@ -401,11 +427,14 @@ def find_document_metadata(case_data):
     case_data['documents'] = documents
     return case_data
 
-def get_case_by_id(case_id):
+def get_case_by_id(case_id, apply_infringement_filters: bool = True):
     case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
     if case is not None:
         case = find_document_metadata(case)
-        return apply_infringement_filters_to_case(case)
+        if apply_infringement_filters:
+            return apply_infringement_filters_to_case(case)
+        else:
+            return case
     return None
 
 def get_all_cases(page=1, paginated=False):

@@ -2548,6 +2548,101 @@ def api_get_folder(folder_id):
     'folder': folder
   }), 200
 
+@app.route('/api/folders/delete/<folder_id>', methods=['POST'])
+def api_delete_folder(folder_id):
+  """
+  Delete a folder.
+  Caller must be the folder creator or owner.
+  If delete_all_cases is true, every case in the folder is deleted (delete_case_ids is ignored).
+  If delete_all_cases is false, delete_case_ids is required (may be empty). Listed cases
+  are deleted; remaining cases are unlinked from the folder, not deleted.
+  The folder is removed first. Case delete/unlink problems are returned as 200 with errors.
+  ---
+  tags:
+    - Folders
+  summary: Delete a folder
+  description: |
+    Deletes a folder. Only the folder creator or owner may call this.
+    Requires an authenticated session (user_id in session or X-User-ID header)
+    and a folder_id path parameter.
+    JSON body:
+    - delete_all_cases (boolean, required): if true, try to delete every case in the folder.
+      delete_case_ids is ignored.
+    - delete_case_ids (array of strings, required when delete_all_cases is false): case ids
+      to delete. Empty list means delete the folder only and unlink all remaining cases.
+    Surviving cases (not deleted, or delete failed) have this folder id removed from
+    their folders list. User-profile folder links are not updated yet.
+    A case deleted here is removed globally, including from other folders.
+  security:
+    - session: []
+  parameters:
+    - in: path
+      name: folder_id
+      required: true
+      type: string
+      description: Folder id to delete
+    - in: body
+      name: body
+      required: true
+      schema:
+        type: object
+        required:
+          - delete_all_cases
+        properties:
+          delete_all_cases:
+            type: boolean
+            description: If true, delete all cases in the folder. If false, use delete_case_ids.
+          delete_case_ids:
+            type: array
+            items:
+              type: string
+            description: Case ids to delete when delete_all_cases is false. Required key in that case; may be empty.
+  responses:
+    200:
+      description: |
+        Folder deleted. success true if every requested case delete/unlink succeeded.
+        success false if the folder was deleted but some cases could not be deleted or unlinked.
+        Body includes deleted_case_ids and, on partial failure, errors.
+    400:
+      description: Missing/invalid JSON body, missing delete_all_cases, missing delete_case_ids when required, permission denied, folder not found, or other ValueError from delete_folder
+    401:
+      description: Not authenticated
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'delete_all_cases' not in data:
+    return jsonify({'success': False, 'message': 'Delete all cases is required'}), 400
+  delete_all_cases = data.get('delete_all_cases', False)
+  delete_case_ids = []
+  if not delete_all_cases:
+    if 'delete_case_ids' not in data:
+      return jsonify({'success': False, 'message': 'Delete case IDs are required'}), 400
+    delete_case_ids = data.get('delete_case_ids', [])
+  try:
+    case_remove_errors, deleted_case_ids = delete_folder(user_id, folder_id, delete_all_cases, delete_case_ids)
+    if len(case_remove_errors) > 0:
+      # Returns list of errors faced and list of cases that were deleted
+      return jsonify({
+        'success': False, 
+        'message': f'Folder deleted, but {len(case_remove_errors)} errors were faced when deleting/unlinking cases', 
+        'errors': case_remove_errors,
+        'deleted_case_ids': deleted_case_ids
+        }), 200
+    return jsonify({
+      'success': True, 
+      'message': 'Folder deleted successfully', 
+      'deleted_case_ids': deleted_case_ids
+      }), 200
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
 @app.route('/api/folders/create', methods=['POST'])
 def api_create_folder():
   user_id = get_user_id()
@@ -2619,6 +2714,97 @@ def api_create_folder():
     'folder': folder
     }), 200
 
+@app.route('/api/folders/rename/<folder_id>', methods=['POST'])
+def api_rename_folder(folder_id):
+  """
+  Rename a folder.
+  Caller must be the folder creator, owner, or an editor.
+  Empty or whitespace-only names are rejected. Same name as current is success with no write.
+  ---
+  tags:
+    - Folders
+  summary: Rename a folder
+  description: |
+    Updates a folder's name. Creator, owner, or editor may call this.
+    Requires an authenticated session (user_id in session or X-User-ID header)
+    and a folder_id path parameter.
+    JSON body:
+    - new_name (string, required): non-empty after trim.
+    Returns the updated folder. If new_name matches the current name, returns 200
+    without changing the document.
+  security:
+    - session: []
+  parameters:
+    - in: path
+      name: folder_id
+      required: true
+      type: string
+      description: Folder id to rename
+    - in: body
+      name: body
+      required: true
+      schema:
+        type: object
+        required:
+          - new_name
+        properties:
+          new_name:
+            type: string
+            description: New folder name (trimmed; must not be empty)
+  responses:
+    200:
+      description: Folder renamed (or already had this name). Body includes folder.
+    400:
+      description: Missing/invalid JSON body, missing or empty new_name, or rename failed
+    401:
+      description: Not authenticated
+    403:
+      description: Caller profile missing, or caller is not creator/owner/editor
+    404:
+      description: Folder not found
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+  
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'new_name' not in data:
+    return jsonify({'success': False, 'message': 'New name is required'}), 400
+
+  new_name = str(data.get('new_name', '')).strip()
+  if not new_name:
+    return jsonify({'success': False, 'message': 'New name cannot be empty'}), 400
+  try:
+    rename_folder(folder_id, new_name, user_id)
+    return jsonify({
+      'success': True,
+      'message': 'Folder renamed successfully',
+      'folder': model_get_folder(folder_id)
+      }), 200
+  except ValueError as e:
+    if 'permission denied' in str(e).lower():
+      return jsonify({
+        'success': False,
+        'message': 'Edit Permission denied to folder'
+        }), 403
+    if 'folder not found' in str(e).lower():
+      return jsonify({
+        'success': False,
+        'message': 'Invalid folder id'
+        }), 404
+    return jsonify({'success': False, 'message': str(e)}), 400
+  
 @app.route('/api/folders/add-viewer/<folder_id>', methods=['POST'])
 def api_add_viewer_to_folder(folder_id):
   user_id = get_user_id()
