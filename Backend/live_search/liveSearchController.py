@@ -34,7 +34,10 @@ from live_search.apifySearch import (
     Apify,
     is_apify_configured,
     is_apify_enabled_for_case,
-    search_limitations_excluding_apify_hosts,
+)
+from live_search.integrations.router import (
+    ProductIntegrationRouter,
+    use_apify_fallback_enabled,
 )
 from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
@@ -1083,16 +1086,7 @@ def searchProductSources(
     product_details_list = []
     created_ids = []
 
-    # Gemini/CSE: drop Apify marketplace hosts when Apify will cover them.
-    # Apify keeps the full search_limitations (including Amazon/eBay/etc.).
     gemini_limitations = search_limitations
-    if is_apify_configured() and is_apify_enabled_for_case(search_limitations):
-        gemini_limitations = search_limitations_excluding_apify_hosts(search_limitations)
-        print(
-            "LOG: Stripped Apify catalog hosts from Gemini/CSE limitations; "
-            f"urls={gemini_limitations.get('urls')}"
-        )
-
     focus_urls = _focus_urls_from_search_limitations(gemini_limitations)
 
     extracted_products = _discover_products_via_gemini(
@@ -1114,30 +1108,6 @@ def searchProductSources(
         saved_product_urls=saved_product_urls,
         ref_claim_flag=ref_claim_flag,
     )
-
-    if is_apify_configured() and is_apify_enabled_for_case(search_limitations):
-        print("LOG: Running Apify retail product search")
-        apify_products = Apify().search(
-            reference_claims=ref_texts,
-            search_limitations=search_limitations,
-            keywords=keywords,
-            product_name=product_name,
-            max_results=max_product_results,
-            seen_runs=seen_apify_runs,
-            limit_flag=apify_limit_flag,
-        )
-        _persist_extracted_products(
-            apify_products,
-            reference_claims,
-            parent_case_id,
-            product_details_list,
-            created_ids,
-            sites_searched,
-            patent_title=product_name,
-            keywords=keywords,
-            saved_product_urls=saved_product_urls,
-            ref_claim_flag=ref_claim_flag,
-        )
 
     if not product_details_list and is_google_custom_search_configured():
         print(
@@ -1164,6 +1134,63 @@ def searchProductSources(
         )
     elif not product_details_list:
         print("LOG: No products found via Gemini; CSE not configured")
+
+    if not product_details_list:
+        print(
+            "LOG: Running low-cost product integration router "
+            "(Amazon, Walmart, eBay, Best Buy, generic vendor)"
+        )
+        router_products = ProductIntegrationRouter().search(
+            product_name=product_name,
+            keywords=keywords,
+            reference_claims=ref_texts,
+            owners=owners,
+            search_limitations=search_limitations,
+            max_results=max_product_results,
+        )
+        _persist_extracted_products(
+            router_products,
+            reference_claims,
+            parent_case_id,
+            product_details_list,
+            created_ids,
+            sites_searched,
+            patent_title=product_name,
+            keywords=keywords,
+            saved_product_urls=saved_product_urls,
+            ref_claim_flag=ref_claim_flag,
+        )
+
+    if (
+        not product_details_list
+        and use_apify_fallback_enabled(search_limitations)
+        and is_apify_configured()
+        and is_apify_enabled_for_case(search_limitations)
+    ):
+        print("LOG: Running Apify retail product search as opt-in final fallback")
+        apify_products = Apify().search(
+            reference_claims=ref_texts,
+            search_limitations=search_limitations,
+            keywords=keywords,
+            product_name=product_name,
+            max_results=max_product_results,
+            seen_runs=seen_apify_runs,
+            limit_flag=apify_limit_flag,
+        )
+        _persist_extracted_products(
+            apify_products,
+            reference_claims,
+            parent_case_id,
+            product_details_list,
+            created_ids,
+            sites_searched,
+            patent_title=product_name,
+            keywords=keywords,
+            saved_product_urls=saved_product_urls,
+            ref_claim_flag=ref_claim_flag,
+        )
+    elif not product_details_list:
+        print("LOG: Apify fallback disabled or unavailable")
 
     print(f"LOG: Product Search Sources: {json.dumps(sites_searched, indent=4)}")
     print(f"LOG: Products Found: {len(product_details_list)}")

@@ -12,3 +12,16 @@ DEBUG=True
 
 # CORS Configuration
 # CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+
+# Product discovery / scraping configuration
+# GOOGLE_API_KEY=your-google-api-key
+# GOOGLE_CSE_ID=your-google-custom-search-engine-id
+# SERPAPI_API_KEY=your-serpapi-key
+# EBAY_CLIENT_ID=your-ebay-client-id
+# EBAY_CLIENT_SECRET=your-ebay-client-secret
+# BESTBUY_API_KEY=your-bestbuy-api-key
+# WALMART_CLIENT_ID=your-walmart-client-id
+# WALMART_CLIENT_SECRET=your-walmart-client-secret
+# PROXY_URLS=http://user:pass@host:port,https://user:pass@host:port
+# USE_APIFY_FALLBACK=false
+# APIFY_API_KEY=your-apify-api-key
