@@ -36,7 +36,11 @@ from live_search.apifySearch import (
     is_apify_enabled_for_case,
     search_limitations_excluding_apify_hosts,
 )
-from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
+from live_search.searchUrlBuilder import (
+    SearchUrlBuilderByKeywords,
+    chunk_keywords_for_search,
+    KEYWORD_SEARCH_MAX_URLS,
+)
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
 from web_scraper.free_patents_online import FreePatentsOnline
@@ -464,58 +468,142 @@ def get_case_datas(
         print(f"\nERROR: Error getting case data: {str(e)}")
         raise e
 
-def searchFreePatentsOnline(keywords:list[str], count:int = 0):
-    resultCasesList = []
-    caseDataUrlsList = []
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
-    selector = SOURCES[0].get('url_builder_selector', '')
+def _is_fpo_result_list_url(url: str) -> bool:
+    """Skip FPO pagination / result-index links; keep patent detail pages."""
+    if not url:
+        return True
+    return "result.html" in url.split("?", 1)[0]
 
-    try:
-        freePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[0].get('search_url', ''))
-        freePatentsUrl = freePatentsUrlBuilder.build_url(
-            keywords=keywords, 
-            country='', 
-            selector=SOURCES[0].get('url_builder_selector', '')
+
+def _collect_case_data_urls_for_keyword_groups(
+    keywords: list[str],
+    source: dict,
+    count: int = 0,
+) -> tuple[list[str], CaseDataUrlFromSearchResults | None]:
+    """
+    Run one search per keyword chunk, merge unique result URLs.
+
+    Returns (urls, last_isolator). Isolator may be None if every chunk failed
+    before producing HTML; callers should still handle empty urls.
+    """
+    selector = source.get("url_builder_selector", "")
+    keyword_groups = chunk_keywords_for_search(keywords)
+    if not keyword_groups:
+        print("LOG: No usable keywords for patent search")
+        return [], None
+
+    url_builder = SearchUrlBuilderByKeywords(url=source.get("search_url", ""))
+    seen_urls: set[str] = set()
+    case_data_urls: list[str] = []
+    last_isolator = None
+    connection_errors = 0
+
+    for group_idx, group in enumerate(keyword_groups, start=1):
+        try:
+            search_url = url_builder.build_url(
+                keywords=group,
+                country="",
+                selector=selector,
             )
-    except Exception as e:
-        print(f"\nERROR: Error building free patents online URL: {str(e)}")
-        raise e
-        
-    try:
+        except Exception as e:
+            print(f"\nERROR: Error building {source.get('title')} URL (group {group_idx}): {e}")
+            raise
+
         session = requests.Session()
         session.headers.update(SESSION_HEADERS)
-        searchResultsHtml = performSearch(freePatentsUrl, session)
-        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
-            html_content=searchResultsHtml, 
-            ids=SOURCES[0].get('search_ids', {}), 
-            classes=SOURCES[0].get('search_classes', []), 
-            tags=SOURCES[0].get('search_tags', {}),
-            drop_list=SOURCES[0].get('search_classes_to_drop', [])
+        try:
+            search_results_html = performSearch(search_url, session)
+            isolator = CaseDataUrlFromSearchResults(
+                html_content=search_results_html,
+                ids=source.get("search_ids", {}),
+                classes=source.get("search_classes", []),
+                tags=source.get("search_tags", {}),
+                drop_list=source.get("search_classes_to_drop", []),
             )
-        caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(
-            selector=selector, 
-            base_url=SOURCES[0].get('search_url', '')
+            last_isolator = isolator
+            group_urls = isolator.isolate_case_data_urls(
+                selector=selector,
+                base_url=source.get("search_url", ""),
             )
-        print(f'LOG: Case Data URLs List:')
-        for caseDataUrl in caseDataUrlsList:
-            index = caseDataUrlsList.index(caseDataUrl)
-            print(f'LOG: {index + 1}: {caseDataUrl}')
+            added = 0
+            for url in group_urls:
+                if not url or url in seen_urls:
+                    continue
+                if selector == "free-patents-online" and _is_fpo_result_list_url(url):
+                    continue
+                if len(case_data_urls) >= KEYWORD_SEARCH_MAX_URLS:
+                    break
+                seen_urls.add(url)
+                case_data_urls.append(url)
+                added += 1
+            print(
+                f"LOG: {source.get('title')} group {group_idx}/{len(keyword_groups)} "
+                f"-> {len(group_urls)} raw URLs, {added} new "
+                f"(total unique {len(case_data_urls)})"
+            )
+            if len(case_data_urls) >= KEYWORD_SEARCH_MAX_URLS:
+                print(
+                    f"LOG: Reached KEYWORD_SEARCH_MAX_URLS={KEYWORD_SEARCH_MAX_URLS}; "
+                    f"stopping further keyword groups for {source.get('title')}"
+                )
+                break
+        except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+            connection_errors += 1
+            print(f"\nERROR: Connection reset on {source.get('title')} group {group_idx}: {e}")
+            if count >= 2:
+                raise
+        except Exception as e:
+            print(f"\nERROR: Error searching {source.get('title')} group {group_idx}: {e}")
+            raise
+        finally:
+            session.close()
+
+        time.sleep(1)
+
+    if not case_data_urls and connection_errors and count < 2:
+        time.sleep(2)
+        return _collect_case_data_urls_for_keyword_groups(keywords, source, count + 1)
+
+    print(f"LOG: Case Data URLs List ({source.get('title')}):")
+    for index, case_data_url in enumerate(case_data_urls, start=1):
+        print(f"LOG: {index}: {case_data_url}")
+    print(f"Case Data URLs Length: {len(case_data_urls)}")
+    return case_data_urls, last_isolator
+
+
+def searchFreePatentsOnline(keywords: list[str], count: int = 0):
+    resultCasesList = []
+    selector = SOURCES[0].get("url_builder_selector", "")
+    source = SOURCES[0]
+
+    try:
+        caseDataUrlsList, caseDataUrlIsolator = _collect_case_data_urls_for_keyword_groups(
+            keywords=keywords,
+            source=source,
+            count=count,
+        )
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error: {str(e)}")
         if count >= 2:
             raise e
         time.sleep(2)
-        session.close()
-        session = requests.Session()
-        session.headers.update(SESSION_HEADERS)
         return searchFreePatentsOnline(keywords, count + 1)
     except Exception as e:
         print(f"\nERROR: Error performing search for free patents online: {str(e)}")
         raise e
 
-    print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
-    session.close()
+    if not caseDataUrlsList:
+        print("LOG: Result Cases List: 0")
+        return resultCasesList
+    if caseDataUrlIsolator is None:
+        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
+            html_content="",
+            ids=source.get("search_ids", {}),
+            classes=source.get("search_classes", []),
+            tags=source.get("search_tags", {}),
+            drop_list=source.get("search_classes_to_drop", []),
+        )
+
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
     for caseDataUrl in _tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
@@ -524,73 +612,54 @@ def searchFreePatentsOnline(keywords:list[str], count:int = 0):
             if caseData is None:
                 print(f"\nWARN: No case data for URL: {caseDataUrl}")
                 continue
-            patent_id = str(caseDataUrl.split('/')[-1]).split('.')[0]
+            patent_id = str(caseDataUrl.split("/")[-1]).split(".")[0]
             caseDataDict = _live_result_to_dict(caseData, case_id=patent_id)
-            caseDataDict['url'] = caseDataUrl
-            caseDataDict['source'] = 'free_patents_online'
+            caseDataDict["url"] = caseDataUrl
+            caseDataDict["source"] = "free_patents_online"
             resultCasesList.append(caseDataDict)
             time.sleep(DEFAULT_LLM_DELAY)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
             print(f"\nERROR: Skipping URL: {caseDataUrl} — {str(e)}")
-        # time.sleep(1)
-    print(f'LOG: Result Cases List: {len(resultCasesList)}')
+    session.close()
+    print(f"LOG: Result Cases List: {len(resultCasesList)}")
     return resultCasesList
 
-def searchGooglePatents(keywords:list[str], count:int = 0):
+
+def searchGooglePatents(keywords: list[str], count: int = 0):
     resultCasesList = []
-    caseDataUrlsList = []
-    selector = SOURCES[1].get('url_builder_selector', '')
+    selector = SOURCES[1].get("url_builder_selector", "")
+    source = SOURCES[1]
 
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
     try:
-        googlePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[1].get('search_url', ''))
-        googlePatentsUrl = googlePatentsUrlBuilder.build_url(
-            keywords=keywords, 
-            country='', 
-            selector=SOURCES[1].get('url_builder_selector', '')
-            )
-    except Exception as e:
-        print(f"\nERROR: Error building Google Patents URL: {str(e)}")
-        raise e
-
-    session.close()
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
-    try:
-        searchResultsHtml = performSearch(googlePatentsUrl, session)
-        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
-            html_content=searchResultsHtml, 
-            ids=SOURCES[1].get('search_ids', {}), 
-            classes=SOURCES[1].get('search_classes', []), 
-            tags=SOURCES[1].get('search_tags', {}),
-            drop_list=SOURCES[1].get('search_classes_to_drop', [])
-            )
-        caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(
-            selector=selector, 
-            base_url=SOURCES[1].get('search_url', '')
-            )
-        print(f'LOG: Case Data URLs List: ')
-        for caseDataUrl in caseDataUrlsList:
-            index = caseDataUrlsList.index(caseDataUrl)
-            print(f'LOG: {index + 1}: {caseDataUrl}')
+        caseDataUrlsList, caseDataUrlIsolator = _collect_case_data_urls_for_keyword_groups(
+            keywords=keywords,
+            source=source,
+            count=count,
+        )
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error: {str(e)}")
         if count >= 2:
             raise e
         time.sleep(2)
-        session.close()
-        session = requests.Session()
-        session.headers.update(SESSION_HEADERS)
         return searchGooglePatents(keywords, count + 1)
     except Exception as e:
         print(f"\nERROR: Error performing search for Google Patents: {str(e)}")
         raise e
-    
-    print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
-    session.close()
+
+    if not caseDataUrlsList:
+        print("LOG: Result Cases List: []")
+        return resultCasesList
+    if caseDataUrlIsolator is None:
+        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
+            html_content="",
+            ids=source.get("search_ids", {}),
+            classes=source.get("search_classes", []),
+            tags=source.get("search_tags", {}),
+            drop_list=source.get("search_classes_to_drop", []),
+        )
+
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
     for caseDataUrl in _tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
@@ -599,21 +668,21 @@ def searchGooglePatents(keywords:list[str], count:int = 0):
             if caseData is None:
                 print(f"\nWARN: No case data for URL: {caseDataUrl}")
                 continue
-            if '/en' in caseDataUrl:
-                patent_id = str(caseDataUrl.split('/')[-2])
+            if "/en" in caseDataUrl:
+                patent_id = str(caseDataUrl.split("/")[-2])
             else:
-                patent_id = str(caseDataUrl.split('/')[-1])
+                patent_id = str(caseDataUrl.split("/")[-1])
             caseDataDict = _live_result_to_dict(caseData, case_id=patent_id)
-            caseDataDict['url'] = caseDataUrl
-            caseDataDict['source'] = 'google_patents'
+            caseDataDict["url"] = caseDataUrl
+            caseDataDict["source"] = "google_patents"
             resultCasesList.append(caseDataDict)
             time.sleep(DEFAULT_LLM_DELAY)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
             print(f"\nERROR: Skipping URL: {caseDataUrl} — {str(e)}")
-        # time.sleep(1)
-    print(f'LOG: Result Cases List: {resultCasesList}')
+    session.close()
+    print(f"LOG: Result Cases List: {len(resultCasesList)}")
     return resultCasesList
 
 def alreadyExists(patent:dict, merged_results:list[dict]):
