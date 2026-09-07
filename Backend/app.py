@@ -22,6 +22,8 @@ from models.folders import (
     get_folder as model_get_folder,
     rename_folder as model_rename_folder,
     delete_folder as model_delete_folder,
+    list_folders as model_list_folders,
+    create_folder as model_create_folder,
 )
 from models.documents import *
 from models.infringements import *
@@ -2066,7 +2068,6 @@ def live_similarity_analysis(case_id):
 
   # Start Live Patent Search in background thread
   update_case(case_id, {
-    'infringements': [],
     'product_analysis_time_taken': '',
     'patent_analysis_time_taken': '',
     })
@@ -2512,7 +2513,7 @@ def get_folders():
       'success': False, 
       'message': 'Not authenticated'
       }), 401
-  folders = list_folders(user_id)
+  folders = model_list_folders(user_id)
   return jsonify({
     'success': True, 
     'message': 'Folders retrieved successfully', 
@@ -2527,7 +2528,7 @@ def api_get_folder(folder_id):
       'success': False,
       'message': 'Not authenticated'
       }), 401
-  folder = get_folder(folder_id)
+  folder = model_get_folder(folder_id)
   if folder is None:
     return jsonify({
       'success': False,
@@ -2675,7 +2676,7 @@ def api_create_folder():
   if len(folder_name.strip()) == 0:
     return jsonify({'success': False, 'message': 'Folder name cannot be empty'}), 400  
 
-  folder_id = create_folder(user_id, folder_name, viewers, editors, cases)
+  folder_id = model_create_folder(user_id, folder_name, viewers, editors, cases)
   creator_folders = list(creator_profile.get('folders') or [])
   if folder_id not in creator_folders:
     creator_folders.append(folder_id)

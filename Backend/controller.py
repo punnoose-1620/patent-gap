@@ -601,13 +601,14 @@ def start_patent_analysis(
                 asserted_patentResults, asserted_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    reference_claims=claims_to_strings(asserted_claims), 
+                    reference_claims=asserted_claims, 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
                     ids_to_avoid=ids_to_avoid,
                     search_type=search_type,
                     case_id=case_id,
+                    ref_claim_flag='original',
                     )
                 update_infringement_analysis_status(
                     case_id=case_id,
@@ -630,13 +631,14 @@ def start_patent_analysis(
                 independent_patentResults, independent_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    reference_claims=claims_to_strings(independent_claims), 
+                    reference_claims=independent_claims, 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
                     ids_to_avoid=ids_to_avoid,
                     search_type='independent',
                     case_id=case_id,
+                    ref_claim_flag='original',
                     )
                 update_infringement_analysis_status(
                     case_id=case_id,
@@ -659,13 +661,14 @@ def start_patent_analysis(
                 core_patentResults, core_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    reference_claims=claims_to_strings(core_claims), 
+                    reference_claims=core_claims, 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
                     ids_to_avoid=ids_to_avoid,
                     search_type='core',
                     case_id=case_id,
+                    ref_claim_flag='original',
                     )
                 update_infringement_analysis_status(
                     case_id=case_id,
@@ -688,13 +691,14 @@ def start_patent_analysis(
                 pivotal_patentResults, pivotal_created_patent_ids = searchPatentSources(
                     keywords=keywords, 
                     country=country, 
-                    reference_claims=claims_to_strings(pivotal_claims), 
+                    reference_claims=pivotal_claims, 
                     ref_case_title=ref_case_title, 
                     ref_case_id=ref_case_id,
                     titles_to_avoid=titles_to_avoid,
                     ids_to_avoid=ids_to_avoid,
                     search_type='pivotal',
                     case_id=case_id,
+                    ref_claim_flag='original',
                     )
                 update_infringement_analysis_status(
                     case_id=case_id,

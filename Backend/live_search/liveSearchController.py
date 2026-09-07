@@ -17,7 +17,6 @@ import models.cases as case_model
 from infringement_score_filters import (
     filter_infringement_entry,
     filter_similar_claims,
-    score_meets_threshold,
 )
 from models.live_search_results import (
     ProductTargetSources,
@@ -993,18 +992,42 @@ def _persist_extracted_products(
 def searchPatentSources(
     keywords:list[str], 
     country:str, 
-    reference_claims:list[str], 
+    reference_claims:list, 
     ref_case_title: str = '', 
     ref_case_id: str = '',
     titles_to_avoid: list[str] = [],
     ids_to_avoid: list[str] = [],
     search_type: str = 'generic',
     case_id: str = '',
+    ref_claim_flag: str = 'original',
     ):
     searchResults = []
     infringement_analysis_results = []
     created_ids = []
     status_key = f"{search_type}_claims_patent_analysis"
+    ref_texts, ref_indices = normalize_reference_claim_entries(reference_claims)
+    flag = str(ref_claim_flag or 'original').strip().lower()
+    if flag not in ('market', 'original'):
+        flag = 'original'
+    if not ref_texts:
+        print(f'\nLOG: Skipping patent search ({search_type}) — no reference claims')
+        return [], []
+    if case_id:
+        from database import getDataById, connect_to_database
+        from env_controller import getCaseDatabaseName
+        existing_case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+        for inf in (existing_case or {}).get('infringements') or []:
+            if inf.get('product_id'):
+                continue
+            cid = str(inf.get('case_id') or '').strip()
+            if not cid and str(inf.get('_id', '')).startswith('patent_'):
+                cid = str(inf['_id']).split('_')[1]
+            if cid:
+                ids_to_avoid.append(cid)
+                ids_to_avoid.append(cid.split('_')[-1])
+            title = str(inf.get('title') or '').strip()
+            if title:
+                titles_to_avoid.append(title)
     # Perform Live Patent Search
     try:
         found_ids = []
@@ -1043,46 +1066,45 @@ def searchPatentSources(
             error_message='Live SearchError: ' + str(e)
         )
         raise e
-    # Perform Infringement Analysis
+    # Perform Infringement Analysis (same shape as products: similar_claims + justification)
     try:
         sources = []
         for result in searchResults:
-            infringing_claims = claims_to_strings(result.get('claims', []))
-            if not infringing_claims:
-                print(f"\nLOG: Skipping patent {result.get('_id')} — no extractable claims")
-                continue
-            infringement_analysis = performInfringementAnalysis(
-                reference_claims,
-                infringing_claims,
-                result.get('context', '') or result.get('description', '')
-            )
-            if hasattr(infringement_analysis, "model_dump"):
-                result['gemini_infringement'] = infringement_analysis.model_dump()
-            elif hasattr(infringement_analysis, "dict"):
-                result['gemini_infringement'] = infringement_analysis.dict()
-            else:
-                result['gemini_infringement'] = infringement_analysis
-            gemini_score = None
-            if isinstance(result.get('gemini_infringement'), dict):
-                gemini_score = result['gemini_infringement'].get('similarity_score')
-            if not score_meets_threshold(gemini_score):
+            try:
+                infringing_claims = claims_to_strings(result.get('claims', []))
+                if not infringing_claims:
+                    print(f"\nLOG: Skipping patent {result.get('_id')} — no extractable claims")
+                    continue
+                infringement_analysis = Gemini().analyze_product_infringements(
+                    ref_texts,
+                    infringing_claims,
+                    ref_claim_indices=ref_indices,
+                    ref_claim_flag=flag,
+                )
+                result['similar_claims'] = [
+                    item.model_dump() if hasattr(item, 'model_dump') else item
+                    for item in infringement_analysis
+                ]
+                result['similar_claims'] = filter_similar_claims(result['similar_claims'])
                 result.pop('gemini_infringement', None)
-            result['infringements'] = []
-            result['claims'] = infringing_claims
-            
-            result['_id'] = 'patent_' + str(result.get('_id', '')) + '_' + str(datetime.now().strftime("%Y%m%d%H%M%S"))
-            result = filter_infringement_entry(result)
-            creation_result = infringement_model.create_infringement(
-                result,
-                parent_case_id=case_id or None,
-            )
-            if creation_result['success']:
-                created_ids.append(creation_result['infringement_id'])
-                sources.append(result.get('source', ''))
-            infringement_analysis_results.append(result)
-            if case_id:
-                case_model.update_case(case_id, {'infringement_sources': sources})
-            # TODO: Create Infringement Record after altering the id
+                result['infringements'] = []
+                result['claims'] = infringing_claims
+
+                result['_id'] = 'patent_' + str(result.get('_id', '')) + '_' + str(datetime.now().strftime('%Y%m%d%H%M%S'))
+                result = filter_infringement_entry(result)
+                creation_result = infringement_model.create_infringement(
+                    result,
+                    parent_case_id=case_id or None,
+                )
+                if creation_result['success']:
+                    created_ids.append(creation_result['infringement_id'])
+                    sources.append(result.get('source', ''))
+                infringement_analysis_results.append(result)
+                if case_id:
+                    case_model.update_case(case_id, {'infringement_sources': sources})
+            except Exception as e:
+                print(f'\nERROR: Error analyzing patent infringements: {str(e)}')
+                continue
         return infringement_analysis_results, created_ids
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
