@@ -106,14 +106,18 @@ def _pair_scores_matrix_tfidf(ref_list, inf_list):
                     s = abs(s)
                 scores[(ref, inf)] = float(min(1.0, max(0.0, s)))
         return scores
-    except Exception:
+    except Exception as e:
+        print(f"LOG: _pair_scores_matrix_tfidf failed ({type(e).__name__}: {e})")
         return None
 
 
 def _pair_scores_matrix(ref_list, inf_list):
-    scores = _pair_scores_matrix_openai(ref_list, inf_list)
-    if scores is not None:
-        return scores
+    try:
+        scores = _pair_scores_matrix_openai(ref_list, inf_list)
+        if scores is not None:
+            return scores
+    except Exception as e:
+        print(f"LOG: _pair_scores_matrix_openai failed ({type(e).__name__}: {e}); falling back to joint TF-IDF")
     return _pair_scores_matrix_tfidf(ref_list, inf_list)
 
 
