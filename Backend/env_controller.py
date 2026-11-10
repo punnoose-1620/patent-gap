@@ -186,6 +186,21 @@ def getFolderDatabaseName():
         return os.environ.get('FOLDER_DATABASE_NAME_DEV')
 
 
+def getAuditDatabaseName():
+    # Load environment variables
+    load_dotenv()
+
+    environment = os.environ.get('ENVIRONMENT')
+    if environment == production:
+        return os.environ.get('AUDIT_DATABASE_NAME_PROD') or 'audit'
+    elif environment == development:
+        return os.environ.get('AUDIT_DATABASE_NAME_DEV') or 'audit_dev'
+    elif environment == testing:
+        return os.environ.get('AUDIT_DATABASE_NAME_TEST') or 'audit_test'
+    else:
+        return os.environ.get('AUDIT_DATABASE_NAME_DEV') or 'audit_dev'
+
+
 def getChromaPersistDir():
     load_dotenv()
     configured = os.environ.get('CHROMA_PERSIST_DIR')

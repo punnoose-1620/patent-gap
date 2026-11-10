@@ -1,6 +1,9 @@
 """
 FastMCP / MCPServer tools wrapping internal patent-gap functions.
 In-process / local use — not a public networked product API in this phase.
+
+Processing tools require user_id + case_id and append an audit row.
+Read/get tools do not write audit entries.
 """
 from __future__ import annotations
 
@@ -32,27 +35,82 @@ except Exception:
             _MCP_IMPL = None
 
 
+def _require_ids(user_id: str, case_id: str) -> None:
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("user_id is required")
+    if not isinstance(case_id, str) or not case_id.strip():
+        raise ValueError("case_id is required")
+
+
+def _audit_mcp_action(
+    user_id: str,
+    case_id: str,
+    tool_name: str,
+    *,
+    text: str = "",
+    payload: Optional[Dict[str, Any]] = None,
+    status: str = "completed",
+) -> None:
+    """Append mcp_action audit for processing tools only (never for getters)."""
+    try:
+        from structures.audit import add_audit_entry
+
+        add_audit_entry(
+            user_id=user_id,
+            case_id=case_id,
+            kind="mcp_action",
+            text=text or f"MCP tool {tool_name}",
+            payload={"tool": tool_name, **(payload or {})},
+            status=status,
+            source="mcp",
+        )
+    except Exception as e:
+        print(f"LOG: MCP audit skipped ({type(e).__name__}: {e})")
+
+
 def _build_mcp():
     if FastMCP is None:
         return None
     mcp = FastMCP("patent-gap")
 
     @mcp.tool()
-    def extract_patent_metadata(patent_content: str, default_source: str = "") -> Any:
+    def extract_patent_metadata(
+        user_id: str,
+        case_id: str,
+        patent_content: str,
+        default_source: str = "",
+    ) -> Any:
         """Extract structured patent metadata from raw patent HTML/text via Gemini."""
+        _require_ids(user_id, case_id)
         from ai_workflow.orchestration import get_ai_client
 
-        return get_ai_client().extract_patent_metadata(
+        result = get_ai_client().extract_patent_metadata(
             patent_content=patent_content,
             default_source=default_source or None,
         )
+        _audit_mcp_action(
+            user_id,
+            case_id,
+            "extract_patent_metadata",
+            text="Extracted patent metadata via MCP",
+            payload={"default_source": default_source or ""},
+        )
+        return result
 
     @mcp.tool()
-    def extract_claims(patent_content: str) -> Any:
+    def extract_claims(user_id: str, case_id: str, patent_content: str) -> Any:
         """Extract claims from patent content."""
+        _require_ids(user_id, case_id)
         from ai_workflow.orchestration import get_ai_client
 
-        return get_ai_client().extract_claims(patent_content=patent_content)
+        result = get_ai_client().extract_claims(patent_content=patent_content)
+        _audit_mcp_action(
+            user_id,
+            case_id,
+            "extract_claims",
+            text="Extracted patent claims via MCP",
+        )
+        return result
 
     @mcp.tool()
     def index_case_claims(
@@ -63,9 +121,10 @@ def _build_mcp():
         chunk_type: str = "claim",
     ) -> int:
         """Chunk and upsert claim texts into the local Chroma index for a user/case."""
+        _require_ids(user_id, case_id)
         from ai_workflow.indexing import index_claim_texts
 
-        return index_claim_texts(
+        count = index_claim_texts(
             user_id=user_id,
             case_id=case_id,
             claims=claims,
@@ -73,6 +132,14 @@ def _build_mcp():
             chunk_type=chunk_type,
             replace_case_chunks=True,
         )
+        _audit_mcp_action(
+            user_id,
+            case_id,
+            "index_case_claims",
+            text="Indexed case claims into vector store via MCP",
+            payload={"chunk_type": chunk_type, "claim_count": len(claims or []), "upserted": count},
+        )
+        return count
 
     @mcp.tool()
     def hybrid_retrieve(
@@ -81,7 +148,8 @@ def _build_mcp():
         query_text: str,
         chunk_type: str = "claim",
     ) -> List[Dict[str, Any]]:
-        """BM25 + dense + rerank retrieval over a user's case chunks."""
+        """BM25 + dense + rerank retrieval over a user's case chunks (read-only; no audit)."""
+        _require_ids(user_id, case_id)
         from ai_workflow.hybrid_retrieve import retrieve_similar_texts
 
         return retrieve_similar_texts(
@@ -93,33 +161,49 @@ def _build_mcp():
 
     @mcp.tool()
     def analyze_infringements(
+        user_id: str,
+        case_id: str,
         reference_claims: List[str],
         infringing_claims: List[str],
         context: str = "",
     ) -> Any:
         """Run Gemini infringement analysis on claim sets."""
+        _require_ids(user_id, case_id)
         from ai_workflow.orchestration import get_ai_client
 
-        return get_ai_client().analyze_infringements(
+        result = get_ai_client().analyze_infringements(
             reference_claims, infringing_claims, context
         )
+        _audit_mcp_action(
+            user_id,
+            case_id,
+            "analyze_infringements",
+            text="Ran infringement analysis via MCP",
+            payload={
+                "reference_claim_count": len(reference_claims or []),
+                "infringing_claim_count": len(infringing_claims or []),
+            },
+        )
+        return result
 
     @mcp.tool()
-    def get_case_context(case_id: str) -> Optional[Dict[str, Any]]:
-        """Load a case document from Mongo by id."""
+    def get_case_context(user_id: str, case_id: str) -> Optional[Dict[str, Any]]:
+        """Load a case document from Mongo by id (read-only; no audit)."""
+        _require_ids(user_id, case_id)
         from structures.cases import get_case_by_id
 
         return get_case_by_id(case_id)
 
     @mcp.tool()
     def score_claim_matrix(
+        user_id: str,
+        case_id: str,
         reference_claims: List[str],
         infringing_claims: List[str],
         threshold: float = 0.5,
-        user_id: str = "",
-        case_id: str = "",
     ) -> Dict[str, Any]:
         """Score reference x infringing claims (RAG shortlist when enabled)."""
+        _require_ids(user_id, case_id)
         from scorer import score_infringement_matrix_entry
 
         stored, chart = score_infringement_matrix_entry(
@@ -127,10 +211,51 @@ def _build_mcp():
             infringing_claims,
             None,
             threshold=threshold,
-            user_id=user_id or None,
-            case_id=case_id or None,
+            user_id=user_id,
+            case_id=case_id,
+        )
+        _audit_mcp_action(
+            user_id,
+            case_id,
+            "score_claim_matrix",
+            text="Scored claim matrix via MCP",
+            payload={
+                "threshold": threshold,
+                "reference_claim_count": len(reference_claims or []),
+                "infringing_claim_count": len(infringing_claims or []),
+            },
         )
         return {"stored_rows": stored, "chart_rows": chart}
+
+    @mcp.tool()
+    def get_audit_by_case_id(
+        user_id: str,
+        case_id: str,
+        page: int = 1,
+        kind: str = "",
+    ) -> Dict[str, Any]:
+        """Fetch immutable AI audit history for a case (read-only; no audit)."""
+        _require_ids(user_id, case_id)
+        from structures.audit import get_audit_by_case_id as _get
+
+        return _get(case_id, page=page, kind=kind or None)
+
+    @mcp.tool()
+    def get_audit_by_user_id(
+        user_id: str,
+        case_id: str,
+        page: int = 1,
+        kind: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Fetch immutable AI audit history for a user (read-only; no audit).
+        case_id is required for MCP consistency / ACL context even though the
+        query is keyed by user_id.
+        """
+        _require_ids(user_id, case_id)
+        from structures.audit import get_audit_by_user_id as _get
+
+        return _get(user_id, page=page, kind=kind or None)
 
     return mcp
 
