@@ -5,7 +5,11 @@ from urllib.parse import urlparse
 import requests
 
 from env_controller import getEnvKey
-from llm_brain.gemini import Gemini
+from ai_workflow.orchestration import get_ai_client as _get_ai_client
+
+def Gemini():
+    """Factory compatible with legacy Gemini() call sites."""
+    return _get_ai_client()
 from models.live_search_results import (
     GoogleSearchResults,
     InfringingProductDetail,
@@ -52,6 +56,7 @@ _STOPWORDS = _ENGLISH_STOPWORDS | _PATENT_STOPWORDS
 
 
 def is_google_custom_search_configured() -> bool:
+    # Empty / none / null GOOGLE_API_KEY or GOOGLE_CSE_ID → treat as unset (use scrape/Gemini backups).
     return bool(getEnvKey("google") and getEnvKey("google_cse"))
 
 

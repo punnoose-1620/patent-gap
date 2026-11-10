@@ -12,7 +12,11 @@ from models.cases import *
 from models.users import *
 from file_controller import *
 from live_search.liveSearchController import *
-from llm_brain.gemini import Gemini
+from ai_workflow.orchestration import get_ai_client as _get_ai_client
+
+def Gemini():
+    """Factory compatible with legacy Gemini() call sites."""
+    return _get_ai_client()
 from models.live_search_results import (
     ProductRetailSearchParam,
     ProductRetailSearchParams,

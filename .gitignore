@@ -18,6 +18,7 @@ env
 # Logs
 *.log
 logs/
+Backend/logs/
 Backend/.env
 Backend/.env
 .cursor/settings.json
@@ -25,3 +26,14 @@ Backend/.env
 /Backend/scripts
 /tester_scripts
 /Backend/tester_scripts
+
+# Local Chroma vector store (do not commit embeddings)
+Backend/vector_store/*
+!Backend/vector_store/.gitkeep
+
+# Local testers runtime output
+Backend/testers/*.log
+Backend/testers/*.json
+!Backend/testers/**/*.py
+/Backend/testers
+mcp-rag-vector-prompt.md

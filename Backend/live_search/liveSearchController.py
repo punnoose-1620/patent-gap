@@ -11,7 +11,11 @@ from file_controller import readFromXmlUrl, readFromPdfUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from llm_brain.gemini import Gemini
+from ai_workflow.orchestration import get_ai_client as _get_ai_client
+
+def Gemini():
+    """Factory compatible with legacy Gemini() call sites."""
+    return _get_ai_client()
 import models.infringements as infringement_model
 import models.cases as case_model
 from infringement_score_filters import (

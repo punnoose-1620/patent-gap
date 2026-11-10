@@ -139,12 +139,20 @@ def _fully_cached_matrix(ref_list, inf_list, existing_infringements, cache, thre
     return stored_rows, chart_rows
 
 
-def score_infringement_matrix_entry(reference_claims, infringing_claims, existing_infringements, threshold=0.5):
+def score_infringement_matrix_entry(
+    reference_claims,
+    infringing_claims,
+    existing_infringements,
+    threshold=0.5,
+    user_id=None,
+    case_id=None,
+):
     """
     Full matrix: each parent claim x each infringing claim. Stores only pairs with
     calculated_similarity_score > threshold.
 
     existing_infringements may be a legacy Gemini dict, a list of scored rows, or None.
+    Optional user_id/case_id enable RAG shortlisting when AI_WORKFLOW_MODE=rag.
 
     Returns:
         (stored_rows: list | None, chart_rows: list)
@@ -160,7 +168,27 @@ def score_infringement_matrix_entry(reference_claims, infringing_claims, existin
     if full_cache is not None:
         return full_cache
 
-    pair_scores = _pair_scores_matrix(ref_list, inf_list)
+    pair_iter = product(ref_list, inf_list)
+    try:
+        from ai_workflow.config import is_rag_mode
+        from ai_workflow.hybrid_retrieve import shortlist_claim_pairs
+
+        if is_rag_mode():
+            pair_iter = shortlist_claim_pairs(
+                ref_list,
+                inf_list,
+                user_id=user_id,
+                case_id=case_id,
+            )
+    except Exception as e:
+        print(f"LOG: RAG shortlist skipped ({type(e).__name__}: {e})")
+        pair_iter = product(ref_list, inf_list)
+
+    # Materialize pairs so we only embed what's needed
+    pair_list = list(pair_iter)
+    needed_refs = sorted({r for r, _ in pair_list})
+    needed_infs = sorted({i for _, i in pair_list})
+    pair_scores = _pair_scores_matrix(needed_refs, needed_infs)
     if pair_scores is None:
         return None, []
 
@@ -168,18 +196,16 @@ def score_infringement_matrix_entry(reference_claims, infringing_claims, existin
     chart_rows = []
     now_iso = _utc_now_iso()
 
-    for ref, inf in product(ref_list, inf_list):
+    for ref, inf in pair_list:
         h = build_scoring_input_hash(ref, inf)
         if h in cache and _cached_row_valid(cache[h], h):
             row = cache[h]
-            calc = float(row["calculated_similarity_score"])
             stored_rows.append(row)
             chart_rows.append(_chart_row_from_storage(row))
-            # if calc > threshold:
-            #     stored_rows.append(row)
-            #     chart_rows.append(_chart_row_from_storage(row))
             continue
 
+        if (ref, inf) not in pair_scores:
+            continue
         score = float(pair_scores[(ref, inf)])
         if score <= threshold:
             continue

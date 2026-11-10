@@ -156,7 +156,8 @@ def _is_apify_limit_error(exc: Exception) -> bool:
     )
 
 def is_apify_configured() -> bool:
-    return bool((getEnvKey("apify") or "").strip())
+    # Empty / none / null APIFY_API_KEY → skip Apify and keep Gemini/scrape backups.
+    return bool(getEnvKey("apify"))
 
 
 def _normalize_host(url: str) -> str:

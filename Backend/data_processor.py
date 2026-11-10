@@ -10,7 +10,7 @@ import datetime
 import numpy as np
 from tqdm import tqdm
 from difflib import SequenceMatcher
-from env_controller import getEnvKey
+from env_controller import getEnvKey, normalize_env_secret
 from models.cases import get_case_embedding, create_case, get_case_by_id, update_case
 from database import updateDataById
 from llm_processor import getCompleteReport, getReportSummary, getDummyReportWithSummary
@@ -183,7 +183,9 @@ def getKeywordsFromContentOnline(content, api_key=None, model="gpt-3.5-turbo"):
     """
     if content is None:
         return []
-    api_key = api_key or os.getenv('OPENAI_API_KEY')
+    api_key = normalize_env_secret(api_key) or getEnvKey('openai')
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is not configured")
     client = openai.OpenAI(api_key=api_key)
 
     prompt = (
@@ -248,14 +250,14 @@ def getKeywordsFromContent(content, api_key=None, model="gpt-3.5-turbo"):
     """
     if content is None:
         return []
-    if api_key is not None:
+    resolved_key = normalize_env_secret(api_key) or getEnvKey('openai')
+    if resolved_key:
         try:
-            return getKeywordsFromContentOnline(content, api_key, model)
+            return getKeywordsFromContentOnline(content, resolved_key, model)
         except Exception as e:
             print(f"OpenAI keyword extraction failed: {e}")
             return getKeywordsFromContentOffline(content)
-    else:
-        return getKeywordsFromContentOffline(content)
+    return getKeywordsFromContentOffline(content)
 
 def getReferenceFromNormalizedList(listOfCases, case_id):
     """
@@ -827,14 +829,16 @@ def getEmbeddingOnline(text, api_key=None, model="text-embedding-3-small"):
     Returns:
         List of floats representing the embedding vector
     """    
-    # Initialize OpenAI client
-    client = openai.OpenAI(api_key=api_key or os.getenv('OPENAI_API_KEY'))
-    
+    resolved_key = normalize_env_secret(api_key) or getEnvKey('openai')
+    if not resolved_key:
+        raise ValueError("OPENAI_API_KEY is not configured")
+    client = openai.OpenAI(api_key=resolved_key)
+
     response = client.embeddings.create(
         model=model,  # Using newer, cheaper model
         input=text
     )
-    
+
     return response.data[0].embedding
 
 def getEmbeddingOffline(text):
@@ -950,18 +954,16 @@ def getPatentEmbedding(text, api_key=None):
     embedding = None
     if (text is None) or (text == ''):
         return None
+    resolved_key = normalize_env_secret(api_key) or getEnvKey('openai')
     try:
-        if api_key is not None:
-            embedding = getEmbeddingOnline(text, api_key)
+        if resolved_key:
+            embedding = getEmbeddingOnline(text, resolved_key)
         else:
             embedding = getEmbeddingOffline(text)
     except Exception as e:
         print(f"LOG: getPatentEmbedding primary path failed ({type(e).__name__}: {e})")
         try:
-            if api_key is not None:
-                embedding = getEmbeddingOffline(text)
-            else:
-                embedding = None
+            embedding = getEmbeddingOffline(text) if resolved_key else None
         except Exception as fallback_err:
             print(f"LOG: getPatentEmbedding fallback failed ({type(fallback_err).__name__}: {fallback_err})")
             embedding = None

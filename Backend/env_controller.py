@@ -5,25 +5,63 @@ production = 'prod'
 development = 'dev'
 testing = 'test'
 
+# Placeholder / unset markers commonly left in .env files.
+_UNSET_SECRET_VALUES = frozenset({
+    '',
+    'none',
+    'null',
+    'nil',
+    'undefined',
+    'n/a',
+    'na',
+    '-',
+    '.',
+})
+
+
+def normalize_env_secret(value):
+    """
+    Treat empty / placeholder secrets as unset.
+
+    Returns None when the value is missing or a non-key placeholder
+    (None, '', 'none', 'null', etc.) so callers can skip primary API
+    paths and use backups without making a doomed request.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    cleaned = value.strip()
+    if cleaned.lower() in _UNSET_SECRET_VALUES:
+        return None
+    return cleaned
+
+
+def hasEnvKey(key):
+    """True when getEnvKey(key) yields a usable secret."""
+    return bool(getEnvKey(key))
+
+
 # Functions to get environment variables
 def getEnvKey(key):
     # Load environment variables
     load_dotenv()
 
     if key == 'uspto':
-        return os.environ.get('USPTO_API_KEY')
+        raw = os.environ.get('USPTO_API_KEY')
     elif key == 'openai':
-        return os.environ.get('OPENAI_API_KEY')
+        raw = os.environ.get('OPENAI_API_KEY')
     elif key == 'gemini':
-        return os.environ.get('GEMINI_API_KEY')
+        raw = os.environ.get('GEMINI_API_KEY')
     elif key == 'google':
-        return os.environ.get('GOOGLE_API_KEY')
+        raw = os.environ.get('GOOGLE_API_KEY')
     elif key == 'google_cse':
-        return os.environ.get('GOOGLE_CSE_ID')
+        raw = os.environ.get('GOOGLE_CSE_ID')
     elif key == 'apify':
-        return os.environ.get('APIFY_API_KEY')
+        raw = os.environ.get('APIFY_API_KEY')
     else:
         return None
+    return normalize_env_secret(raw)
 
 def getBaseUrl():
     load_dotenv()
@@ -146,3 +184,23 @@ def getFolderDatabaseName():
         return os.environ.get('FOLDER_DATABASE_NAME_TEST')
     else:
         return os.environ.get('FOLDER_DATABASE_NAME_DEV')
+
+
+def getChromaPersistDir():
+    load_dotenv()
+    configured = os.environ.get('CHROMA_PERSIST_DIR')
+    if configured:
+        return configured
+    backend_root = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(backend_root, 'vector_store')
+
+
+def getAiWorkflowMode():
+    load_dotenv()
+    mode = (os.environ.get('AI_WORKFLOW_MODE') or 'rag').strip().lower()
+    return mode if mode in ('legacy', 'rag') else 'rag'
+
+
+def getGeminiEmbeddingModel():
+    load_dotenv()
+    return os.environ.get('GEMINI_EMBEDDING_MODEL') or 'text-embedding-004'
