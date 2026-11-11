@@ -4,6 +4,17 @@ Product fetching / search — facade over live_search helpers.
 from __future__ import annotations
 
 
+def enrich_with_manuals(*args, **kwargs):
+    """Optional instruction/repair manual enrichment after listing isolation."""
+    try:
+        from live_search.product_manuals import enrich_product_with_manuals
+
+        return enrich_product_with_manuals(*args, **kwargs)
+    except Exception as e:
+        print(f"LOG: discovery.products.enrich_with_manuals failed ({type(e).__name__}: {e})")
+        return args[0] if args else None
+
+
 def google_product_search(*args, **kwargs):
     try:
         from live_search import googleSearch as gs

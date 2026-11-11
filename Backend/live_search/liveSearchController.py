@@ -959,6 +959,30 @@ def _persist_extracted_products(
                 continue
             print(f"LOG: Product ID: {product_id}")
             print(f"LOG: Product URL: {product_url}")
+            # Enrich with verified instruction/repair manuals before comparison.
+            if parent_case_id:
+                try:
+                    from live_search.product_manuals import enrich_product_with_manuals
+                    from structures.cases import get_case_by_id as _get_case_for_manuals
+
+                    _case = _get_case_for_manuals(parent_case_id) or {}
+                    _actor = (
+                        _case.get("created_by")
+                        or _case.get("owner")
+                        or _case.get("assigned_to")
+                        or ""
+                    )
+                    if _actor:
+                        product_details = enrich_product_with_manuals(
+                            product_details,
+                            user_id=_actor,
+                            case_id=parent_case_id,
+                        )
+                except Exception as manual_err:
+                    print(
+                        "LOG: product manual enrichment skipped "
+                        f"({type(manual_err).__name__}: {manual_err})"
+                    )
             infringement_analysis = Gemini().analyze_product_infringements(
                 ref_texts,
                 product_details.claims,

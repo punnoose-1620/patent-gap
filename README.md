@@ -236,6 +236,10 @@ USERS_DATABASE_NAME_DEV=users
 AUDIT_DATABASE_NAME_DEV=audit_dev
 AUDIT_DATABASE_NAME_PROD=audit
 AUDIT_DATABASE_NAME_TEST=audit_test
+
+# Product manual enrichment (instruction/repair manuals after listing isolation)
+# Set to 0/false to disable. Default: enabled.
+PRODUCT_MANUAL_ENRICHMENT=1
 ```
 
 **Optional API Keys:**

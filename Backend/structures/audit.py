@@ -22,6 +22,7 @@ AUDIT_KINDS = frozenset(
         "chat_message",
         "case_update_via_ai",
         "mcp_action",
+        "manual_relevance",
     }
 )
 

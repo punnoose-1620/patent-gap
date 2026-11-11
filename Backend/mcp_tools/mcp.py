@@ -257,6 +257,138 @@ def _build_mcp():
 
         return _get(user_id, page=page, kind=kind or None)
 
+    @mcp.tool()
+    def search_product_manuals(
+        user_id: str,
+        case_id: str,
+        product_name: str,
+        listing_features: List[str],
+        official_sites: Optional[List[str]] = None,
+        kind: str = "instruction",
+        max_results: int = 2,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search instruction or repair manuals (Gemini + GCSE).
+        Prefer official manufacturer sites. Does not attach anything to the case.
+        Agent should build listing_features from the product listing first.
+        """
+        _require_ids(user_id, case_id)
+        from live_search.product_manuals import search_manual_urls
+
+        return search_manual_urls(
+            user_id=user_id,
+            case_id=case_id,
+            product_name=product_name,
+            listing_features=listing_features or [],
+            official_sites=official_sites or [],
+            kind=kind,
+            max_results=max_results,
+        )
+
+    @mcp.tool()
+    def fetch_manual_for_inspection(
+        user_id: str,
+        case_id: str,
+        url: str,
+    ) -> Dict[str, Any]:
+        """
+        Download a manual URL (HTML or PDF) into a temp cache and return a text
+        preview for agent inspection. Does NOT write to cases/documents.
+        """
+        _require_ids(user_id, case_id)
+        from live_search.product_manuals import fetch_url_for_inspection
+
+        result = fetch_url_for_inspection(user_id=user_id, case_id=case_id, url=url)
+        _audit_mcp_action(
+            user_id,
+            case_id,
+            "fetch_manual_for_inspection",
+            text=f"Fetched manual candidate for inspection: {url}",
+            payload={
+                "url": url,
+                "success": bool(result.get("success")),
+                "cache_id": result.get("cache_id") or "",
+                "is_pdf": bool(result.get("is_pdf")),
+            },
+            status="completed" if result.get("success") else "failed",
+        )
+        return result
+
+    @mcp.tool()
+    def assess_manual_relevance(
+        user_id: str,
+        case_id: str,
+        product_name: str,
+        listing_features: List[str],
+        cache_id: str = "",
+        manual_text: str = "",
+        manual_url: str = "",
+    ) -> Dict[str, Any]:
+        """
+        AI check: does this manual match THIS product variant (not a sibling SKU)?
+        Audited. Rejected manuals are not attachable and are dropped from cache.
+        """
+        _require_ids(user_id, case_id)
+        from live_search.product_manuals import (
+            assess_manual_relevance as _assess,
+            get_manual_cache_entry,
+        )
+
+        text = manual_text
+        url = manual_url
+        cached = get_manual_cache_entry(cache_id) if cache_id else None
+        if cached:
+            text = text or cached.get("text") or ""
+            url = url or cached.get("url") or ""
+        return _assess(
+            user_id=user_id,
+            case_id=case_id,
+            product_name=product_name,
+            listing_features=listing_features or [],
+            manual_text=text,
+            manual_url=url,
+            cache_id=cache_id,
+        )
+
+    @mcp.tool()
+    def attach_verified_manual_to_case(
+        user_id: str,
+        case_id: str,
+        cache_id: str,
+        source_tag: str = "instruction_manual",
+        file_name: str = "",
+        append_claims: bool = True,
+        product_name: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Attach a previously inspected+accepted manual to case.documents.
+        Only works for cache entries that passed assess_manual_relevance.
+        Optionally returns extracted claims to append to the product claims list.
+        """
+        _require_ids(user_id, case_id)
+        from live_search.product_manuals import (
+            attach_cached_manual_to_case,
+            extract_claims_from_manual_text,
+            get_manual_cache_entry,
+        )
+
+        attached = attach_cached_manual_to_case(
+            user_id=user_id,
+            case_id=case_id,
+            cache_id=cache_id,
+            source_tag=source_tag,
+            file_name=file_name,
+        )
+        claims: List[str] = []
+        if append_claims and attached.get("success"):
+            cached = get_manual_cache_entry(cache_id) or {}
+            claims = extract_claims_from_manual_text(
+                product_name=product_name or file_name or "product",
+                manual_text=cached.get("text") or "",
+            )
+            attached["extracted_claims"] = claims
+        return attached
+
     return mcp
 
 
