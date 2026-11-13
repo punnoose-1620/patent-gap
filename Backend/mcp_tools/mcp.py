@@ -265,12 +265,15 @@ def _build_mcp():
         listing_features: List[str],
         official_sites: Optional[List[str]] = None,
         kind: str = "instruction",
-        max_results: int = 2,
+        max_results: int = 3,
+        product_url: str = "",
     ) -> List[Dict[str, Any]]:
         """
-        Search instruction or repair manuals (Gemini + GCSE).
-        Prefer official manufacturer sites. Does not attach anything to the case.
-        Agent should build listing_features from the product listing first.
+        Search instruction/repair manuals only (not product listings).
+        Uses GCSE operator queries + a Gemini manuals-only rule brief, then
+        filters/ranks out PDPs and the product's own listing URL.
+        Skips search when the listing has no concrete model/SKU.
+        Does not attach anything to the case.
         """
         _require_ids(user_id, case_id)
         from live_search.product_manuals import search_manual_urls
@@ -283,6 +286,8 @@ def _build_mcp():
             official_sites=official_sites or [],
             kind=kind,
             max_results=max_results,
+            product_url=product_url or "",
+            require_sku=True,
         )
 
     @mcp.tool()
@@ -325,8 +330,10 @@ def _build_mcp():
         manual_url: str = "",
     ) -> Dict[str, Any]:
         """
-        AI check: does this manual match THIS product variant (not a sibling SKU)?
-        Audited. Rejected manuals are not attachable and are dropped from cache.
+        Validity + relevance check for a candidate manual.
+        Product listings / marketing pages are invalid even if features match.
+        Accept only instruction/repair/service-style docs for the SAME SKU/variant.
+        Audited. Rejected candidates are not attachable and are dropped from cache.
         """
         _require_ids(user_id, case_id)
         from live_search.product_manuals import (

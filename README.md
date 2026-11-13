@@ -238,7 +238,8 @@ AUDIT_DATABASE_NAME_PROD=audit
 AUDIT_DATABASE_NAME_TEST=audit_test
 
 # Product manual enrichment (instruction/repair manuals after listing isolation)
-# Set to 0/false to disable. Default: enabled.
+# Requires a concrete product SKU; rejects product listings as "manuals".
+# Uses GCSE query strings + Gemini manuals-only search. Set 0/false to disable.
 PRODUCT_MANUAL_ENRICHMENT=1
 ```
 
