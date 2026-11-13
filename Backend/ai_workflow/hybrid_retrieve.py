@@ -65,8 +65,20 @@ def retrieve_similar_texts(
     rerank_k: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Return shortlisted chunks: [{id, document, metadata, score}, ...]
-    Parents preferred when child hits.
+    Hybrid shortlist over a user's Chroma case chunks.
+
+    Steps: load case docs → optional in-memory chunk_type filter → BM25 rank →
+    dense Chroma query → RRF fuse (k=60) → map to parent docs → cross-encoder
+    rerank → return top rerank_k.
+
+    Each item: {id, document, metadata, score}. Dense query may log
+    "dense retrieve failed" on Chroma where-operator errors; BM25 still used.
+
+    Args:
+        user_id / case_id: collection + metadata scope (required).
+        query_text: retrieval query (e.g. a reference claim).
+        chunk_type: optional metadata filter (e.g. "claim").
+        top_k / rerank_k: defaults from RAG_TOP_K / RAG_RERANK_K.
     """
     top_k = top_k or get_rag_top_k()
     rerank_k = rerank_k or get_rag_rerank_k()
@@ -171,9 +183,16 @@ def shortlist_claim_pairs(
     case_id: Optional[str] = None,
 ) -> List[Tuple[str, str]]:
     """
-    When RAG mode + index available: for each ref claim, retrieve top infringing
-    candidates instead of full Cartesian product.
-    Falls back to full product if retrieval cannot run.
+    Build (reference_claim, infringing_claim) pairs for scoring.
+
+    - Empty inputs → [].
+    - If |refs|×|infs| ≤ 200 → full Cartesian product (legacy-equivalent).
+    - Else if user_id and case_id set: ensure infringing claims indexed, then for
+      each ref claim hybrid-retrieve top candidates and match back to inf texts;
+      pad with first rerank_k infs on miss.
+    - Any failure → full product (logged).
+
+    Called from scorer.score_infringement_matrix_entry when AI_WORKFLOW_MODE=rag.
     """
     from itertools import product
 

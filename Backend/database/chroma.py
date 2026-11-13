@@ -137,7 +137,14 @@ def query_chunks(
     n_results: int = 50,
     where: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Query a user's collection. Prefer query_embeddings when available."""
+    """
+    Query a user's Chroma collection. Prefer query_embeddings when available.
+
+    Note: some Chroma versions require `where` to contain exactly one top-level
+    operator. Passing multiple equality keys (e.g. case_id + chunk_type) can
+    raise; callers should catch or use $and. hybrid_retrieve filters chunk_type
+    in memory and may still pass a multi-key where to dense query.
+    """
     collection = get_user_collection(user_id)
     kwargs: Dict[str, Any] = {"n_results": max(1, int(n_results))}
     if where:

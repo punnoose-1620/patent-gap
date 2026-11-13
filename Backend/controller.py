@@ -610,6 +610,15 @@ def start_patent_analysis(
     core_claims: list[dict] = [], 
     pivotal_claims: list[dict] = []
     ):
+    """
+    Background patent live-search worker (Flask app context required).
+
+    Writes audit kind=analysis_start, flips infringement analysis flags/status
+    per claim bucket (asserted/generic, independent, core, pivotal), calls
+    searchPatentSources for each non-empty bucket, then marks completed/error.
+    Intended to run inside a threading.Thread from
+    POST /api/similarity-analysis-live/<case_id>.
+    """
     start_time = time.time()
     if search_type == 'bucketed':
         search_status_key = "asserted_claims_patent_analysis"
@@ -1106,6 +1115,14 @@ def start_product_analysis(
     market_pivotal_claims: list[dict] = [],
     search_type: str = 'generic'
     ):
+    """
+    Background product live-search worker (Flask app context required).
+
+    Audits analysis_start, runs __complete_product_search (discovery, isolation,
+    optional manuals enrichment), persists infringements, refresh_case_infringement_scores
+    (RAG shortlist when enabled), updates case.infringement_details and analysis flags.
+    Paired with start_patent_analysis from similarity-analysis-live.
+    """
     with app.app_context():
         start_time = time.time()
         actor_id = _case_actor_user_id(case_id)

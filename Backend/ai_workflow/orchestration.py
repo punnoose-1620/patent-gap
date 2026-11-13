@@ -77,7 +77,12 @@ class GeminiWorkflow:
 
 
 def get_ai_client():
-    """Factory used by controllers: RAG wrapper or legacy Gemini."""
+    """
+    Factory for analysis/MCP LLM access.
+
+    Returns GeminiWorkflow when AI_WORKFLOW_MODE=rag (Gemini + optional
+    index_claims_for_case), otherwise raw llm_brain.gemini.Gemini.
+    """
     if is_rag_mode():
         return GeminiWorkflow()
     from llm_brain.gemini import Gemini

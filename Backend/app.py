@@ -1935,6 +1935,14 @@ def get_claims_for_patent(case_id):
 # NOTE: Current implementation. Need to be updated with new one later after testing.
 @app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
 def live_similarity_analysis(case_id):
+  """
+  Start live patent + product infringement analysis for a case (async).
+
+  Validates auth, case, keywords, claims, and owners; buckets documented vs
+  market-language claims; starts start_patent_analysis and start_product_analysis
+  threads; returns thread ids immediately. Progress via case flags / audit /
+  infringement APIs — not this response body.
+  """
   data = request.get_json()
   if data is None:
     return jsonify({

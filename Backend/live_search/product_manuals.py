@@ -612,8 +612,15 @@ def search_manual_urls(
     require_sku: bool = True,
 ) -> list[dict[str, str]]:
     """
-    GCSE (operator strings) + Gemini (manuals-only rule brief), then URL filter/rank.
-    Does not attach anything. Skips search when require_sku and no concrete SKU.
+    Search for instruction/repair manual URLs only (not product listings).
+
+    Runs GCSE operator queries and a Gemini manuals-only rule brief, merges
+    candidates, then rank_manual_candidates (OEM/support/manual hosts; demotes
+    PDPs and the product listing URL). Does not fetch or attach.
+
+    When require_sku is True (default), product_has_concrete_sku must pass or
+    this returns [] and audits status=skipped. Used by MCP search_product_manuals
+    and enrich_product_with_manuals.
     """
     sku = product_has_concrete_sku(
         product_name, listing_features, product_url=product_url
@@ -1167,8 +1174,13 @@ def enrich_product_with_manuals(
     official_sites: list[str] | None = None,
 ) -> Any:
     """
-    Pipeline helper: after listing isolation, search/verify manuals and append claims.
-    Only attaches validity+relevance accepted manuals. No product-listing fallback.
+    After product listing isolation: find manuals, verify, attach, append claims.
+
+    Gate: PRODUCT_MANUAL_ENRICHMENT enabled, user_id+case_id, concrete SKU.
+    For instruction then repair kinds: search_manual_urls → fetch_url_for_inspection
+    → assess_manual_relevance → attach_cached_manual_to_case on accept only.
+    Rejected listings are never attached (no listing fallback). Mutates
+    product_details claims when extracts succeed; returns the same object.
     """
     if not manuals_enrichment_enabled():
         return product_details

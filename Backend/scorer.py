@@ -148,11 +148,14 @@ def score_infringement_matrix_entry(
     case_id=None,
 ):
     """
-    Full matrix: each parent claim x each infringing claim. Stores only pairs with
-    calculated_similarity_score > threshold.
+    Score reference × infringing claim pairs (embedding cosine, method v1).
 
-    existing_infringements may be a legacy Gemini dict, a list of scored rows, or None.
-    Optional user_id/case_id enable RAG shortlisting when AI_WORKFLOW_MODE=rag.
+    Reuses rows from existing_infringements when scoring_input_hash / method /
+    version match. Otherwise embeds via data_processor and keeps pairs with
+    calculated_similarity_score > threshold (default 0.5).
+
+    When AI_WORKFLOW_MODE=rag and user_id+case_id are set, pair iteration may be
+    shortlisted via shortlist_claim_pairs (full product if ≤200 pairs or on error).
 
     Returns:
         (stored_rows: list | None, chart_rows: list)
