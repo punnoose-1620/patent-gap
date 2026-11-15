@@ -1,5 +1,6 @@
 import copy
 import re
+from urllib.parse import urlparse
 from database import *
 from datetime import datetime as dt
 from structures.documents import getDocumentById
@@ -978,3 +979,612 @@ def refresh_case_infringement_scores(case_id=None, case_data=None, persist=True)
     Gemini rows. Pass case_data with persist=False to score before DB insert.
     """
     return get_infringement_chart(case_id=case_id, case_data=case_data, persist=persist)
+
+
+# ---------------------------------------------------------------------------
+# First-fetch search_limitations seeding (companies + URLs)
+# MCP exposes only add_limitations; validators below are private helpers.
+# ---------------------------------------------------------------------------
+
+_COMMERCIAL_LAYERS = frozenset(
+    {
+        "finished_device",
+        "component_part",
+        "medicine_consumable",
+        "software_service",
+        "method_only",
+    }
+)
+_COMMERCIAL_LAYER_ALIASES = {
+    "device": "finished_device",
+    "finished device": "finished_device",
+    "finished-device": "finished_device",
+    "product": "finished_device",
+    "component": "component_part",
+    "part": "component_part",
+    "component/part": "component_part",
+    "medicine": "medicine_consumable",
+    "drug": "medicine_consumable",
+    "consumable": "medicine_consumable",
+    "software": "software_service",
+    "service": "software_service",
+    "method": "method_only",
+    "process": "method_only",
+}
+_CONFIDENCE_VALUES = frozenset({"high", "medium", "low"})
+_URL_BUCKET_KEYS = ("home_page", "product_listings", "support_docs")
+_LIMITATION_URL_TIMEOUT_S = 12
+_LIMITATION_URL_MAX_PER_CALL = 12
+_LIMITATION_URL_BODY_BYTES = 65536
+_SENTENCE_SPLIT_RE = re.compile(r"[.!?\n\r]+")
+
+# Marketplace / retailer hosts are never valid search-limitation focus URLs.
+_MARKETPLACE_HOST_SUFFIXES = (
+    "amazon.com",
+    "amazon.co.uk",
+    "amazon.de",
+    "amazon.fr",
+    "amazon.ca",
+    "amazon.co.jp",
+    "ebay.com",
+    "ebay.co.uk",
+    "ebay.de",
+    "walmart.com",
+    "bestbuy.com",
+    "homedepot.com",
+    "lowes.com",
+    "alibaba.com",
+    "aliexpress.com",
+    "gsmarena.com",
+    "newegg.com",
+    "target.com",
+)
+
+_SOFT_404_MARKERS = (
+    "page not found",
+    "pages you visit may have changed",
+    "does not exist",
+    "no longer available",
+    "has been removed",
+    "error 404",
+    "404 not found",
+    "we can't find that page",
+    "we couldn’t find that page",
+    "this page isn't available",
+    "this page isn’t available",
+)
+
+_ACCESS_DENIED_MARKERS = (
+    "access denied",
+    "permission denied",
+    "request denied",
+    "forbidden",
+    "not authorized",
+    "unauthorized",
+    "unusual traffic",
+    "automated queries",
+    "are you a robot",
+    "are you human",
+    "i'm not a robot",
+    "i’m not a robot",
+    "captcha",
+    "cf-browser-verification",
+    "cf-challenge",
+    "just a moment",
+    "attention required",
+    "enable javascript and cookies",
+    "please enable cookies",
+    "bot detection",
+    "security check",
+    "verify you are a human",
+    "verify you're a human",
+    "verify that you are human",
+)
+
+
+def _normalize_commercial_layer(value) -> tuple[str | None, str | None]:
+    """
+    Map agent commercial_layer to a fixed enum.
+    Returns (layer, error). error is set when empty/unknown.
+    """
+    raw = str(value or "").strip().lower().replace("-", "_")
+    if not raw or raw in ("none", "null", "n/a", "na"):
+        return None, "commercial_layer is empty or null"
+    compact = re.sub(r"[\s/]+", "_", raw)
+    spaced = raw.replace("_", " ")
+    if compact in _COMMERCIAL_LAYERS:
+        return compact, None
+    if spaced in _COMMERCIAL_LAYER_ALIASES:
+        return _COMMERCIAL_LAYER_ALIASES[spaced], None
+    if compact in _COMMERCIAL_LAYER_ALIASES:
+        return _COMMERCIAL_LAYER_ALIASES[compact], None
+    return None, (
+        f"commercial_layer {value!r} is not one of: "
+        + ", ".join(sorted(_COMMERCIAL_LAYERS))
+    )
+
+
+def _normalize_classification_text(value, *, field: str, min_len: int) -> tuple[str | None, str | None]:
+    """Require a non-empty plain-text classification field."""
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    if not text or text.lower() in ("none", "null", "n/a", "na"):
+        return None, f"{field} is empty or null"
+    if len(text) < min_len:
+        return None, f"{field} is too short (need ≥{min_len} chars)"
+    return text, None
+
+
+def _commercial_classification_complete(limitations: dict | None) -> bool:
+    """True when layer + sellable_unit + buyer + why_this_layer are all set."""
+    if not isinstance(limitations, dict):
+        return False
+    layer, layer_err = _normalize_commercial_layer(limitations.get("commercial_layer"))
+    if layer_err or not layer:
+        return False
+    for field, min_len in (
+        ("sellable_unit", 3),
+        ("buyer", 3),
+        ("why_this_layer", 12),
+    ):
+        _, err = _normalize_classification_text(
+            limitations.get(field), field=field, min_len=min_len
+        )
+        if err:
+            return False
+    return True
+
+
+def _check_company_suggestion_entries(companies) -> tuple[list[str], list[str]]:
+    """
+    Validate suggestion company rows.
+    Each entry needs non-empty name, reason, and confidence in high|medium|low.
+    Returns (accepted_names, error_strings). Names only are persisted.
+    """
+    accepted: list[str] = []
+    errors: list[str] = []
+    if companies is None:
+        return accepted, errors
+    if not isinstance(companies, list):
+        return accepted, ["companies must be a list"]
+
+    for index, entry in enumerate(companies):
+        prefix = f"companies[{index}]"
+        if isinstance(entry, str):
+            name = entry.strip()
+            if not name:
+                errors.append(f"{prefix}: name is empty")
+                continue
+            errors.append(
+                f"{prefix}: expected object with name, reason, confidence "
+                f"(got bare string {name!r})"
+            )
+            continue
+        if not isinstance(entry, dict):
+            errors.append(f"{prefix}: expected object with name, reason, confidence")
+            continue
+        name = str(entry.get("name") or "").strip()
+        reason = str(entry.get("reason") or "").strip()
+        confidence = str(entry.get("confidence") or "").strip().lower()
+        if not name:
+            errors.append(f"{prefix}: name is empty")
+            continue
+        if not reason:
+            errors.append(f"{prefix} ({name!r}): reason is empty")
+            continue
+        if confidence not in _CONFIDENCE_VALUES:
+            errors.append(
+                f"{prefix} ({name!r}): confidence must be high|medium|low "
+                f"(got {entry.get('confidence')!r})"
+            )
+            continue
+        accepted.append(name)
+    return accepted, errors
+
+
+def _limitation_url_host(url: str) -> str:
+    try:
+        host = (urlparse(url).hostname or "").strip().lower()
+    except Exception:
+        return ""
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _limitation_url_is_marketplace(url: str) -> bool:
+    host = _limitation_url_host(url)
+    if not host:
+        return False
+    for suffix in _MARKETPLACE_HOST_SUFFIXES:
+        if host == suffix or host.endswith("." + suffix):
+            return True
+    return False
+
+
+def _limitation_url_looks_soft_404(url: str, body_sample: str) -> bool:
+    sample = (body_sample or "").lower()
+    path = (urlparse(url).path or "").lower()
+    if "404" in path or "notfound" in path or "no-such" in path or "/error/" in path:
+        return True
+    if not sample:
+        return False
+    hits = sum(1 for marker in _SOFT_404_MARKERS if marker in sample)
+    return hits >= 1
+
+
+def _limitation_url_access_denied(body_sample: str) -> str | None:
+    sample = (body_sample or "").lower()
+    if not sample:
+        return None
+    for marker in _ACCESS_DENIED_MARKERS:
+        if marker in sample:
+            return marker
+    return None
+
+
+def _limitation_url_verify_human_sentence(body_sample: str) -> bool:
+    """
+    Reject when 'verify' and 'human' appear in the same sentence.
+    Sentence boundaries: . ! ? or newlines.
+    """
+    sample = (body_sample or "").lower()
+    if not sample or "verify" not in sample or "human" not in sample:
+        return False
+    for sentence in _SENTENCE_SPLIT_RE.split(sample):
+        s = sentence.strip()
+        if not s:
+            continue
+        if "verify" in s and "human" in s:
+            return True
+    return False
+
+
+def _read_limitation_response_body(response, *, content_type: str, final_url: str) -> str:
+    """Read up to _LIMITATION_URL_BODY_BYTES for HTML checks; skip PDF bodies."""
+    is_pdf = (
+        "pdf" in (content_type or "").lower()
+        or (final_url or "").lower().endswith(".pdf")
+    )
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        for chunk in response.iter_content(chunk_size=8192):
+            if not chunk:
+                continue
+            chunks.append(chunk)
+            total += len(chunk)
+            if total >= _LIMITATION_URL_BODY_BYTES:
+                break
+    finally:
+        try:
+            response.close()
+        except Exception:
+            pass
+    if is_pdf:
+        return ""
+    raw = b"".join(chunks)[:_LIMITATION_URL_BODY_BYTES]
+    return raw.decode("utf-8", errors="ignore")
+
+
+def _verify_one_limitation_url(url: str) -> tuple[str | None, str | None]:
+    """
+    GET url and accept only clean HTTP 200 OEM/support pages.
+
+    Rejects:
+    - non-http(s) URLs
+    - marketplace/retailer hosts (before and after redirects)
+    - any status other than exactly 200
+    - soft-404 / discontinued pages
+    - access-denied / captcha / bot-wall markers on 200 HTML
+    - sentences containing both 'verify' and 'human' on 200 HTML
+    """
+    import requests
+
+    candidate = (url or "").strip()
+    if not candidate:
+        return None, "url is empty"
+    if not re.match(r"^https?://", candidate, flags=re.I):
+        return None, f"url is not http(s): {candidate!r}"
+    if _limitation_url_is_marketplace(candidate):
+        return None, f"marketplace/retailer host blocked: {candidate}"
+
+    try:
+        response = requests.get(
+            candidate,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/pdf,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+            timeout=_LIMITATION_URL_TIMEOUT_S,
+            allow_redirects=True,
+            stream=True,
+        )
+        final_url = str(response.url or candidate)
+        status = int(response.status_code or 0)
+        content_type = (response.headers.get("Content-Type") or "").lower()
+        body = _read_limitation_response_body(
+            response, content_type=content_type, final_url=final_url
+        )
+
+        if _limitation_url_is_marketplace(final_url):
+            return None, f"redirected to marketplace/retailer host: {final_url}"
+
+        # Hard rule: only HTTP 200 is acceptable.
+        if status != 200:
+            return None, f"GET status {status} (need 200) for {candidate}"
+
+        if _limitation_url_looks_soft_404(final_url, body):
+            return None, f"soft-404 / discontinued page for {candidate}"
+
+        denied = _limitation_url_access_denied(body)
+        if denied:
+            return None, f"access-denied/bot-wall marker {denied!r} for {candidate}"
+
+        if _limitation_url_verify_human_sentence(body):
+            return None, (
+                f"human-verification challenge text "
+                f"('verify'+'human' same sentence) for {candidate}"
+            )
+
+        return final_url, None
+    except Exception as exc:
+        return None, f"GET failed for {candidate}: {type(exc).__name__}: {exc}"
+
+
+def _flatten_limitation_url_buckets(urls) -> list[tuple[str, str]]:
+    """Return list of (bucket, url) from typed dict or flat list."""
+    out: list[tuple[str, str]] = []
+    if urls is None:
+        return out
+    if isinstance(urls, list):
+        for item in urls:
+            u = str(item or "").strip()
+            if u:
+                out.append(("urls", u))
+        return out
+    if not isinstance(urls, dict):
+        return out
+    for bucket in _URL_BUCKET_KEYS:
+        raw = urls.get(bucket)
+        if isinstance(raw, str):
+            raw = [raw]
+        if not isinstance(raw, list):
+            continue
+        for item in raw:
+            u = str(item or "").strip()
+            if u:
+                out.append((bucket, u))
+    return out
+
+
+def _verify_limitation_urls(urls) -> tuple[list[str], list[str]]:
+    """
+    GET-check suggested limitation URLs.
+    Accepts typed {home_page, product_listings, support_docs} or a flat list.
+    Returns (accepted_final_urls, errors). Failed URLs are omitted, not fatal.
+    Logs every accept/reject with flush so overnight Tee logs keep the trail.
+    """
+    pairs = _flatten_limitation_url_buckets(urls)
+    accepted: list[str] = []
+    errors: list[str] = []
+    if not pairs:
+        return accepted, errors
+    if len(pairs) > _LIMITATION_URL_MAX_PER_CALL:
+        msg = (
+            f"urls: too many candidates ({len(pairs)}); "
+            f"checking first {_LIMITATION_URL_MAX_PER_CALL} only"
+        )
+        errors.append(msg)
+        print(f"LOG: limitation URL verify: {msg}", flush=True)
+        pairs = pairs[:_LIMITATION_URL_MAX_PER_CALL]
+
+    seen_keys: set[str] = set()
+    for bucket, url in pairs:
+        final_url, err = _verify_one_limitation_url(url)
+        if err:
+            errors.append(f"urls.{bucket}: {err}")
+            print(
+                f"LOG: limitation URL REJECT bucket={bucket} url={url!r} reason={err}",
+                flush=True,
+            )
+            continue
+        key = _normalize_url_key(final_url)
+        if not key or key in seen_keys:
+            print(
+                f"LOG: limitation URL SKIP-DUP bucket={bucket} url={final_url!r}",
+                flush=True,
+            )
+            continue
+        seen_keys.add(key)
+        accepted.append(final_url)
+        print(
+            f"LOG: limitation URL ACCEPT bucket={bucket} url={final_url!r}",
+            flush=True,
+        )
+    return accepted, errors
+
+
+def _ensure_search_limitations_dict(search_limitations) -> dict:
+    if isinstance(search_limitations, dict):
+        return search_limitations
+    return {}
+
+
+def add_limitations(
+    search_limitations: dict | None,
+    *,
+    commercial_layer: str = "",
+    sellable_unit: str = "",
+    buyer: str = "",
+    why_this_layer: str = "",
+    companies=None,
+    urls=None,
+) -> dict:
+    """
+    Validate a search-limitations seed batch and merge accepts into memory.
+
+    Private checkers validate commercial classification (layer + sellable_unit
+    + buyer + why_this_layer), company rows (name/reason/confidence), and live
+    URL availability. Successful company names and URLs are appended to
+    search_limitations['companies'] / ['urls'] and cannot be altered by later
+    agent calls (resubmits of accepted values are no-ops). Classification
+    fields persist on search_limitations once accepted. Companies/URLs are
+    refused until classification is complete. Errors are returned as strings
+    for the agent to fix (orchestrator caps retries). Does not persist to
+    Mongo — caller writes via create_case.
+
+    Returns:
+        {
+          "search_limitations": dict,  # mutated / normalized
+          "accepted_companies": [...],
+          "accepted_urls": [...],
+          "newly_accepted_companies": [...],
+          "newly_accepted_urls": [...],
+          "commercial_layer": str|None,
+          "sellable_unit": str|None,
+          "buyer": str|None,
+          "why_this_layer": str|None,
+          "errors": [str, ...],
+          "ok": bool,  # True when this batch had zero errors
+        }
+    """
+    limitations = _ensure_search_limitations_dict(search_limitations)
+    companies_raw = limitations.get("companies")
+    if isinstance(companies_raw, list):
+        limitations["companies"] = list(companies_raw)
+    elif isinstance(companies_raw, str) and companies_raw.strip():
+        limitations["companies"] = [companies_raw.strip()]
+    else:
+        limitations["companies"] = []
+    urls_raw = limitations.get("urls")
+    if isinstance(urls_raw, list):
+        limitations["urls"] = list(urls_raw)
+    elif isinstance(urls_raw, str) and urls_raw.strip():
+        limitations["urls"] = [urls_raw.strip()]
+    else:
+        limitations["urls"] = []
+
+    errors: list[str] = []
+
+    # --- commercial classification (step 1 fields) ---
+    classification_submitted = any(
+        str(v or "").strip()
+        for v in (commercial_layer, sellable_unit, buyer, why_this_layer)
+    )
+    if classification_submitted:
+        layer, layer_err = _normalize_commercial_layer(commercial_layer)
+        unit, unit_err = _normalize_classification_text(
+            sellable_unit, field="sellable_unit", min_len=3
+        )
+        buyer_text, buyer_err = _normalize_classification_text(
+            buyer, field="buyer", min_len=3
+        )
+        why_text, why_err = _normalize_classification_text(
+            why_this_layer, field="why_this_layer", min_len=12
+        )
+        for err in (layer_err, unit_err, buyer_err, why_err):
+            if err:
+                errors.append(err)
+        if layer and unit and buyer_text and why_text:
+            limitations["commercial_layer"] = layer
+            limitations["sellable_unit"] = unit
+            limitations["buyer"] = buyer_text
+            limitations["why_this_layer"] = why_text
+    elif not _commercial_classification_complete(limitations):
+        # Keep any prior valid pieces; require a full classification before
+        # accepting companies/urls in this or later batches.
+        existing_layer = str(limitations.get("commercial_layer") or "").strip()
+        if existing_layer:
+            layer, layer_err = _normalize_commercial_layer(existing_layer)
+            if layer:
+                limitations["commercial_layer"] = layer
+            elif layer_err:
+                errors.append(layer_err)
+
+    has_company_payload = companies is not None
+    has_url_payload = urls is not None
+    wants_companies_or_urls = has_company_payload or has_url_payload
+    if wants_companies_or_urls and not _commercial_classification_complete(limitations):
+        errors.append(
+            "commercial classification incomplete: need commercial_layer, "
+            "sellable_unit, buyer, and why_this_layer before companies/urls"
+        )
+        company_names, company_errors = [], []
+        url_accepted, url_errors = [], []
+        if has_company_payload:
+            # Still surface schema issues for the agent, but do not merge.
+            _, company_errors = _check_company_suggestion_entries(companies)
+        if has_url_payload:
+            # Skip live GET until classification is complete.
+            url_errors = ["urls: skipped until commercial classification is complete"]
+        errors.extend(company_errors)
+        errors.extend(url_errors)
+        return {
+            "search_limitations": limitations,
+            "accepted_companies": list(limitations.get("companies") or []),
+            "accepted_urls": list(limitations.get("urls") or []),
+            "newly_accepted_companies": [],
+            "newly_accepted_urls": [],
+            "commercial_layer": limitations.get("commercial_layer"),
+            "sellable_unit": limitations.get("sellable_unit"),
+            "buyer": limitations.get("buyer"),
+            "why_this_layer": limitations.get("why_this_layer"),
+            "errors": errors,
+            "ok": False,
+        }
+
+    company_names, company_errors = _check_company_suggestion_entries(companies)
+    errors.extend(company_errors)
+
+    url_accepted, url_errors = _verify_limitation_urls(urls)
+    errors.extend(url_errors)
+
+    existing_companies = {
+        _normalize_merge_text(c) for c in (limitations.get("companies") or []) if c
+    }
+    existing_urls = {
+        _normalize_url_key(u) for u in (limitations.get("urls") or []) if u
+    }
+
+    newly_companies: list[str] = []
+    for name in company_names:
+        key = _normalize_merge_text(name)
+        if not key or key in existing_companies:
+            continue
+        limitations["companies"].append(name)
+        existing_companies.add(key)
+        newly_companies.append(name)
+
+    newly_urls: list[str] = []
+    for url in url_accepted:
+        key = _normalize_url_key(url)
+        if not key or key in existing_urls:
+            continue
+        limitations["urls"].append(url)
+        existing_urls.add(key)
+        newly_urls.append(url)
+
+    # De-dupe in place after each successful merge.
+    limitations["companies"] = _fuzzy_dedupe_strings(limitations.get("companies") or [])
+    limitations["urls"] = _exact_dedupe_strings(
+        limitations.get("urls") or [], key_fn=_normalize_url_key
+    )
+
+    return {
+        "search_limitations": limitations,
+        "accepted_companies": list(limitations.get("companies") or []),
+        "accepted_urls": list(limitations.get("urls") or []),
+        "newly_accepted_companies": newly_companies,
+        "newly_accepted_urls": newly_urls,
+        "commercial_layer": limitations.get("commercial_layer"),
+        "sellable_unit": limitations.get("sellable_unit"),
+        "buyer": limitations.get("buyer"),
+        "why_this_layer": limitations.get("why_this_layer"),
+        "errors": errors,
+        "ok": len(errors) == 0,
+    }

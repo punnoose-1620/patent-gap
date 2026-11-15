@@ -43,6 +43,38 @@ def _audit_safe(
         print(f"LOG: audit write skipped ({type(e).__name__}: {e})")
 
 
+def _seed_search_limitations_before_create(case_data: dict) -> None:
+    """
+    After page isolation, before create_case: two-step seed via Gemini +
+    add_limitations (classify then companies/URLs). Best-effort; never blocks
+    patent import.
+    """
+    if not isinstance(case_data, dict):
+        return
+    try:
+        from structures.limitations_seed import seed_search_limitations_on_fetch
+
+        result = seed_search_limitations_on_fetch(case_data)
+        lim = result.get("search_limitations") or {}
+        print(
+            "LOG: search_limitations seed result: "
+            f"skipped={result.get('skipped')} "
+            f"classify_attempts={result.get('classify_attempts')} "
+            f"company_attempts={result.get('company_attempts')} "
+            f"companies={len(result.get('accepted_companies') or [])} "
+            f"urls={len(result.get('accepted_urls') or [])} "
+            f"errors={len(result.get('errors') or [])} "
+            f"layer={lim.get('commercial_layer')!r} "
+            f"sellable_unit={lim.get('sellable_unit')!r}",
+            flush=True,
+        )
+    except Exception as e:
+        print(
+            f"LOG: search_limitations seed failed ({type(e).__name__}: {e})",
+            flush=True,
+        )
+
+
 def _case_actor_user_id(case_id: str) -> str:
     case = get_case_by_id(case_id) or {}
     return (
@@ -1274,6 +1306,7 @@ def fetchById(app, patent_id:str, user_id:str):
                     uspto_data['_id'] = f"uspto_{user_id}_{patent_id}"
                     uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
                     print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
+                    _seed_search_limitations_before_create(uspto_data)
                     creationResult = create_case(uspto_data)
                     print(f"TEST 1.1: Creation Result: {json.dumps(creationResult, indent=4)}")
                     if not creationResult.get('success'):
@@ -1348,6 +1381,7 @@ def fetchById(app, patent_id:str, user_id:str):
                                 case_data['current_status'] = 'Granted'
                             case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
                             created_id = case_data.get('_id', '')
+                            _seed_search_limitations_before_create(case_data)
                             creationResult = create_case(case_data)
                             print(f"TEST 2.1: Creation Result: {json.dumps(creationResult, indent=4)}")
                             if not creationResult.get('success'):
@@ -1412,6 +1446,7 @@ def fetchById(app, patent_id:str, user_id:str):
                             if case_data.get('current_status', '') == '':
                                 case_data['current_status'] = 'Granted'
                             case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                            _seed_search_limitations_before_create(case_data)
                             creationResult = create_case(case_data)
                             print(f"TEST 3.1: Creation Result: {json.dumps(creationResult, indent=4)}")
                             if not creationResult.get('success'):

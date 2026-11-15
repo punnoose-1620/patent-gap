@@ -396,6 +396,95 @@ def _build_mcp():
             attached["extracted_claims"] = claims
         return attached
 
+    @mcp.tool()
+    def add_limitations(
+        user_id: str,
+        case_id: str,
+        commercial_layer: str = "",
+        sellable_unit: str = "",
+        buyer: str = "",
+        why_this_layer: str = "",
+        companies: Optional[List[Dict[str, Any]]] = None,
+        urls: Optional[Dict[str, Any]] = None,
+        search_limitations: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Validate and merge first-fetch search_limitations suggestions into memory.
+
+        Checks commercial classification (layer + sellable_unit + buyer +
+        why_this_layer), company rows (name/reason/confidence), and live URL
+        availability. Companies/URLs are refused until classification is
+        complete. Accepts merge into search_limitations; already-accepted
+        company/url values are locked (resubmit = no-op). Returns errors for
+        the agent to fix (orchestrator should cap whole-batch retries).
+        Does not persist to Mongo — intended before create_case, or for draft
+        payloads passed back via search_limitations.
+        """
+        _require_ids(user_id, case_id)
+        from structures.cases import add_limitations as _add
+
+        # After case exists, refuse agent rewrites — user owns limitations.
+        try:
+            from structures.cases import get_case_by_id
+
+            existing = get_case_by_id(case_id)
+        except Exception:
+            existing = None
+        if existing:
+            existing_lim = (existing or {}).get("search_limitations") or {}
+            result = {
+                "ok": False,
+                "errors": [
+                    "add_limitations refused: case already exists; "
+                    "only the end user may update search_limitations"
+                ],
+                "search_limitations": existing_lim,
+                "accepted_companies": list(existing_lim.get("companies") or []),
+                "accepted_urls": list(existing_lim.get("urls") or []),
+                "newly_accepted_companies": [],
+                "newly_accepted_urls": [],
+                "commercial_layer": existing_lim.get("commercial_layer"),
+                "sellable_unit": existing_lim.get("sellable_unit"),
+                "buyer": existing_lim.get("buyer"),
+                "why_this_layer": existing_lim.get("why_this_layer"),
+            }
+            _audit_mcp_action(
+                user_id,
+                case_id,
+                "add_limitations",
+                text="add_limitations refused (case already exists)",
+                payload={"refused": True},
+                status="failed",
+            )
+            return result
+
+        result = _add(
+            dict(search_limitations or {}),
+            commercial_layer=commercial_layer or "",
+            sellable_unit=sellable_unit or "",
+            buyer=buyer or "",
+            why_this_layer=why_this_layer or "",
+            companies=companies,
+            urls=urls,
+        )
+        _audit_mcp_action(
+            user_id,
+            case_id,
+            "add_limitations",
+            text="Validated search_limitations seed batch",
+            payload={
+                "ok": bool(result.get("ok")),
+                "newly_accepted_companies": result.get("newly_accepted_companies")
+                or [],
+                "newly_accepted_urls": result.get("newly_accepted_urls") or [],
+                "error_count": len(result.get("errors") or []),
+                "commercial_layer": result.get("commercial_layer"),
+                "sellable_unit": result.get("sellable_unit"),
+            },
+            status="completed" if result.get("ok") else "failed",
+        )
+        return result
+
     return mcp
 
 

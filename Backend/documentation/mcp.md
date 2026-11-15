@@ -14,7 +14,7 @@ There is no separate agent-role ACL beyond requiring ids. MCP does **not** call 
 
 **Important:** `get_case_context` loads by `case_id` only — it does **not** verify that `user_id` owns or can view the case.
 
-## Tool catalog (13)
+## Tool catalog (14)
 
 | Tool | Mutates? | Audit | Behavior |
 |------|----------|-------|----------|
@@ -31,6 +31,11 @@ There is no separate agent-role ACL beyond requiring ids. MCP does **not** call 
 | `fetch_manual_for_inspection` | Temp cache only | Yes | Preview only; no case documents |
 | `assess_manual_relevance` | May drop bad cache | Via assess (`manual_relevance`) | Listings invalid even if features match |
 | `attach_verified_manual_to_case` | Yes (case docs) | Via attach | Accepted cache only; optional claim extract |
+| `add_limitations` | In-memory draft only | Yes | Validates classification + company/URL seed via [`add_limitations`](../structures/cases.py); refuses if case already exists |
+
+## First-fetch limitations seed
+
+During [`fetchById`](../controller.py), after page→`case_data` isolation and **before** `create_case`, [`seed_search_limitations_on_fetch`](../structures/limitations_seed.py) runs two Gemini steps through `add_limitations`: (1) `commercial_layer` + `sellable_unit` + `buyer` + `why_this_layer` (≤3 retries), then (2) companies/URLs locked to that classification (≤5 retries). Step 2 is skipped if classification never completes. Accepts accumulate and lock; errors return to the model. Persisted once with the new case; later edits are user-only.
 
 ## Manuals agent sequence (intended)
 

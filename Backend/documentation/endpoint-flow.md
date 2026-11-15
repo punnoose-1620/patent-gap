@@ -10,7 +10,7 @@ Primary HTTP paths in [`app.py`](../app.py). Auth: [`get_user_id()`](../app.py) 
 |-------|----------|
 | `POST /api/create-patent` | [`create_case`](../structures/cases.py) — persists to Mongo; rejects duplicate `_id`. **Preferred.** |
 | `POST /api/add-patent` | Legacy [`create_patent`](../controller.py) — stamps `local_` id / `created_by`; **does not persist** (in-memory success only). |
-| `POST /api/fetch-patent-from-uspto` | Daemon thread → [`fetchById`](../controller.py): similar-case merge or USPTO → `create_case` → description → Gemini `extract_claims`; Google/FPO fallbacks. |
+| `POST /api/fetch-patent-from-uspto` | Daemon thread → [`fetchById`](../controller.py): similar-case merge or USPTO/Google/FPO isolate → seed `search_limitations` ([`seed_search_limitations_on_fetch`](../structures/limitations_seed.py)) → `create_case` → description → Gemini `extract_claims`. |
 | `POST /api/bulk-fetch` | Multiple patent ids |
 | `GET /api/check-fetching-thread-status/<patent_id>` | Poll user `fetching_patents` / thread status |
 
