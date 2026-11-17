@@ -1,12 +1,15 @@
 # Vector database (Chroma)
 
-Local/persistent Chroma store used by the RAG path for claim (and related) chunk retrieval. Implementation: [`database/chroma.py`](../database/chroma.py). Indexing and retrieval: [`ai_workflow/indexing.py`](../ai_workflow/indexing.py), [`ai_workflow/hybrid_retrieve.py`](../ai_workflow/hybrid_retrieve.py), [`ai_workflow/chunking.py`](../ai_workflow/chunking.py), [`ai_workflow/embeddings.py`](../ai_workflow/embeddings.py).
+Local Chroma store used by the RAG path for claim (and related) chunk retrieval. Implementation: [`database/chroma.py`](../database/chroma.py), server lifecycle: [`database/chroma_server.py`](../database/chroma_server.py). Indexing and retrieval: [`ai_workflow/indexing.py`](../ai_workflow/indexing.py), [`ai_workflow/hybrid_retrieve.py`](../ai_workflow/hybrid_retrieve.py), [`ai_workflow/chunking.py`](../ai_workflow/chunking.py), [`ai_workflow/embeddings.py`](../ai_workflow/embeddings.py).
 
 ## Layout
 
 | Concept | Behavior |
 |---------|----------|
-| Client | Persistent Chroma client (path from env / default under Backend working tree) |
+| Client (default) | `HttpClient` to local `chroma run` (`CHROMA_HOST`/`CHROMA_PORT`, default `127.0.0.1:8001`) |
+| Server start | [`ensure_chroma_server`](../database/chroma_server.py) from `app.py` (and lazily from `get_chroma_client`) |
+| Escape hatch | `CHROMA_MODE=persistent` → in-process `PersistentClient` (no HTTP server) |
+| Persist path | `CHROMA_PERSIST_DIR` or default `Backend/vector_store` |
 | Isolation | **One collection per user**: `get_user_collection(user_id)` |
 | Distance | Collection metadata `hnsw:space = cosine` |
 | Case scoping | Metadata field `case_id` on every chunk; delete via `delete_by_case(user_id, case_id)` |

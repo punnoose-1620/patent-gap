@@ -21,6 +21,68 @@ from structures.cases import (
 MAX_CLASSIFY_ATTEMPTS = 3
 MAX_COMPANY_ATTEMPTS = 5
 
+
+def _case_ids_for_audit(case_data: dict) -> tuple[str, str]:
+    """Resolve user_id + case_id from draft case_data (pre- or post-create)."""
+    if not isinstance(case_data, dict):
+        return "", ""
+    user_id = str(
+        case_data.get("created_by")
+        or case_data.get("owner")
+        or case_data.get("assigned_to")
+        or ""
+    ).strip()
+    case_id = str(case_data.get("_id") or case_data.get("case_id") or "").strip()
+    return user_id, case_id
+
+
+def audit_limitations_ai_step(
+    *,
+    user_id: str,
+    case_id: str,
+    step: str,
+    text: str = "",
+    payload: dict | None = None,
+    status: str = "",
+    source: str = "fetch",
+) -> None:
+    """
+    Append audit for limitations AI work.
+
+    step: classify | companies | skipped | failed
+    Maps to kind limitations_classify (classify) or limitations_seed (rest).
+    Best-effort; never raises.
+    """
+    try:
+        if not user_id or not case_id:
+            return
+        from structures.audit import add_audit_entry
+
+        kind = (
+            "limitations_classify"
+            if step == "classify"
+            else "limitations_seed"
+        )
+        add_audit_entry(
+            user_id=user_id,
+            case_id=case_id,
+            kind=kind,
+            text=text
+            or (
+                "Commercial-layer classification"
+                if kind == "limitations_classify"
+                else "Search-limitations companies/URLs seed"
+            ),
+            payload={"step": step, **(payload or {})},
+            status=status or "",
+            source=source or "fetch",
+        )
+    except Exception as exc:
+        print(
+            f"LOG: limitations audit skipped ({type(exc).__name__}: {exc})",
+            flush=True,
+        )
+
 COMMERCIAL_LAYER_DEFINITIONS = """
 commercial_layer must be EXACTLY one of the following. Read the full meaning
 before choosing — the label alone is not enough.
@@ -404,6 +466,29 @@ def _run_classify_step(
         if not prior_errors and _commercial_classification_complete(limitations):
             break
 
+    user_id, case_id = _case_ids_for_audit(case_data)
+    ok = not prior_errors and _commercial_classification_complete(limitations)
+    audit_limitations_ai_step(
+        user_id=user_id,
+        case_id=case_id,
+        step="classify",
+        text=(
+            "Commercial-layer classification accepted"
+            if ok
+            else "Commercial-layer classification failed or incomplete"
+        ),
+        payload={
+            "attempts": attempts,
+            "ok": ok,
+            "commercial_layer": limitations.get("commercial_layer"),
+            "sellable_unit": limitations.get("sellable_unit"),
+            "buyer": limitations.get("buyer"),
+            "why_this_layer": limitations.get("why_this_layer"),
+            "errors": list(prior_errors)[:12],
+        },
+        status="completed" if ok else "failed",
+        source="fetch",
+    )
     return limitations, prior_errors, attempts
 
 
@@ -468,6 +553,29 @@ def _run_companies_step(
         if not prior_errors:
             break
 
+    user_id, case_id = _case_ids_for_audit(case_data)
+    ok = not prior_errors
+    audit_limitations_ai_step(
+        user_id=user_id,
+        case_id=case_id,
+        step="companies",
+        text=(
+            "Companies/URLs seed accepted"
+            if ok
+            else "Companies/URLs seed finished with errors"
+        ),
+        payload={
+            "attempts": attempts,
+            "ok": ok,
+            "commercial_layer": limitations.get("commercial_layer"),
+            "sellable_unit": limitations.get("sellable_unit"),
+            "accepted_companies": list(limitations.get("companies") or []),
+            "accepted_urls": list(limitations.get("urls") or []),
+            "errors": list(prior_errors)[:12],
+        },
+        status="completed" if ok else "failed",
+        source="fetch",
+    )
     return limitations, prior_errors, attempts
 
 
@@ -503,6 +611,20 @@ def seed_search_limitations_on_fetch(
         print(
             "LOG: search_limitations seed skipped (already populated)",
             flush=True,
+        )
+        user_id, case_id = _case_ids_for_audit(case_data)
+        audit_limitations_ai_step(
+            user_id=user_id,
+            case_id=case_id,
+            step="skipped",
+            text="Search-limitations seed skipped (already populated)",
+            payload={
+                "reason": "already_populated",
+                "companies": list(limitations.get("companies") or []),
+                "urls": list(limitations.get("urls") or []),
+            },
+            status="skipped",
+            source="fetch",
         )
         return {
             "skipped": True,

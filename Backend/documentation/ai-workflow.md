@@ -70,7 +70,7 @@ Env kill switch: `PRODUCT_MANUAL_ENRICHMENT=0`.
 
 Append-only Mongo via [`structures/audit.py`](../structures/audit.py). Allowed `kind` values:
 
-`patent_fetch`, `analysis_start`, `analysis_complete`, `analysis_failed`, `clarification`, `chat_message`, `case_update_via_ai`, `mcp_action`, `manual_relevance`.
+`patent_fetch`, `analysis_start`, `analysis_complete`, `analysis_failed`, `clarification`, `chat_message`, `case_update_via_ai`, `mcp_action`, `manual_relevance`, `limitations_classify`, `limitations_seed`.
 
 No update/delete helpers — immutable history by design.
 

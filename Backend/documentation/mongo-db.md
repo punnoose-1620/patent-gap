@@ -171,7 +171,7 @@ Case gets pointer `{url: "document/{id}", source: "local"}` (+ manuals: `source_
 | `payload` | dict | Default `{}` |
 | `created_at` | str | UTC ISO |
 
-**`AUDIT_KINDS`:** `patent_fetch`, `analysis_start`, `analysis_complete`, `analysis_failed`, `clarification`, `chat_message`, `case_update_via_ai`, `mcp_action`, `manual_relevance`.
+**`AUDIT_KINDS`:** `patent_fetch`, `analysis_start`, `analysis_complete`, `analysis_failed`, `clarification`, `chat_message`, `case_update_via_ai`, `mcp_action`, `manual_relevance`, `limitations_classify`, `limitations_seed`.
 
 Writers: `controller.py`, `mcp_tools/mcp.py`, `live_search/product_manuals.py`.
 

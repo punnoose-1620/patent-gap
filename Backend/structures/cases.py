@@ -862,7 +862,14 @@ def get_infringement_chart(case_id=None, case_data=None, persist=True):
             if claim.strip() != '':
                 claims.append(claim.strip())
     elif isinstance(claims_original_list, dict):
-        for index, claimData in claims_original_list.items():
+        def _claim_key_order(item):
+            key = item[0]
+            try:
+                return (0, int(key))
+            except (TypeError, ValueError):
+                return (1, str(key))
+
+        for _index, claimData in sorted(claims_original_list.items(), key=_claim_key_order):
             if not isinstance(claimData, dict):
                 continue
             documented = (claimData.get('documented_claim') or '').strip()

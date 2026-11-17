@@ -1,27 +1,36 @@
 """
-Local ChromaDB adapter (PersistentClient). No server auth in this mode.
+Local ChromaDB adapter.
+
+Default: HttpClient to a local `chroma run` server (see chroma_server.py).
+Escape hatch: CHROMA_MODE=persistent → in-process PersistentClient.
 Partition: one collection per user_id. Metadata maps back to Mongo record IDs.
-Cloud Chroma switch is out of scope until explicitly requested.
+Cloud Chroma auth is out of scope until explicitly requested.
 """
 from __future__ import annotations
 
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
+from database.chroma_server import (
+    chroma_host,
+    chroma_mode,
+    chroma_persist_dir,
+    chroma_port,
+    ensure_chroma_server,
+)
+
 _client = None
 _COLLECTION_PREFIX = "user_"
+_HTTP_CONNECT_RETRIES = 8
+_HTTP_CONNECT_SLEEP_S = 0.5
 
 
 def _persist_dir() -> str:
-    load_dotenv()
-    configured = os.environ.get("CHROMA_PERSIST_DIR")
-    if configured:
-        return configured
-    backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(backend_root, "vector_store")
+    return chroma_persist_dir()
 
 
 def _sanitize_user_id(user_id: str) -> str:
@@ -58,7 +67,12 @@ def _null_embedding_function():
 
 
 def get_chroma_client():
-    """Lazy PersistentClient singleton."""
+    """
+    Lazy Chroma client singleton.
+
+    CHROMA_MODE=http (default): ensure local server, then HttpClient.
+    CHROMA_MODE=persistent: PersistentClient on CHROMA_PERSIST_DIR.
+    """
     global _client
     if _client is not None:
         return _client
@@ -72,11 +86,45 @@ def get_chroma_client():
 
     path = _persist_dir()
     os.makedirs(path, exist_ok=True)
-    _client = chromadb.PersistentClient(
-        path=path,
-        settings=Settings(anonymized_telemetry=False),
+    settings = Settings(anonymized_telemetry=False)
+    mode = chroma_mode()
+
+    if mode == "persistent":
+        _client = chromadb.PersistentClient(path=path, settings=settings)
+        print(f"LOG: Chroma PersistentClient path={path}", flush=True)
+        return _client
+
+    # Default HTTP path: start/reuse local server, then connect.
+    ensure_chroma_server()
+    host = chroma_host()
+    port = chroma_port()
+    last_err: Exception | None = None
+    for attempt in range(1, _HTTP_CONNECT_RETRIES + 1):
+        try:
+            client = chromadb.HttpClient(
+                host=host,
+                port=port,
+                settings=settings,
+            )
+            # Cheap readiness probe when available.
+            heartbeat = getattr(client, "heartbeat", None)
+            if callable(heartbeat):
+                heartbeat()
+            _client = client
+            print(
+                f"LOG: Chroma HttpClient connected {host}:{port} "
+                f"(persist={path})",
+                flush=True,
+            )
+            return _client
+        except Exception as exc:
+            last_err = exc
+            time.sleep(_HTTP_CONNECT_SLEEP_S)
+    raise RuntimeError(
+        f"Failed to connect Chroma HttpClient at {host}:{port} "
+        f"after {_HTTP_CONNECT_RETRIES} attempts: "
+        f"{type(last_err).__name__}: {last_err}"
     )
-    return _client
 
 
 def get_user_collection(user_id: str):

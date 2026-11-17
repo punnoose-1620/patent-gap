@@ -86,9 +86,9 @@ def retrieve_similar_texts(
     if not user_id or not case_id or not query_text:
         return []
 
+    # Chroma where must be a single top-level operator on some versions.
+    # Filter chunk_type in memory; pass only case_id to dense query.
     where: Dict[str, Any] = {"case_id": case_id}
-    if chunk_type:
-        where["chunk_type"] = chunk_type
 
     stored = chroma.list_documents_for_case(user_id, case_id)
     ids = list(stored.get("ids") or [])
@@ -132,7 +132,13 @@ def retrieve_similar_texts(
                 n_results=min(top_k, len(ids)),
                 where=where,
             )
-        dense_ranked = list((result.get("ids") or [[]])[0] or [])
+        # Drop hits outside the in-memory filtered id set (e.g. non-claim chunks).
+        allowed = set(ids)
+        dense_ranked = [
+            doc_id
+            for doc_id in ((result.get("ids") or [[]])[0] or [])
+            if doc_id in allowed
+        ]
     except Exception as e:
         print(f"LOG: dense retrieve failed ({type(e).__name__}: {e})")
 

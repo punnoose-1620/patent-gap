@@ -3455,5 +3455,20 @@ def delete_case_infringement(case_id, infringement_id):
 if __name__ == '__main__':
     port = app.config['PORT']
     debug = app.config['DEBUG']
+    # Local Chroma HTTP server (default). PersistentClient if CHROMA_MODE=persistent.
+    try:
+        from database.chroma_server import (
+            ensure_chroma_server,
+            should_manage_chroma_at_flask_startup,
+        )
+
+        if should_manage_chroma_at_flask_startup(debug=bool(debug)):
+            ensure_chroma_server()
+    except Exception as exc:
+        print(
+            f"WARNING: Chroma server startup skipped/failed "
+            f"({type(exc).__name__}: {exc})",
+            flush=True,
+        )
     print(f"Starting Flask app on port {port}")
     app.run(host='0.0.0.0', port=port, debug=debug)

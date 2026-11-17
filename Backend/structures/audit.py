@@ -23,6 +23,9 @@ AUDIT_KINDS = frozenset(
         "case_update_via_ai",
         "mcp_action",
         "manual_relevance",
+        # First-fetch / MCP search_limitations AI seeding
+        "limitations_classify",
+        "limitations_seed",
     }
 )
 

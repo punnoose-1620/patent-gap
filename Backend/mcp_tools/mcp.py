@@ -467,6 +467,55 @@ def _build_mcp():
             companies=companies,
             urls=urls,
         )
+        classification_submitted = any(
+            str(v or "").strip()
+            for v in (commercial_layer, sellable_unit, buyer, why_this_layer)
+        )
+        companies_or_urls = companies is not None or urls is not None
+        try:
+            from structures.limitations_seed import audit_limitations_ai_step
+
+            if classification_submitted:
+                audit_limitations_ai_step(
+                    user_id=user_id,
+                    case_id=case_id,
+                    step="classify",
+                    text="MCP add_limitations classification batch",
+                    payload={
+                        "tool": "add_limitations",
+                        "ok": bool(result.get("ok")),
+                        "commercial_layer": result.get("commercial_layer"),
+                        "sellable_unit": result.get("sellable_unit"),
+                        "buyer": result.get("buyer"),
+                        "why_this_layer": result.get("why_this_layer"),
+                        "errors": list(result.get("errors") or [])[:12],
+                    },
+                    status="completed" if result.get("ok") else "failed",
+                    source="mcp",
+                )
+            if companies_or_urls:
+                audit_limitations_ai_step(
+                    user_id=user_id,
+                    case_id=case_id,
+                    step="companies",
+                    text="MCP add_limitations companies/URLs batch",
+                    payload={
+                        "tool": "add_limitations",
+                        "ok": bool(result.get("ok")),
+                        "newly_accepted_companies": result.get(
+                            "newly_accepted_companies"
+                        )
+                        or [],
+                        "newly_accepted_urls": result.get("newly_accepted_urls")
+                        or [],
+                        "errors": list(result.get("errors") or [])[:12],
+                    },
+                    status="completed" if result.get("ok") else "failed",
+                    source="mcp",
+                )
+        except Exception as e:
+            print(f"LOG: MCP limitations audit skipped ({type(e).__name__}: {e})")
+
         _audit_mcp_action(
             user_id,
             case_id,

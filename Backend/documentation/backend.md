@@ -20,7 +20,7 @@ Authoritative notes for the Flask Backend under `Backend/`. Prefer these docs + 
 | System | Use | Config touchpoints |
 |--------|-----|--------------------|
 | MongoDB | System of record | `env_controller` collection name getters; `database.connect_to_database` |
-| Chroma | Per-user claim/chunk vectors | `CHROMA_PERSIST_DIR` (default `Backend/vector_store`); [`database/chroma.py`](../database/chroma.py) |
+| Chroma | Per-user claim/chunk vectors | Default HttpClient + local `chroma run` (`CHROMA_MODE`/`CHROMA_HOST`/`CHROMA_PORT`/`CHROMA_PERSIST_DIR`); [`database/chroma.py`](../database/chroma.py), [`database/chroma_server.py`](../database/chroma_server.py) |
 | Google Gemini | LLM extract/search/analyze + embeddings | Keys in env; `GEMINI_EMBEDDING_MODEL`; [`llm_brain/gemini.py`](../llm_brain/gemini.py) |
 | OpenAI | Embedding fallback; some similarity embeds | Key in env; [`ai_workflow/embeddings.py`](../ai_workflow/embeddings.py), [`data_processor.py`](../data_processor.py) |
 | Google CSE (GCSE) | Web/manual search | Live search / product_manuals |
@@ -31,9 +31,9 @@ Authoritative notes for the Flask Backend under `Backend/`. Prefer these docs + 
 
 ## Operations
 
-- **Start API:** run Flask `app.py` (PORT default 5000, DEBUG from env).
+- **Start API:** run Flask `app.py` (PORT default 5000, DEBUG from env). Starts local Chroma HTTP on `CHROMA_PORT` (default 8001) unless `CHROMA_MODE=persistent`.
 - **Start MCP:** ensure `fastmcp` or compatible `mcp` installed; run `mcp_tools.mcp` `run_stdio`.
-- **Env flags of note:** `AI_WORKFLOW_MODE`, `PRODUCT_MANUAL_ENRICHMENT`, `RAG_TOP_K`, `RAG_RERANK_K`, `CHROMA_PERSIST_DIR`, `GEMINI_EMBEDDING_MODEL`, `SECRET_KEY`.
+- **Env flags of note:** `AI_WORKFLOW_MODE`, `PRODUCT_MANUAL_ENRICHMENT`, `RAG_TOP_K`, `RAG_RERANK_K`, `CHROMA_MODE`, `CHROMA_HOST`, `CHROMA_PORT`, `CHROMA_PERSIST_DIR`, `GEMINI_EMBEDDING_MODEL`, `SECRET_KEY`.
 - **Logs:** stdout `LOG:` / `ERROR:` prefixes; optional `Backend/logs/`.
 - **Audit:** append-only; never “fix” history by mutating rows — insert a new kind if needed.
 - **User auth:** header `X-User-ID` preferred for API clients; session for classic Frontend.

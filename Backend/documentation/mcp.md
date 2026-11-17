@@ -37,6 +37,8 @@ There is no separate agent-role ACL beyond requiring ids. MCP does **not** call 
 
 During [`fetchById`](../controller.py), after page→`case_data` isolation and **before** `create_case`, [`seed_search_limitations_on_fetch`](../structures/limitations_seed.py) runs two Gemini steps through `add_limitations`: (1) `commercial_layer` + `sellable_unit` + `buyer` + `why_this_layer` (≤3 retries), then (2) companies/URLs locked to that classification (≤5 retries). Step 2 is skipped if classification never completes. Accepts accumulate and lock; errors return to the model. Persisted once with the new case; later edits are user-only.
 
+Each AI step writes audit: `limitations_classify` (step 1) and `limitations_seed` (step 2 / skip). MCP `add_limitations` writes the same kinds (plus `mcp_action`).
+
 ## Manuals agent sequence (intended)
 
 1. `search_product_manuals` — candidates only.
