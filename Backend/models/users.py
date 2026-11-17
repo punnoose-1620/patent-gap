@@ -113,7 +113,6 @@ def login_user(email, password):
     return {
         'success': False,
         'message': 'Login failed',
-        'user_id': user.get('_id', None),
         'email': email
     }
 

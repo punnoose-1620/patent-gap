@@ -22,6 +22,3 @@ Backend/.env
 Backend/.env
 .cursor/settings.json
 /new-case-structure
-/Backend/scripts
-/tester_scripts
-/Backend/tester_scripts
