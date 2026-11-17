@@ -1,13 +1,185 @@
-import os
 import uuid
+import time
+import json
+import threading
+from datetime import datetime as dt
+
+from sources.Gemini import *
+from data_processor import *
 from data_processor import *
 from models.alerts import *
-from data_processor import *
 from models.cases import *
+from models.users import *
+from file_controller import *
+from live_search.liveSearchController import *
+from llm_brain.gemini import Gemini
+from models.live_search_results import (
+    ProductRetailSearchParam,
+    ProductRetailSearchParams,
+)
 
 """
 Controller functions for handling business logic
 """
+
+MAX_RETRY = 10
+
+
+def _fallback_retail_search_params(
+    product_name: str,
+    keywords: list[str],
+    search_limitations: dict,
+) -> ProductRetailSearchParams:
+    """One synthetic retail class from the original title/keywords/urls when Gemini fails."""
+    urls = search_limitations.get("urls") or []
+    if not isinstance(urls, list):
+        urls = [urls] if urls else []
+    sites = [url.strip() for url in urls if isinstance(url, str) and url.strip()]
+    if not sites:
+        sites = ["https://www.amazon.com"]
+    retail_keywords = [
+        keyword.strip()
+        for keyword in (keywords or [])
+        if isinstance(keyword, str) and keyword.strip()
+    ]
+    if not retail_keywords:
+        title = (product_name or "").strip()
+        retail_keywords = [title] if title else ["product"]
+    return ProductRetailSearchParams(
+        params=[
+            ProductRetailSearchParam(
+                retail_title=(product_name or "").strip() or "Product",
+                retail_keywords=retail_keywords[:8],
+                sites_to_search=sites[:8],
+            )
+        ]
+    )
+
+
+def _claim_strings_for_retail_params(*claim_buckets) -> list[str]:
+    claims = []
+    for bucket in claim_buckets:
+        for claim in bucket or []:
+            if isinstance(claim, str) and claim.strip():
+                claims.append(claim.strip())
+            elif isinstance(claim, dict):
+                text = (
+                    claim.get("text")
+                    or claim.get("documented_claim")
+                    or claim.get("market_language_claim")
+                    or ""
+                )
+                if isinstance(text, str) and text.strip():
+                    claims.append(text.strip())
+    return list(dict.fromkeys(claims))
+
+
+def _search_products_across_retail_params(
+    *,
+    retail_params: ProductRetailSearchParams,
+    owners: list,
+    original_claims: list,
+    market_claims: list,
+    base_search_limitations: dict,
+    parent_case_id: str,
+    saved_product_urls: set,
+    seen_apify_runs: set,
+    apify_limit_flag: set,
+) -> tuple[list, list]:
+    """Run original + market product search for each retail param on this thread."""
+    product_details_list: list = []
+    created_product_ids: list = []
+
+    for index, param in enumerate(retail_params.params or []):
+        retail_title = (param.retail_title or "").strip()
+        retail_keywords = [
+            keyword.strip()
+            for keyword in (param.retail_keywords or [])
+            if isinstance(keyword, str) and keyword.strip()
+        ]
+        param_limitations = retail_params.apply_to_search_limitations(
+            param, base_search_limitations
+        )
+        print(
+            f"LOG: Retail search class [{index + 1}/{len(retail_params.params)}]: "
+            f"title={retail_title!r} keywords={retail_keywords} "
+            f"sites={param_limitations.get('urls')}"
+        )
+
+        original_details, original_ids = searchProductSources(
+            product_name=retail_title,
+            keywords=retail_keywords,
+            owners=owners,
+            reference_claims=original_claims,
+            search_limitations=param_limitations,
+            parent_case_id=parent_case_id,
+            saved_product_urls=saved_product_urls,
+            seen_apify_runs=seen_apify_runs,
+            apify_limit_flag=apify_limit_flag,
+            ref_claim_flag="original",
+        )
+        market_details, market_ids = searchProductSources(
+            product_name=retail_title,
+            keywords=retail_keywords,
+            owners=owners,
+            reference_claims=market_claims,
+            search_limitations=param_limitations,
+            parent_case_id=parent_case_id,
+            saved_product_urls=saved_product_urls,
+            seen_apify_runs=seen_apify_runs,
+            apify_limit_flag=apify_limit_flag,
+            ref_claim_flag="market",
+        )
+
+        for product_detail in list(original_details or []) + list(market_details or []):
+            if product_detail not in product_details_list:
+                product_details_list.append(product_detail)
+        for product_id in list(original_ids or []) + list(market_ids or []):
+            if product_id not in created_product_ids:
+                created_product_ids.append(product_id)
+
+    return product_details_list, created_product_ids
+
+
+def _bucket_error_on_analysis_failure(claims, result):
+    """On thread failure: Error only for buckets that had claims but never returned."""
+    if not claims:
+        return None
+    if result is None:
+        return 'Error'
+    return None
+
+def _patent_bucket_error_kwargs(asserted_claims, independent_claims, core_claims, pivotal_claims,
+                                asserted_patentResults, independent_patentResults,
+                                core_patentResults, pivotal_patentResults):
+    kwargs = {}
+    for bucket_key, claims, result in (
+        ('generic_bucket', asserted_claims, asserted_patentResults),
+        ('asserted_bucket', asserted_claims, asserted_patentResults),
+        ('independent_bucket', independent_claims, independent_patentResults),
+        ('core_bucket', core_claims, core_patentResults),
+        ('pivotal_bucket', pivotal_claims, pivotal_patentResults),
+    ):
+        bucket_status = _bucket_error_on_analysis_failure(claims, result)
+        if bucket_status is not None:
+            kwargs[bucket_key] = bucket_status
+    return kwargs
+
+def _product_bucket_error_kwargs(asserted_claims, independent_claims, core_claims, pivotal_claims,
+                                 asserted_product_details_list, independent_product_details_list,
+                                 core_product_details_list, pivotal_product_details_list):
+    kwargs = {}
+    for bucket_key, claims, result in (
+        ('generic_bucket', asserted_claims, asserted_product_details_list),
+        ('asserted_bucket', asserted_claims, asserted_product_details_list),
+        ('independent_bucket', independent_claims, independent_product_details_list),
+        ('core_bucket', core_claims, core_product_details_list),
+        ('pivotal_bucket', pivotal_claims, pivotal_product_details_list),
+    ):
+        bucket_status = _bucket_error_on_analysis_failure(claims, result)
+        if bucket_status is not None:
+            kwargs[bucket_key] = bucket_status
+    return kwargs
 
 # Other Functions
 def get_case_related_patents(case_id):
@@ -201,7 +373,6 @@ def calculate_average_infringement_percentage(case):
         return 0
     return total_infringement_percentage / infringements_count
 
-
 def get_case_infringement_chart(case_id):
     """
     Retrieve chart-ready infringement rows for a case by case_id.
@@ -209,5 +380,988 @@ def get_case_infringement_chart(case_id):
     Returns ``(chart_data, error_code)``. See ``get_infringement_chart`` in
     ``models.cases`` for the full contract on possible error codes.
     """
-    return get_infringement_chart(case_id)
+    chart_data, patent_chart_data, product_chart_data, error_code = get_infringement_chart(case_id)
+    if error_code:
+        status_by_code = {
+            'CASE_NOT_FOUND': 404,
+            'NO_PARENT_CLAIMS': 422,
+            'NO_INFRINGEMENTS': 422,
+            'INFRINGEMENT_CLAIMS_MISSING': 422,
+            'NO_MATCHES_ABOVE_THRESHOLD': 200,
+        }
+        return {
+            'success': error_code == 'NO_MATCHES_ABOVE_THRESHOLD',
+            'message': error_code,
+            'chart_data': chart_data or [],
+            'patent_chart_data': patent_chart_data or [],
+            'product_chart_data': product_chart_data or [],
+            'error_code': error_code,
+            'status_code': status_by_code.get(error_code, 500),
+        }
+    return {
+        'success': True,
+        'message': 'Infringement chart retrieved successfully',
+        'chart_data': chart_data,
+        'patent_chart_data': patent_chart_data,
+        'product_chart_data': product_chart_data
+    }
+
+def generate_patent_description(case_id):
+    """
+    Generate a description for a patent by case_id
+    """
+    case = get_case_by_id(case_id)
+    if case is None:
+        return {'success': False, 'message': 'Case not found'}
+    
+    document_urls = case.get('document_urls', [])
+    document_contents = []
+    for document in document_urls:
+        content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+        document_contents.append(content)
+
+    if (len(document_contents) == 0) or (document_contents is None):
+        return {'success': False, 'message': 'No viable document contents provided'}
+    
+    complete_document_contents = ""
+    for content in document_contents:
+        if content is not None and str(content).strip() != "":
+            complete_document_contents = f"{complete_document_contents}\n\n{content}"
+    
+    if complete_document_contents.strip() == "":
+        return {'success': False, 'message': 'No viable document contents provided'}
+
+    summary = get_patent_summary(complete_document_contents)
+    
+    # Update Case Data for the Generated Description
+    result = update_case(case_id, {'description': summary, 'last_updated': dt.now()})
+    return {
+        'success': True, 
+        'message': 'Patent summary generated successfully', 
+        'summary': summary
+        }
+
+def _claims_already_populated(claims) -> bool:
+    if claims is None:
+        return False
+    if isinstance(claims, dict):
+        return len(claims) > 0
+    if isinstance(claims, list):
+        return len(claims) > 0
+    return False
+
+def isolate_claims(case_id):
+    """
+    Isolate the claims for a given case_id
+    """
+    case_data = get_case_by_id(case_id)
+    if case_data is None:
+      print(f'\nERROR: Error getting claims: Case not found')
+      return {'success': False, 'message': 'Case not found'}
+
+    existing_claims = case_data.get('claims', [])
+    if _claims_already_populated(existing_claims):
+      return {'success': True, 'message': 'Claims already exist', 'claims': existing_claims}
+
+    description = case_data.get('description', '')
+    complete_document_contents = ""
+    if description.strip() != "":
+      complete_document_contents = f"Description:\n{description}"
+    
+    document_urls = case_data.get('document_urls', [])
+    document_contents = []
+    for document in document_urls:
+      if 'uspto' in document:
+        content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
+      elif '/document/' in document:
+        doc_id = document.split('/')[-1].strip()
+        content = readLocalDocument(doc_id)
+      else:
+        content = readDocumentFromUrl(document)
+      document_contents.append(content)
+
+    documents = case_data.get('documents', [])
+    for document in documents:
+      if document.get('source', '') == 'uspto':
+        content  = readDocumentFromUrl(document.get('url', ''), headers={"X-API-KEY": getEnvKey('uspto')})
+        document_contents.append(content)
+      elif document.get('source', '') == 'local':
+        doc_id = document.get('url', '').split('/')[-1].strip()
+        document_view = getDocumentById(doc_id)
+        if document_view.get('success', False):
+          document_blob = document_view.get('document', {}).get('file_content', '')
+          content = document_blob.decode('utf-8')
+          document_contents.append(content)
+      else:
+        document_contents.append(document.get('content', ''))
+
+    if (len(document_contents) == 0) or (document_contents is None):
+      return {
+        'success': False, 
+        'message': 'No viable document contents provided', 
+        'documents': {
+          'document_urls_key': document_urls,
+          'documents_key': document_contents
+        }}
+
+    complete_document_contents = ""
+    for content in document_contents:
+      if content.strip() != "":
+        complete_document_contents = f"{complete_document_contents}\n\n{content}"
+    
+    if complete_document_contents.strip() == "":
+      print(f'\nERROR: Error getting claims: No viable document contents provided')
+      return {'success': False, 'message': 'No viable document contents provided'}
+
+    try:
+      isolated = Gemini().extract_claims(patent_content=complete_document_contents)
+      validated, error_message = isolated.verify_isolated_claims()
+      if not validated:
+        print(f'\nERROR: Error getting claims: {error_message}')
+        return {'success': False, 'message': error_message}
+      claims = {
+        str(i): isolated.claims[i].model_dump()
+        for i in range(len(isolated.claims))
+      }
+    except Exception as e:
+      print(f'\nERROR: Error extracting claims: {str(e)}')
+      return {'success': False, 'message': str(e)}
+
+    if not claims:
+      print(f'\nERROR: Error getting claims: No claims found')
+      return {'success': False, 'message': 'No claims found'}
+
+    # Update Claims in Case Data
+    result = update_case(case_id, {'claims': claims, 'last_updated': dt.now()})
+    if result['success']:
+      return {'success': True, 'message': 'Claims updated successfully', 'claims': claims}
+    else:
+      print(f'\nERROR: Error updating claims: {result["message"]}')
+      return {'success': False, 'message': result['message']}
+
+def _merge_infringement_details(case_id: str, partial: dict) -> dict:
+    """Merge patent/product infringement_details without clobbering parallel thread writes."""
+    case = get_case_by_id(case_id) or {}
+    details = dict(case.get('infringement_details') or {})
+    for key, value in partial.items():
+        if key in ('patent_ids', 'product_ids') and isinstance(value, dict):
+            bucket_map = dict(details.get(key) or {})
+            for bucket, ids in value.items():
+                bucket_map[bucket] = ids
+            details[key] = bucket_map
+        else:
+            details[key] = value
+    return details
+
+# Functions for Infringement Analysis
+def start_patent_analysis(
+    app,
+    case_id: str,
+    keywords: list[str],
+    country: str,
+    ref_case_title: str = '',
+    ref_case_id: str = '',
+    titles_to_avoid: list[str] = [],
+    ids_to_avoid: list[str] = [],
+    search_type: str = 'generic',
+    asserted_claims: list[dict] = [], 
+    independent_claims: list[dict] = [], 
+    core_claims: list[dict] = [], 
+    pivotal_claims: list[dict] = []
+    ):
+    start_time = time.time()
+    if search_type == 'bucketed':
+        search_status_key = "asserted_claims_patent_analysis"
+    with app.app_context():
+        asserted_patentResults = None
+        independent_patentResults = None
+        core_patentResults = None
+        pivotal_patentResults = None
+
+        asserted_created_patent_ids = []
+        independent_created_patent_ids = []
+        core_created_patent_ids = []
+        pivotal_created_patent_ids = []
+        try:
+            update_infringement_analysis_flags(
+                case_id=case_id, 
+                category='patent'
+                )
+            update_infringement_analysis_status(
+                case_id=case_id,
+                reset_flags=True
+            )
+
+            if len(asserted_claims) > 0:
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    asserted_bucket='Started',
+                    generic_bucket='Started'
+                )
+                asserted_patentResults, asserted_created_patent_ids = searchPatentSources(
+                    keywords=keywords, 
+                    country=country, 
+                    reference_claims=asserted_claims, 
+                    ref_case_title=ref_case_title, 
+                    ref_case_id=ref_case_id,
+                    titles_to_avoid=titles_to_avoid,
+                    ids_to_avoid=ids_to_avoid,
+                    search_type=search_type,
+                    case_id=case_id,
+                    ref_claim_flag='original',
+                    )
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    asserted_bucket='Completed',
+                    generic_bucket='Completed'
+                )
+            else:
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    asserted_bucket='Error',
+                    generic_bucket='Error',
+                    error_message="No generic/asserted claims provided"
+                )
+            
+            if len(independent_claims) > 0:
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    independent_bucket='Started',
+                )
+                independent_patentResults, independent_created_patent_ids = searchPatentSources(
+                    keywords=keywords, 
+                    country=country, 
+                    reference_claims=independent_claims, 
+                    ref_case_title=ref_case_title, 
+                    ref_case_id=ref_case_id,
+                    titles_to_avoid=titles_to_avoid,
+                    ids_to_avoid=ids_to_avoid,
+                    search_type='independent',
+                    case_id=case_id,
+                    ref_claim_flag='original',
+                    )
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    independent_bucket='Completed',
+                )
+                if not independent_patentResults:
+                    print(f'LOG: Case {case_id}: independent patent search returned 0 infringements')
+            else:
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    independent_bucket='Error',
+                    error_message="No independent claims provided"
+                )
+            
+            if len(core_claims) > 0:
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    core_bucket='Started',
+                )
+                core_patentResults, core_created_patent_ids = searchPatentSources(
+                    keywords=keywords, 
+                    country=country, 
+                    reference_claims=core_claims, 
+                    ref_case_title=ref_case_title, 
+                    ref_case_id=ref_case_id,
+                    titles_to_avoid=titles_to_avoid,
+                    ids_to_avoid=ids_to_avoid,
+                    search_type='core',
+                    case_id=case_id,
+                    ref_claim_flag='original',
+                    )
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    core_bucket='Completed',
+                )
+                if not core_patentResults:
+                    print(f'LOG: Case {case_id}: core patent search returned 0 infringements')
+            else:
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    core_bucket='Error',
+                    error_message="No core claims provided"
+                )
+            
+            if len(pivotal_claims) > 0:
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    pivotal_bucket='Started',
+                )
+                pivotal_patentResults, pivotal_created_patent_ids = searchPatentSources(
+                    keywords=keywords, 
+                    country=country, 
+                    reference_claims=pivotal_claims, 
+                    ref_case_title=ref_case_title, 
+                    ref_case_id=ref_case_id,
+                    titles_to_avoid=titles_to_avoid,
+                    ids_to_avoid=ids_to_avoid,
+                    search_type='pivotal',
+                    case_id=case_id,
+                    ref_claim_flag='original',
+                    )
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    pivotal_bucket='Completed',
+                )
+                if not pivotal_patentResults:
+                    print(f'LOG: Case {case_id}: pivotal patent search returned 0 infringements')
+            else:
+                update_infringement_analysis_status(
+                    case_id=case_id,
+                    pivotal_bucket='Error',
+                    error_message="No pivotal claims provided"
+                )
+            # Avoid duplicates among all patent results
+            patentResults = []
+            if asserted_patentResults is not None:
+                for result in asserted_patentResults:
+                    if result not in patentResults:
+                        patentResults.append(result)
+            if independent_patentResults is not None:
+                for result in independent_patentResults:
+                    if result not in patentResults:
+                        patentResults.append(result)
+            if core_patentResults is not None:
+                for result in core_patentResults:
+                    if result not in patentResults:
+                        patentResults.append(result)
+            if pivotal_patentResults is not None:
+                for result in pivotal_patentResults:
+                    if result not in patentResults:
+                        patentResults.append(result)
+            
+            if search_type != 'generic':
+                search_type = "bucketed"
+            update_infringements(case_id, patentResults)
+            try:
+                refresh_case_infringement_scores(case_id)
+            except Exception as score_err:
+                print(f'LOG: refresh_case_infringement_scores failed for {case_id}: {score_err}')
+            infringement_details = _merge_infringement_details(case_id, {
+                'patent_ids': {
+                    'asserted': asserted_created_patent_ids,
+                    'independent': independent_created_patent_ids,
+                    'core': core_created_patent_ids,
+                    'pivotal': pivotal_created_patent_ids,
+                },
+                'search_keywords': keywords,
+                'claim_type': search_type,
+            })
+            end_time = time.time()
+            time_in_seconds = end_time - start_time
+            time_in_minutes = time_in_seconds // 60
+            time_in_hours = int(time_in_minutes // 60)
+            time_in_seconds = round(time_in_seconds % 60, 2)
+            time_in_minutes = int(time_in_minutes % 60)
+            update_infringement_analysis_flags(
+                case_id=case_id, 
+                category='patent', 
+                update_type='completed',
+                time_taken=f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+                )
+            update_case(
+                case_id,
+                {
+                    'infringement_details': infringement_details
+                },
+            )
+        except Exception as e:
+            current_time = time.time()
+            time_in_seconds = current_time - start_time
+            time_in_minutes = time_in_seconds // 60
+            time_in_hours = int(time_in_minutes // 60)
+            time_in_seconds = round(time_in_seconds % 60, 2)
+            time_in_minutes = int(time_in_minutes % 60)
+            update_infringement_analysis_status(
+                case_id,
+                update_type="patent",
+                status='Error',
+                **_patent_bucket_error_kwargs(
+                    asserted_claims, independent_claims, core_claims, pivotal_claims,
+                    asserted_patentResults, independent_patentResults,
+                    core_patentResults, pivotal_patentResults,
+                ),
+            )
+            update_infringement_analysis_flags(
+                case_id=case_id, 
+                category='patent', 
+                update_type='error',
+                error_message=str(e),
+                time_taken=f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+                )
+            print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
+
+def __complete_product_search(
+    case_id: str,
+    product_name: str,
+    keywords: list[str],
+    owners: list[str],
+    search_limitations: list[dict],
+    original_asserted_claims: list[dict] = [], 
+    original_independent_claims: list[dict] = [], 
+    original_core_claims: list[dict] = [], 
+    original_pivotal_claims: list[dict] = [],
+    market_asserted_claims: list[dict] = [], 
+    market_independent_claims: list[dict] = [], 
+    market_core_claims: list[dict] = [], 
+    market_pivotal_claims: list[dict] = []
+    ):
+    
+    productResults = []
+    product_ids = {}
+    errorResults = {}
+    infringement_details = {}
+
+    asserted_product_details_list = None
+    independent_product_details_list = None
+    core_product_details_list = None
+    pivotal_product_details_list = None
+
+    asserted_created_product_ids = []
+    independent_created_product_ids = []
+    core_created_product_ids = []
+    pivotal_created_product_ids = []
+
+    try:
+        search_limitations = normalize_search_limitations(search_limitations)
+        all_market_claims = []
+        for claim_bucket in (
+            original_asserted_claims,
+            original_independent_claims,
+            original_core_claims,
+            original_pivotal_claims,
+        ):
+            all_market_claims.extend(claim_bucket or [])
+        search_limitations = resolve_product_target_sources_for_analysis(
+            claims_to_strings(all_market_claims),
+            search_limitations,
+        )
+        saved_product_urls = set()
+        seen_apify_runs = set()
+        apify_limit_flag = set()
+
+        retail_claim_texts = _claim_strings_for_retail_params(
+            original_asserted_claims,
+            original_independent_claims,
+            original_core_claims,
+            original_pivotal_claims,
+            market_asserted_claims,
+            market_independent_claims,
+            market_core_claims,
+            market_pivotal_claims,
+        )
+        try:
+            print("LOG: Generating retail product search params via Gemini")
+            retail_params = Gemini().generate_product_retail_search_params(
+                product_name=product_name,
+                keywords=keywords,
+                reference_claims=retail_claim_texts,
+                search_limitations=search_limitations,
+            )
+            print(
+                f"LOG: Generated {len(retail_params.params)} retail search class(es): "
+                + ", ".join(param.retail_title for param in retail_params.params)
+            )
+        except Exception as retail_err:
+            print(
+                f"LOG: Retail search param generation failed; using fallback. "
+                f"Error: {retail_err}"
+            )
+            retail_params = _fallback_retail_search_params(
+                product_name, keywords, search_limitations
+            )
+
+        update_infringement_analysis_flags(
+            case_id=case_id, 
+            category='product'
+            )
+        update_infringement_analysis_status(
+            case_id=case_id,
+            update_type="product",
+            reset_flags=True
+        )
+        if len(original_asserted_claims) > 0:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                asserted_bucket='Started',
+                generic_bucket='Started'
+            )
+            asserted_product_details_list, asserted_created_product_ids = (
+                _search_products_across_retail_params(
+                    retail_params=retail_params,
+                    owners=owners,
+                    original_claims=original_asserted_claims,
+                    market_claims=market_asserted_claims,
+                    base_search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    saved_product_urls=saved_product_urls,
+                    seen_apify_runs=seen_apify_runs,
+                    apify_limit_flag=apify_limit_flag,
+                )
+            )
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                asserted_bucket='Completed',
+                generic_bucket='Completed'
+            )
+        else:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                asserted_bucket='Error',
+                generic_bucket='Error',
+                error_message="No generic/asserted claims provided"
+            )
         
+        if len(original_independent_claims) > 0:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                independent_bucket='Started',
+            )
+            independent_product_details_list, independent_created_product_ids = (
+                _search_products_across_retail_params(
+                    retail_params=retail_params,
+                    owners=owners,
+                    original_claims=original_independent_claims,
+                    market_claims=market_independent_claims,
+                    base_search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    saved_product_urls=saved_product_urls,
+                    seen_apify_runs=seen_apify_runs,
+                    apify_limit_flag=apify_limit_flag,
+                )
+            )
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                independent_bucket='Completed',
+            )
+        else:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                independent_bucket='Error',
+                error_message="No independent claims provided"
+            )
+        
+        if len(original_core_claims) > 0:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                core_bucket='Started',
+            )
+            core_product_details_list, core_created_product_ids = (
+                _search_products_across_retail_params(
+                    retail_params=retail_params,
+                    owners=owners,
+                    original_claims=original_core_claims,
+                    market_claims=market_core_claims,
+                    base_search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    saved_product_urls=saved_product_urls,
+                    seen_apify_runs=seen_apify_runs,
+                    apify_limit_flag=apify_limit_flag,
+                )
+            )
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                core_bucket='Completed',
+            )
+        else:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                core_bucket='Error',
+                error_message="No core claims provided"
+            )
+        
+        if len(original_pivotal_claims) > 0:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                pivotal_bucket='Started',
+            )
+            pivotal_product_details_list, pivotal_created_product_ids = (
+                _search_products_across_retail_params(
+                    retail_params=retail_params,
+                    owners=owners,
+                    original_claims=original_pivotal_claims,
+                    market_claims=market_pivotal_claims,
+                    base_search_limitations=search_limitations,
+                    parent_case_id=case_id,
+                    saved_product_urls=saved_product_urls,
+                    seen_apify_runs=seen_apify_runs,
+                    apify_limit_flag=apify_limit_flag,
+                )
+            )
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                pivotal_bucket='Completed',
+            )
+        else:
+            update_infringement_analysis_status(
+                case_id=case_id,
+                update_type="product",
+                pivotal_bucket='Error',
+                error_message="No pivotal claims provided"
+            )
+                
+        if asserted_product_details_list is not None:
+            for result in asserted_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+        if independent_product_details_list is not None:
+            for result in independent_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+        if core_product_details_list is not None:
+            for result in core_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+        if pivotal_product_details_list is not None:
+            for result in pivotal_product_details_list:
+                if result not in productResults:
+                    productResults.append(result)
+
+        return productResults, errorResults, product_ids, infringement_details
+    except Exception as e:
+        print(f'LOG: Case {case_id}: Error completing product search: {str(e)}')
+        return productResults, errorResults, product_ids, infringement_details
+
+def start_product_analysis(
+    app,
+    case_id: str,
+    product_name: str,
+    keywords: list[str],
+    owners: list[str],
+    search_limitations: list[dict],
+    original_asserted_claims: list[dict] = [], 
+    original_independent_claims: list[dict] = [], 
+    original_core_claims: list[dict] = [], 
+    original_pivotal_claims: list[dict] = [],
+    market_asserted_claims: list[dict] = [], 
+    market_independent_claims: list[dict] = [], 
+    market_core_claims: list[dict] = [], 
+    market_pivotal_claims: list[dict] = [],
+    search_type: str = 'generic'
+    ):
+    with app.app_context():
+        start_time = time.time()
+        asserted_product_details_list = None
+        independent_product_details_list = None
+        core_product_details_list = None
+        pivotal_product_details_list = None
+
+        product_ids = {}
+        productResults = []
+        errorResults = {}
+        # Add logic to get GET error with each URL in errorResults
+        infringement_details = {}
+        try:
+            productResults, errorResults, product_ids, infringement_details = __complete_product_search(
+                case_id=case_id,
+                product_name=product_name,
+                keywords=keywords,
+                owners=owners,
+                search_limitations=search_limitations,
+                original_asserted_claims=original_asserted_claims,
+                original_independent_claims=original_independent_claims,
+                original_core_claims=original_core_claims,
+                original_pivotal_claims=original_pivotal_claims,
+                market_asserted_claims=market_asserted_claims,
+                market_independent_claims=market_independent_claims,
+                market_core_claims=market_core_claims,
+                market_pivotal_claims=market_pivotal_claims
+            )
+            update_infringements(case_id, productResults)
+            try:
+                refresh_case_infringement_scores(case_id)
+            except Exception as score_err:
+                print(f'LOG: refresh_case_infringement_scores failed for {case_id}: {score_err}')
+            infringement_details = _merge_infringement_details(case_id, {
+                'product_ids': product_ids,
+                'search_keywords': keywords,
+                'claim_type': search_type,
+            })
+            end_time = time.time()
+            time_in_seconds = end_time - start_time
+            time_in_minutes = time_in_seconds // 60
+            time_in_hours = int(time_in_minutes // 60)
+            time_in_seconds = round(time_in_seconds % 60, 2)
+            time_in_minutes = int(time_in_minutes % 60)
+            update_infringement_analysis_flags(
+                case_id=case_id, 
+                category='product', 
+                update_type='completed',
+                time_taken=f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+                )
+            update_case(
+                case_id,
+                {
+                    'infringement_details': infringement_details
+                },
+            )
+        except Exception as e:
+            print(f'\nERROR: LiveSearch: Error performing product sourceinfringement analysis: {str(e)}')
+            end_time = time.time()
+            time_in_seconds = end_time - start_time
+            time_in_minutes = time_in_seconds // 60
+            time_in_hours = int(time_in_minutes // 60)
+            time_in_seconds = round(time_in_seconds % 60, 2)
+            time_in_minutes = int(time_in_minutes % 60)
+            update_infringement_analysis_status(
+                case_id,
+                update_type="product",
+                status='Error',
+                **_product_bucket_error_kwargs(
+                    original_asserted_claims, original_independent_claims, original_core_claims, original_pivotal_claims,
+                    asserted_product_details_list, independent_product_details_list,
+                    core_product_details_list, pivotal_product_details_list,
+                ),
+            )
+            update_infringement_analysis_flags(
+                case_id=case_id, 
+                category='product', 
+                update_type='error',
+                error_message=str(e),
+                time_taken=f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
+                )
+
+# Function to fetch Patent by ID with multiple sources
+def fetchById(app, patent_id:str, user_id:str):
+    patent_id = str(patent_id).strip().upper()
+    uspto_error = False
+    google_error = False
+    free_patents_error = False
+    error_message = ""
+    fetch_succeeded = False
+    with app.app_context():
+        try:
+            try:
+                similar = get_similar_cases(patent_id, user_id)
+                if similar and create_case(similar).get('success'):
+                    remove_patent_from_fetching_list(user_id, patent_id)
+                    remove_patent_from_error_list(user_id, patent_id)
+                    print(f"LOG {patent_id}: Similar Cases Found and merged into a single case: {json.dumps(similar, indent=4)}")
+                    returnVal = {
+                        'success': True,
+                        'message': 'Patent data imported successfully',
+                        'case_id': similar['_id'],
+                        'keywords': similar.get('keywords', []),
+                        'case_data': similar,
+                    }
+                    fetch_succeeded = True
+                    return returnVal, 200
+                print(f"WARNING {patent_id}: No similar cases found, falling through to USPTO → Google → FPO")
+            except Exception as e:
+                print(f"ERROR: Error getting similar cases: {str(e)}")
+            try:
+                uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
+                uspto_data = uspto_instance.get_complete_patent_info(patent_id)
+                if uspto_data is None:
+                    uspto_error = True
+                    raise Exception("No Data found through USPTO")
+                else:
+                    uspto_data['created_by'] = user_id
+                    uspto_data['_id'] = f"uspto_{user_id}_{patent_id}"
+                    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
+                    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
+                    creationResult = create_case(uspto_data)
+                    print(f"TEST 1.1: Creation Result: {json.dumps(creationResult, indent=4)}")
+                    descriptionResult = generate_patent_description(f"uspto_{user_id}_{patent_id}")
+                    print(f"TEST 1.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                    claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
+                    print(f"TEST 1.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
+                    remove_patent_from_fetching_list(user_id, patent_id)
+                    remove_patent_from_error_list(user_id, patent_id)
+                    fetch_succeeded = True
+                    returnValue = {
+                        'success': True,
+                        'message': 'Patent data imported successfully',
+                        'case_id': f"uspto_{user_id}_{patent_id}",
+                        'keywords': uspto_data.get('keywords', []),
+                        'case_data': uspto_data
+                    }
+                    return returnValue, 200
+            except Exception as e:
+                print(f'\nError getting patent data from USPTO: {str(e)}')
+                uspto_error = True
+                error_message = str(e)
+            # Try searching patent id using Google Patents
+            if uspto_error:
+                time.sleep(5)
+                try:
+                    google_patents = GooglePatents()
+                    google_patents_details = google_patents.search_by_id(patent_id)
+                    if google_patents_details is not None:
+                        if isinstance(google_patents_details, dict):
+                            extracted = passToGeminiForMetadata(
+                                google_patents_details.get('metadata_content', ''),
+                                claims_content=google_patents_details.get('claims_content'),
+                                default_source='google_patents',
+                            )
+                        else:
+                            extracted = passToGeminiForMetadata(
+                                str(google_patents_details),
+                                default_source='google_patents',
+                            )
+                        if extracted is None:
+                            raise Exception(
+                                "Failed to extract patent metadata from Google Patents content"
+                            )
+                        case_data = extracted.model_dump()
+                        if case_data is not None:
+                            patent_page_url = google_patents.get_patent_page_url(patent_id)
+                            if patent_page_url:
+                                case_data['document_urls'] = [patent_page_url]
+                                case_data['documents'] = [
+                                    {'url': patent_page_url, 'source': 'google_patents'}
+                                ]
+                            case_data['source'] = 'google_patents'
+                            case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
+                            case_data['created_by'] = user_id
+                            if case_data.get('current_status', '') == '':
+                                case_data['current_status'] = 'Granted'
+                            case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                            created_id = case_data.get('_id', '')
+                            creationResult = create_case(case_data)
+                            print(f"TEST 2.1: Creation Result: {json.dumps(creationResult, indent=4)}")
+                            created_id = case_data.get('_id', '')
+                            if 'DocumentCreationError' in created_id:
+                                raise Exception("Document Creation Error")
+                            descriptionResult = generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
+                            print(f"TEST 2.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                            claimsResult = isolate_claims(f"googlepatents_{user_id}_{patent_id}")
+                            print(f"TEST 2.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
+                            remove_patent_from_fetching_list(user_id, patent_id)
+                            remove_patent_from_error_list(user_id, patent_id)
+                            fetch_succeeded = True
+                            returnValue = {
+                                'success': True,
+                                'message': 'Patent data imported successfully',
+                                'case_id': created_id,
+                                'keywords': case_data.get('keywords', []),
+                                'case_data': case_data
+                            }
+                            return returnValue, 200
+                    else:
+                        raise Exception("No Data found through Google Patents")
+                except Exception as e:
+                    print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
+                    error_message = str(e)
+                    google_error = True
+            # Patent not found using Google Patents, try using Free Patents Online
+            if google_error and uspto_error:
+                time.sleep(5)
+                try:
+                    free_patents = FreePatentsOnline()
+                    free_patents_details = free_patents.search_by_id(patent_id)
+                    if free_patents_details is not None:
+                        extracted = passToGeminiForMetadata(
+                            str(free_patents_details),
+                            default_source='free_patents_online',
+                        )
+                        if extracted is None:
+                            raise Exception(
+                                "Failed to extract patent metadata from Free Patents Online content"
+                            )
+                        case_data = extracted.model_dump()
+                        if case_data is not None:
+                            case_data['source'] = 'free_patents_online'
+                            case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
+                            case_data['created_by'] = user_id
+                            if case_data.get('current_status', '') == '':
+                                case_data['current_status'] = 'Granted'
+                            case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                            creationResult = create_case(case_data)
+                            print(f"TEST 3.1: Creation Result: {json.dumps(creationResult, indent=4)}")
+                            created_id = case_data.get('_id', '')
+                            if 'DocumentCreationError' in created_id:
+                                returnValue = {'success': False, 'message': created_id}
+                                raise Exception("Document Creation Error")
+                            descriptionResult = generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
+                            print(f"TEST 3.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
+                            claimsResult = isolate_claims(f"freepatentsonline_{user_id}_{patent_id}")
+                            print(f"TEST 3.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
+                            remove_patent_from_error_list(user_id, patent_id)
+                            remove_patent_from_fetching_list(user_id, patent_id)
+                            fetch_succeeded = True
+                            returnValue = {
+                                'success': True,
+                                'message': 'Patent data imported successfully',
+                                'case_id': created_id,
+                                'keywords': case_data.get('keywords', []),
+                                'case_data': case_data
+                            }
+                            return returnValue, 200
+                    else:
+                        raise Exception("No Data found through Free Patents Online")
+                except Exception as e:
+                    print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
+                    error_message = str(e)
+                    free_patents_error = True
+
+            errorReturn = {
+                'success': False,
+                'message': f"Failed to find patent with ID {patent_id}",
+                'error_message': error_message
+            }
+            return errorReturn, 500
+        finally:
+            if not fetch_succeeded:
+                try:
+                    set_patent_to_error_list(
+                        user_id,
+                        patent_id,
+                        error_message or 'Failed to import patent',
+                    )
+                except Exception as cleanup_err:
+                    print(f'ERROR: Failed to update fetch error state: {cleanup_err}')
+                    remove_patent_from_fetching_list(user_id, patent_id)
+
+def check_thread_status(thread_name: str):
+  for thread in threading.enumerate():
+    if thread.name == thread_name:
+      if thread.is_alive():
+        return True, "Thread is running"
+      else:
+        return False, "Thread is not running"
+  return False, "Thread was not found"
+
+def bulk_fetch_by_ids(app, patent_ids: list[str], records: list[list[str]], user_id: str):
+    """
+    Bulk fetch patents by IDs
+    """
+    with app.app_context():
+        error_list = []
+        try:
+            for record in records:
+                if len(record) >= 2:
+                    patent_id, title = record[0], record[1]
+                    last_entry = (patent_id == patent_ids[-1])
+                    if type(patent_id) == float:
+                        patent_id = int(patent_id)               
+                    patent_id = str(patent_id).strip().replace('.', '')
+                    print(f"Patent ID: {patent_id}, Title: {title}")
+                    response, _ = fetchById(app, patent_id, user_id)
+                    responseSuccess= response.get('success', False)
+                    if (not responseSuccess):
+                        error_list.append(patent_id)
+                    if last_entry:
+                        update_user_fetching_patents(user_id, [], error_list, replace=True)
+            return {
+                'success': True,
+                'message': f"Patents bulk fetched successfully"
+            }
+        except Exception as e:
+            print(f"ERROR: Error bulk fetching patents: {str(e)}")
+            return {
+                'success': False,
+                'message': f"Error bulk fetching patents: {str(e)}"
+            }

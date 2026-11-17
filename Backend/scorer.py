@@ -106,14 +106,18 @@ def _pair_scores_matrix_tfidf(ref_list, inf_list):
                     s = abs(s)
                 scores[(ref, inf)] = float(min(1.0, max(0.0, s)))
         return scores
-    except Exception:
+    except Exception as e:
+        print(f"LOG: _pair_scores_matrix_tfidf failed ({type(e).__name__}: {e})")
         return None
 
 
 def _pair_scores_matrix(ref_list, inf_list):
-    scores = _pair_scores_matrix_openai(ref_list, inf_list)
-    if scores is not None:
-        return scores
+    try:
+        scores = _pair_scores_matrix_openai(ref_list, inf_list)
+        if scores is not None:
+            return scores
+    except Exception as e:
+        print(f"LOG: _pair_scores_matrix_openai failed ({type(e).__name__}: {e}); falling back to joint TF-IDF")
     return _pair_scores_matrix_tfidf(ref_list, inf_list)
 
 
@@ -169,9 +173,11 @@ def score_infringement_matrix_entry(reference_claims, infringing_claims, existin
         if h in cache and _cached_row_valid(cache[h], h):
             row = cache[h]
             calc = float(row["calculated_similarity_score"])
-            if calc > threshold:
-                stored_rows.append(row)
-                chart_rows.append(_chart_row_from_storage(row))
+            stored_rows.append(row)
+            chart_rows.append(_chart_row_from_storage(row))
+            # if calc > threshold:
+            #     stored_rows.append(row)
+            #     chart_rows.append(_chart_row_from_storage(row))
             continue
 
         score = float(pair_scores[(ref, inf)])

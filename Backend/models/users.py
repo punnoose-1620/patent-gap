@@ -1,5 +1,6 @@
 import json
 from database import *
+from datetime import datetime, date
 from env_controller import getUserDatabaseName
 
 mock_users = [
@@ -60,7 +61,12 @@ def update_user(data, user_id):
     Args:
         data (dict): User data
     """
-    updated = updateDataById(connect_to_database(), getUserDatabaseName(), data, user_id)
+    updated = updateDataById(
+        connect_to_database(), 
+        getUserDatabaseName(), 
+        data, 
+        user_id
+        )
     if updated:
         return {
             'success': True,
@@ -138,6 +144,8 @@ def get_user_profile(user_id, show_password=False):
         user_copy = user.copy()
         if 'password' in user_copy and not show_password:
             del user_copy['password']
+        if isinstance(user_copy.get('last_updated'), (datetime, date)):
+            user_copy['last_updated'] = user_copy['last_updated'].isoformat()
         return user_copy
     return None
 
@@ -179,3 +187,128 @@ def change_password(user_id, new_password):
         'success': False,
         'message': 'User not found'
     }
+
+def update_user_fetching_patents(
+    user_id: str,
+    fetching_patents: list[str],
+    error_patents: list[str],
+    replace: bool = False
+) -> dict:
+    """
+    Replace the user's bulk-import progress lists.
+
+    Args:
+        user_id: User's _id in the users collection
+        fetching_patents: Patent IDs currently being fetched
+        error_patents: Patent IDs that failed to import
+
+    Returns:
+        dict with success status and message
+    """
+    print(
+        f'LOG: Updating user {user_id} fetching patents: '
+        f'{fetching_patents} error patents: {error_patents}'
+    )
+
+    user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
+    if user is None:
+        return {
+            'success': False,
+            'message': 'User not found',
+        }
+
+    if not replace:
+        # If replace is False, append new values to existing list without duplicates
+        existing_fetching_patents = user.get('fetching_patents', [])
+        existing_error_patents = user.get('error_patents', [])
+        for value in existing_fetching_patents:
+            if value in fetching_patents:
+                fetching_patents.remove(value)
+        for value in existing_error_patents:
+            if value in error_patents:
+                error_patents.remove(value)
+        fetching_patents = existing_fetching_patents + [str(p).strip() for p in fetching_patents if str(p).strip()]
+        error_patents = existing_error_patents + [str(p).strip() for p in error_patents if str(p).strip()]
+    response = update_user(
+        {
+            'fetching_patents': [str(p).strip() for p in fetching_patents if str(p).strip()],
+            'error_patents': [str(p).strip() for p in error_patents if str(p).strip()],
+        },
+        user_id,
+    )
+    return response
+
+def remove_patent_from_fetching_list(user_id: str, patent_id: str) -> dict:
+    """
+    Remove a patent from the user's fetching list.
+    """
+    user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
+    if user is None:
+        return {
+            'success': False,
+            'message': 'User not found',
+        }
+    patent_id = str(patent_id).strip().upper()
+    existing_fetching_patents = user.get('fetching_patents', [])
+    new_fetching_patents = []
+    error_patents = user.get('error_patents', [])
+    if patent_id in existing_fetching_patents:
+        for value in existing_fetching_patents:
+            if value.strip().upper() != patent_id:
+                new_fetching_patents.append(value)
+    return update_user_fetching_patents(user_id, new_fetching_patents, error_patents, replace=True)
+
+def remove_patent_from_error_list(user_id: str, patent_id: str) -> dict:
+    """
+    Remove a patent from the user's fetching errors list.
+    """
+    user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
+    if user is None:
+        return {
+            'success': False,
+            'message': 'User not found',
+        }
+    patent_id = str(patent_id).strip().upper()
+    error_patents = user.get('error_patents', [])
+    fetching_patents = user.get('fetching_patents', [])
+    if patent_id in error_patents:
+        for value in error_patents:
+            if str(value).strip().upper() == patent_id:
+                error_patents.remove(value)
+    return update_user_fetching_patents(user_id, fetching_patents, error_patents, replace=True)
+
+def set_patent_to_error_list(
+    user_id: str, 
+    patent_id: str, 
+    error_message: str = 'Unknown Error'
+    ) -> dict:
+    """
+    Set a patent to the user's error list.
+    """
+    user = getDataById(connect_to_database(), getUserDatabaseName(), user_id)
+    if user is None:
+        return {
+            'success': False,
+            'message': 'User not found',
+        }
+    patent_id = str(patent_id).strip().upper()
+    existing_error_patents = user.get('error_patents', [])
+    existing_fetching_patents = user.get('fetching_patents', [])
+    if isinstance(existing_error_patents, dict):
+        existing_error_patents = [
+            str(k).strip().upper() for k in existing_error_patents.keys() if str(k).strip()
+        ]
+    elif not isinstance(existing_error_patents, list):
+        existing_error_patents = []
+    normalized_errors = [
+        str(p).strip().upper() for p in existing_error_patents if str(p).strip()
+    ]
+    if patent_id not in normalized_errors:
+        normalized_errors.append(patent_id)
+    new_fetching_patents = [
+        p for p in existing_fetching_patents
+        if str(p).strip().upper() != patent_id
+    ]
+    return update_user_fetching_patents(
+        user_id, new_fetching_patents, normalized_errors, replace=True
+    )

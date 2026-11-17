@@ -846,15 +846,19 @@ def getEmbeddingOffline(text):
         text (str): The input text to be embedded.
 
     Returns:
-        numpy.ndarray: The TF-IDF embedding vector for the input text.
+        numpy.ndarray | None: The TF-IDF embedding vector, or None if vectorization fails
+        (e.g. empty vocabulary / stop-word-only text).
     """
-    
-
-    vectorizer = TfidfVectorizer()
-    # Since TF-IDF works at the document level, we treat the single input as a one-element corpus
-    tfidf_matrix = vectorizer.fit_transform([text])
-    embedding = tfidf_matrix.toarray()[0]
-    return embedding
+    try:
+        vectorizer = TfidfVectorizer()
+        # Since TF-IDF works at the document level, we treat the single input as a one-element corpus
+        tfidf_matrix = vectorizer.fit_transform([text])
+        embedding = tfidf_matrix.toarray()[0]
+        return embedding
+    except Exception as e:
+        preview = (text or "")[:120].replace("\n", " ")
+        print(f"LOG: getEmbeddingOffline failed ({type(e).__name__}: {e}); text preview: {preview!r}")
+        return None
 
 def getSimilarityScore(embedding1, embedding2):
     """
@@ -941,7 +945,7 @@ def getPatentEmbedding(text, api_key=None):
         text: The text to get embeddings for
         api_key: Optional OpenAI API key. If not provided, uses OPENAI_API_KEY env var.
     Returns:
-        List of floats representing the embedding vector
+        List of floats representing the embedding vector, or None on failure.
     """
     embedding = None
     if (text is None) or (text == ''):
@@ -951,11 +955,16 @@ def getPatentEmbedding(text, api_key=None):
             embedding = getEmbeddingOnline(text, api_key)
         else:
             embedding = getEmbeddingOffline(text)
-    except Exception:
-        if api_key is not None:
-            embedding = getEmbeddingOnline(text, api_key)
-        else:
-            embedding = getEmbeddingOffline(text)
+    except Exception as e:
+        print(f"LOG: getPatentEmbedding primary path failed ({type(e).__name__}: {e})")
+        try:
+            if api_key is not None:
+                embedding = getEmbeddingOffline(text)
+            else:
+                embedding = None
+        except Exception as fallback_err:
+            print(f"LOG: getPatentEmbedding fallback failed ({type(fallback_err).__name__}: {fallback_err})")
+            embedding = None
     return embedding
 
 def generateReports(case_id):

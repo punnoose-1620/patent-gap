@@ -168,10 +168,34 @@ def getDataById(db, collectionName, entryId):
         print(f"Error fetching data by ID from {collectionName}: {e}")
         return None
 
+def getDataContainingIdString(db, collectionName, idString):
+    try:
+        collection = db[collectionName]
+        documents = list(collection.find({'_id': {'$regex': idString}}, max_time_ms=120000))
+        for doc in documents:
+            if '_id' in doc and hasattr(doc['_id'], '__str__'):
+                doc['_id'] = str(doc['_id'])
+        return documents
+    except Exception as e:
+        print(f"Error fetching data containing ID string from {collectionName}: {e}")
+        return []
+
 def getDataByKeyValue(db, collectionName, key, value):
     try:
         collection = db[collectionName]
         documents = list(collection.find({key: value}, max_time_ms=120000))
+        for doc in documents:
+            if '_id' in doc and hasattr(doc['_id'], '__str__'):
+                doc['_id'] = str(doc['_id'])
+        return documents
+    except Exception as e:
+        print(f"Error fetching data by key and value from {collectionName}: {e}")
+        return []
+
+def getDataByKeyValueRegex(db, collectionName, key, value):
+    try:
+        collection = db[collectionName]
+        documents = list(collection.find({key: {'$regex': value}}, max_time_ms=120000))
         for doc in documents:
             if '_id' in doc and hasattr(doc['_id'], '__str__'):
                 doc['_id'] = str(doc['_id'])

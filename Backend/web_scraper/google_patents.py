@@ -120,19 +120,69 @@ class GooglePatents:
             isolated_search_content.append(search_data)
         return isolated_search_content
 
+    def __section_text(self, soup: BeautifulSoup, itemprop: str) -> str:
+        section = soup.find('section', attrs={'itemprop': itemprop})
+        if section is None:
+            return ''
+        return section.get_text(separator='\n', strip=True)
+
+    def isolate_patent_sections(self, html: str) -> dict:
+        """
+        Extract structured text sections from a Google Patents detail page.
+        Current pages use itemprop sections instead of the legacy #wrapper layout.
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        sections = {
+            'metadata': self.__section_text(soup, 'metadata'),
+            'application': self.__section_text(soup, 'application'),
+            'abstract': self.__section_text(soup, 'abstract'),
+            'description': self.__section_text(soup, 'description'),
+            'claims': self.__section_text(soup, 'claims'),
+        }
+        # Legacy layout fallback
+        if not sections['claims']:
+            wrapper = soup.find(id='wrapper')
+            if wrapper is not None:
+                text_el = wrapper.find('text')
+                if text_el is not None:
+                    sections['claims'] = text_el.get_text(separator='\n', strip=True)
+        return sections
+
+    def content_for_metadata_extraction(self, sections: dict, max_description_chars: int = 80000) -> str:
+        description = sections.get('description', '') or ''
+        if len(description) > max_description_chars:
+            description = (
+                description[:max_description_chars]
+                + "\n\n...[description truncated for metadata extraction]..."
+            )
+        parts = [
+            ('Metadata', sections.get('metadata', '')),
+            ('Application', sections.get('application', '')),
+            ('Abstract', sections.get('abstract', '')),
+            ('Description', description),
+        ]
+        return '\n\n'.join(f"{label}:\n{text}" for label, text in parts if text.strip())
+
+    def content_for_claims_extraction(self, sections: dict) -> str:
+        claims = (sections.get('claims') or '').strip()
+        if claims:
+            return f"Patent Claims:\n{claims}"
+        description = (sections.get('description') or '').strip()
+        if description:
+            return f"Patent Description (claims section not found; search for claims):\n{description}"
+        return ''
+
     def __isolate_case_data_by_id(self, html: str):
         """
         Isolate case data by id from the case details page.
         Input: HTML string from case details page.
-        Output: List of HTML strings (isolated html content of each case data).
+        Output: dict with isolated metadata text and claims text.
         """
-        isolated_case_data = []
-        soup = BeautifulSoup(html, 'html.parser')
-        isolated_content = soup.find(id='wrapper')
-        claims = isolated_content.find('text').get_text(strip=True)
+        sections = self.isolate_patent_sections(html)
         return {
-            'case_data': isolated_content,
-            'claims': claims
+            'case_data': self.content_for_metadata_extraction(sections),
+            'claims': sections.get('claims', ''),
+            'sections': sections,
         }
 
     def initial_search_results(self, keywords:list[str]):
@@ -167,11 +217,14 @@ class GooglePatents:
             print(f"ERROR: Failed to fetch patent details from {url}: {str(e)}")
             return None
 
+    def get_patent_page_url(self, search_id: str) -> str | None:
+        return self.__id_search1_url_builder(search_id)
+
     def search_by_id(self, search_id:str):
         """
         Search by ID from Google Patents.
         Input: String ID.
-        Output: HTML string (isolated html content of the case details page).
+        Output: dict with metadata_content and claims_content for Gemini extraction.
         """
         url = self.__id_search1_url_builder(search_id)
         if url is None:
@@ -179,15 +232,23 @@ class GooglePatents:
         
         try:
             html = self.scraper.get(url)
-            if html is not None:
-                return str(html)
-            else:
+            if html is None:
                 print(f"ERROR: Failed to fetch patent details from {url}")
-                return str(html)
+                return None
+            sections = self.isolate_patent_sections(html)
+            metadata_content = self.content_for_metadata_extraction(sections)
+            claims_content = self.content_for_claims_extraction(sections)
+            if not metadata_content.strip() and not claims_content.strip():
+                print(f"ERROR: No isolatable patent content from {url}")
+                return None
+            return {
+                'metadata_content': metadata_content,
+                'claims_content': claims_content,
+                'sections': sections,
+            }
         except requests.RequestException as e:
             print(f"ERROR: Failed to fetch patent details from {url}: {str(e)}")
             return None
-        # TODO: Isolate case data from html using gemini
 
     def get_patent_details(self, urls: list[str]):
         """

@@ -1,5 +1,8 @@
 import os
+import io
 import requests
+import threading
+import pandas as pd
 from flask_cors import CORS
 from datetime import datetime as dt
 from swagger import initialize_swagger
@@ -9,8 +12,30 @@ from models.demo import *
 from models.cases import *
 from models.users import *
 from models.alerts import *
+from models.folders import (
+    add_viewer_to_folder as model_add_viewer_to_folder,
+    remove_viewer_from_folder as model_remove_viewer_from_folder,
+    add_editor_to_folder as model_add_editor_to_folder,
+    remove_editor_from_folder as model_remove_editor_from_folder,
+    add_case_to_folder as model_add_case_to_folder,
+    remove_case_from_folder as model_remove_case_from_folder,
+    get_folder as model_get_folder,
+    rename_folder as model_rename_folder,
+    delete_folder as model_delete_folder,
+    list_folders as model_list_folders,
+    create_folder as model_create_folder,
+)
 from models.documents import *
+from models.infringements import *
 from models.search_history import *
+from models.infringements import (
+    get_infringement_by_id as _model_get_infringement_by_id,
+    get_infringements_by_ids as _model_get_infringements_by_ids,
+    get_infringements_by_created_date as _model_get_infringements_by_created_date,
+    get_infringements_by_parent_case_id as _model_get_infringements_by_parent_case_id,
+    update_infringement_by_id as _model_update_infringement_by_id,
+    delete_infringement_by_id as _model_delete_infringement_by_id,
+)
 
 from sources.USPTO import *
 from sources.Gemini import *
@@ -569,7 +594,15 @@ def profile():
     print(f'LOG: {user_id} Get Profile Data')
     try:
         profile_data = get_user_profile(user_id)
-        print(f'LOG: Profile Data {user_id}: {json.dumps(profile_data, indent=4)}')
+        fetching_patents = profile_data.get('fetching_patents', [])
+        for patent_id in fetching_patents:
+          thread_name = f'{patent_id}-{user_id}'
+          status, status_message = check_thread_status(thread_name)
+          if not status:
+            remove_patent_from_fetching_list(user_id, patent_id)
+            if 'not found' in status_message.lower():
+              set_patent_to_error_list(user_id, patent_id, status_message)
+        print(f'LOG: Profile Data {user_id}: {profile_data}')
         return jsonify({
             'success': True,
             'profile': profile_data
@@ -1560,85 +1593,6 @@ def get_case_keywords():
       return jsonify({'success': False, 'message': 'No keywords found. The document may be empty or might contain only stop words.'}), 400
     return jsonify({'success': True, 'keywords': keywords})
 
-@app.route('/api/import-patent-from-uspto', methods=['POST'])
-def api_import_patent_from_uspto():
-  """
-  Import patent data from USPTO
-  ---
-  tags:
-    - Patents
-  summary: Import patent data from USPTO
-  description: |
-    Fetches and normalizes patent data from USPTO by patent ID. Returns the normalized data 
-    but does not automatically create a case. Use this to preview patent data before creating a case.
-  consumes:
-    - application/json
-  produces:
-    - application/json
-  security:
-    - session: []
-  parameters:
-    - in: body
-      name: patent_request
-      description: USPTO patent ID to import
-      required: true
-      schema:
-        $ref: '#/definitions/PatentImportRequest'
-  responses:
-    200:
-      description: Patent data imported successfully
-      schema:
-        $ref: '#/definitions/PatentImportResponse'
-    400:
-      description: Bad request - missing or invalid patent ID, or failed to fetch/normalize data
-      schema:
-        $ref: '#/definitions/ErrorResponse'
-    500:
-      description: Server error or USPTO rate limit exceeded
-      schema:
-        $ref: '#/definitions/ErrorResponse'
-  """
-  user_id = get_user_id()
-  if not user_id:
-    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
-  data = request.get_json()
-  if data is None:
-    print('\nNo Data provided')
-    return jsonify({'success': False, 'message': 'No data provided'}), 400
-  if 'patentId' not in data.keys():
-    print('\nPatent ID is not Provided')
-    return jsonify({'success': False, 'message': 'Patent ID is not provided'}), 400
-  patent_id = data.get('patentId')
-  if patent_id is None or patent_id == '':
-    print('\nPatent ID is not valid')
-    return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
-  
-  try:
-    uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
-    uspto_data = uspto_instance.get_complete_patent_info(patent_id)
-    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-    infringements = get_openalex_entities({
-      'entity_name': 'topics',
-      'page': 1,
-      'per_page': 100,
-      'search': '',
-      'timeout': 30
-      })
-    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
-    if uspto_data is None:
-      return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
-    # creationResult = create_case(uspto_data)
-    return jsonify({
-      'success': True, 
-      'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{user_id}_{patent_id}",
-      'keywords': uspto_data['keywords'],
-      'case_data': uspto_data
-      }), 200
-  except Exception as e:
-    print(f'\nError getting patent data from USPTO: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting patent data from USPTO: {str(e)}'}), 500
-
 @app.route('/api/create-patent', methods=['POST'])
 def api_create_patent():
   try:
@@ -1776,85 +1730,184 @@ def fetch_patent_from_uspto():
   if patent_id is None or patent_id == '':
     print('\nPatent ID is not valid')
     return jsonify({'success': False, 'message': 'Patent ID is not valid'}), 400
-  
-  try:
-    print(f'\nFetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
-    uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
-    uspto_data = uspto_instance.get_complete_patent_info(patent_id)
-    uspto_data['created_by'] = user_id
-    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
-    if uspto_data is None:
-      return jsonify({'success': False, 'message': 'Failed to fetch patent from USPTO. Please check the patent ID and try again.'}), 400
-    creationResult = create_case(uspto_data)
-    return jsonify({
-      'success': True, 
-      'message': 'Patent data imported successfully', 
-      'case_id': f"uspto_{user_id}_{patent_id}",
-      'keywords': uspto_data.get('keywords', []),
-      'case_data': uspto_data
-      }), 200
-  except Exception as e:
-    print(f'\nError getting patent data from USPTO: {str(e)}')
-  # Try searching patent id using Google Patents
-  try:
-    google_patents = GooglePatents()
-    google_patents_details = google_patents.search_by_id(patent_id)
-    if google_patents_details is not None:
-      case_data = passToGeminiForMetadata(str(google_patents_details)).model_dump()
-      if case_data is not None:
-        case_data['source'] = 'google_patents'
-        case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
-        case_data['created_by'] = user_id
-        if case_data.get('current_status', '') == '':
-          case_data['current_status'] = 'Granted'
-        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
-        created_id = case_data.get('_id', '')
-        creationResult = create_case(case_data)
-        created_id = case_data.get('_id', '')
-        if 'DocumentCreationError' in created_id:
-          return jsonify({'success': False, 'message': created_id}), 400
-        return jsonify({
-          'success': True, 
-          'message': 'Patent data imported successfully', 
-          'case_id': created_id,
-          'keywords': case_data.get('keywords', []),
-          'case_data': case_data
-          }), 200
-  except Exception as e:
-    print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
-  # Patent not found using Google Patents, try using Free Patents Online
-  # try:
-    free_patents = FreePatentsOnline()
-    free_patents_details = free_patents.search_by_id(patent_id)
-    if free_patents_details is not None:
-      case_data = passToGeminiForMetadata(str(free_patents_details)).model_dump()
-      if case_data is not None:
-        case_data['source'] = 'free_patents_online'
-        case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
-        case_data['created_by'] = user_id
-        if case_data.get('current_status', '') == '':
-          case_data['current_status'] = 'Granted'
-        case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
-        creationResult = create_case(case_data)
-        created_id = case_data.get('_id', '')
-        if 'DocumentCreationError' in created_id:
-          return jsonify({'success': False, 'message': created_id}), 400
-        return jsonify({
-          'success': True, 
-          'message': 'Patent data imported successfully', 
-          'case_id': created_id,
-          'keywords': case_data.get('keywords', []),
-          'case_data': case_data
-          }), 200
-  except Exception as e:
-    print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
 
-  return jsonify({'success': False, 'message': f"Failed to find patent with ID {patent_id}"}), 500
+  # Check if the patent already exists
+  if caseAlreadyExists(patent_id, user_id):
+    return jsonify({'success': False, 'message': 'Patent already exists in your portfolio'}), 400
+  
+  user_data = get_user_profile(user_id, show_password=False) 
+  fetching_patents = user_data.get('fetching_patents', [])
+  patent_id = str(patent_id).strip().upper()
+  if patent_id in fetching_patents:
+    return jsonify({
+        'success': False,
+        'message': f'Patent ID {patent_id} is already being fetched by this user.',
+        'case_id': patent_id
+    }), 409
+
+  print(f'\nFetching patent of ID {patent_id} from USPTO (key: {getEnvKey("uspto")}): {json.dumps(data, indent=4)}')
+
+  update_user_fetching_patents(
+    user_id=user_id, 
+    fetching_patents=[patent_id], 
+    error_patents=[], 
+    replace=True
+    )
+  thread = threading.Thread(
+    target=fetchById,
+    name=f'{patent_id}-{user_id}',
+    args=(app, patent_id, user_id),
+    daemon=True,
+  )
+  thread.start()
+  responseBody = {
+    'success': True, 
+    'message': 'Patent data import started', 
+    'case_id': patent_id
+  }
+  return jsonify(responseBody), 200
+
+@app.route('/api/check-fetching-thread-status/<patent_id>', methods=['GET'])
+def check_fetching_thread_status(patent_id):
+  user_id = get_user_id()
+  if not user_id:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {user_id} Checking Fetching Thread Status for Patent: {patent_id}')
+
+  status, message = check_thread_status(f'{patent_id}-{user_id}')
+  status_code = 200 if status else 400
+  return jsonify({'success': status, 'message': message}), status_code
+  
+@app.route('/api/bulk-fetch', methods=['POST'])
+def bulk_fetch():
+  """
+  Bulk import patents from an uploaded Excel or CSV file
+  ---
+  tags:
+    - Patents
+  summary: Bulk fetch patents from file
+  description: |
+    Accepts a multipart file upload containing patent records and starts background
+    import for each row. The file must be `.csv`, `.xlsx`, or `.xls` and the first
+    two columns must be `patent_id` and `title` (case-insensitive). Additional
+    columns are ignored.
+
+    Each row is processed asynchronously via `fetchById`, which tries USPTO first,
+    then Google Patents, then Free Patents Online. On acceptance, the user's
+    `fetching_patents` list is replaced with all queued patent IDs so the client
+    can poll profile progress.
+
+    Returns 202 immediately after validation; import continues in background threads.
+  consumes:
+    - multipart/form-data
+  produces:
+    - application/json
+  security:
+    - session: []
+  parameters:
+    - in: formData
+      name: file
+      type: file
+      required: true
+      description: |
+        Excel or CSV file with required headers `patent_id`, `title` in the first
+        two columns. Example row: US12345678, Example Patent Title
+  responses:
+    202:
+      description: File validated and batch processing started
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: true
+          message:
+            type: string
+            example: "Batch processing started successfully"
+    400:
+      description: |
+        Bad request — not authenticated, missing/empty file, invalid file type,
+        unreadable file, or headers do not start with patent_id and title
+      schema:
+        type: object
+        properties:
+          success:
+            type: boolean
+            example: false
+          message:
+            type: string
+            example: "File headers must start with ['patent_id', 'title']"
+  """
+  # Check User ID
+  user_id = get_user_id()
+  if not user_id:
+    print('\nUser ID is not in session')
+    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
+  print(f'LOG: {user_id} bulk fetch upload')
+
+  # Check Excel/CSV File Exists
+  if 'file' not in request.files:
+    print('\nNo File provided')
+    return jsonify({'success': False, 'message': 'No file provided'}), 400
+
+  file = request.files['file']
+  fileBytes = file.read()
+  # Check file is not empty and filename is valid
+  if file.filename == '' or not file:
+    print('\nNo File selected')
+    return jsonify({'success': False, 'message': 'No file selected'}), 400
+  if not fileBytes:
+    print('\nFile is empty')
+    return jsonify({'success': False, 'message': 'File is empty'}), 400
+  # Check file type is Excel/CSV
+  allowed = False
+  if file.filename.lower().endswith('.xlsx') or file.filename.lower().endswith('.csv') or file.filename.lower().endswith('.xls'):
+    allowed = True
+  if not allowed:
+    print('\nInvalid file type')
+    return jsonify({'success': False, 'message': 'Invalid file type'}), 400
+  
+  # Read file and check headers
+  titles_in_order = ['patent_id', 'title']
+  filename_lower = file.filename.lower()
+  try:
+    if filename_lower.endswith('.csv'):
+      df = pd.read_csv(io.BytesIO(fileBytes))
+    else:
+      df = pd.read_excel(io.BytesIO(fileBytes))
+  except Exception as e:
+    print(f"\nError reading file: {e}")
+    return jsonify({'success': False, 'message': f'Failed to read file: {e}'}), 400
+
+  if df.shape[1] < 2:
+    print('\nFile does not have at least two columns')
+    return jsonify({'success': False, 'message': 'File does not have required headers'}), 400
+
+  actual_headers = list(df.columns)
+  if actual_headers[0].strip().lower() != titles_in_order[0].strip().lower() \
+      or actual_headers[1].strip().lower() != titles_in_order[1].strip().lower():
+    print('\nFile headers do not match required order')
+    return jsonify({'success': False, 'message': f'File headers must start with {titles_in_order}'}), 400
+
+  # Read the first 2 columns (without headers) from the file
+  records = df.iloc[:, :2].values.tolist()
+  # Isolate the patent_ids to a separate array
+  patent_ids = [record[0] for record in records if len(record) >= 1]
+  update_user_fetching_patents(user_id, patent_ids, [], replace=True)
+  thread = threading.Thread(
+    target=bulk_fetch_by_ids,
+    args=(app, patent_ids, records, user_id),
+    daemon=True,
+  )
+  thread.start()
+  return jsonify({
+    'success': True, 
+    'message': 'Batch processing started successfully'}
+    ), 202
 
 @app.route('/api/get-claims/<case_id>', methods=['GET'])
 def get_claims_for_patent(case_id):
-  #TODO: Add function information to swagger
   user_id = get_user_id()
   if not user_id:
     print('\nUser ID is not in session')
@@ -1862,192 +1915,220 @@ def get_claims_for_patent(case_id):
   print(f'LOG: {user_id} Getting Claims for Case: {case_id}')
 
   try:
-    case_data = get_case_by_id(case_id)
-    if case_data is None:
-      print(f'\nERROR: Error getting claims: Case not found')
-      return jsonify({'success': False, 'message': 'Case not found'}), 404
-
-    existing_claims = case_data.get('claims', [])
-    if (len(existing_claims) > 0) and (existing_claims is not None):
-      print(f'\nERROR: Error getting claims: Claims already exist')
-      return jsonify({'success': True, 'message': 'Claims already exist', 'claims': existing_claims}), 200
-
-    description = case_data.get('description', '')
-    if description.strip() != "":
-      complete_document_contents = f"Description:\n{description}"
-    
-    document_urls = case_data.get('document_urls', [])
-    document_contents = []
-    for document in document_urls:
-      if 'uspto' in document:
-        content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
-      elif '/document/' in document:
-        doc_id = document.split('/')[-1].strip()
-        content = readLocalDocument(doc_id)
+    statusCode = 200
+    resultBody = isolate_claims(case_id)
+    if not resultBody['success']:
+      if resultBody['message'] == 'Case not found':
+        statusCode = 401
+      elif resultBody['message'] == 'No viable document contents provided':
+        statusCode = 402
+      elif resultBody['message'] == 'No claims found':
+        statusCode = 403
+      elif resultBody['message'] == 'Rate Exceeded Error':
+        statusCode = 429
+      elif resultBody['message'] == 'Access Forbidden Error':
+        statusCode = 405
       else:
-        content = readDocumentFromUrl(document)
-      document_contents.append(content)
-
-    documents = case_data.get('documents', [])
-    for document in documents:
-      if document.get('source', '') == 'uspto':
-        content  = readDocumentFromUrl(document.get('url', ''), headers={"X-API-KEY": getEnvKey('uspto')})
-        document_contents.append(content)
-      elif document.get('source', '') == 'local':
-        doc_id = document.get('url', '').split('/')[-1].strip()
-        document_view = getDocumentById(doc_id)
-        if document_view.get('success', False):
-          document_blob = document_view.get('document', {}).get('file_content', '')
-          content = document_blob.decode('utf-8')
-          document_contents.append(content)
-      else:
-        document_contents.append(document.get('content', ''))
-
-    if (len(document_contents) == 0) or (document_contents is None):
-      return jsonify({
-        'success': False, 
-        'message': 'No viable document contents provided', 
-        'documents': {
-          'document_urls_key': document_urls,
-          'documents_key': document_contents
-        }}), 400
-
-    complete_document_contents = ""
-    for content in document_contents:
-      if content.strip() != "":
-        complete_document_contents = f"{complete_document_contents}\n\n{content}"
-    
-    if complete_document_contents.strip() == "":
-      print(f'\nERROR: Error getting claims: No viable document contents provided')
-      return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-
-    claims = get_claims(complete_document_contents)
-    if (len(claims) == 0) or (claims is None):
-      print(f'\nERROR: Error getting claims: No claims found')
-      return jsonify({'success': False, 'message': 'No claims found'}), 400
-    if (claims[0] == 'Rate Exceeded Error') or (claims[0] == 'Access Forbidden Error') or (claims[0] == 'Authentication Error') or (claims[0] == 'Bad Request Error'):
-        print(f'\nERROR: Error getting claims: {claims[0]}')
-        return jsonify({'success': False, 'message': claims[0]}), 400
-
-    # Update Claims in Case Data
-    result = update_case(case_id, {'claims': claims, 'last_updated': dt.now()})
-    if result['success']:
-      return jsonify({'success': True, 'message': 'Claims updated successfully', 'claims': claims}), 200
-    else:
-      print(f'\nERROR: Error updating claims: {result["message"]}')
-      return jsonify({'success': False, 'message': result['message']}), 400
+        statusCode = 400
+    return jsonify(resultBody), statusCode
 
   except Exception as e:
     print(f'\nERROR:Error getting claims data: {str(e)}')
-    return jsonify({'success': False, 'message': f'Error getting claims for patent: {str(e)}'}), 500
+    return jsonify({
+      'success': False, 
+      'message': f'Error getting claims for patent: {str(e)}'
+      }), 500
 
 # NOTE: Current implementation. Need to be updated with new one later after testing.
 @app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
 def live_similarity_analysis(case_id):
   data = request.get_json()
   if data is None:
-    return jsonify({'success': False, 'message': 'No data provided'}), 400
+    return jsonify({
+      'success': False, 
+      'message': 'No data provided'
+      }), 400
   user_id = get_user_id()
   if not user_id:
     print('\nERROR: LiveSearch: User ID is not in session')
-    return jsonify({'success': False, 'message': 'User ID is not in session'}), 400
-  if 'keywords' not in data:
-    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
-  if 'country' not in data:
-    print(f'\nERROR: LiveSearch: Country is required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Country is required'}), 400
-  if 'claims' not in data:
-    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Claims are required'}), 400
-  if 'owners' not in data:
-    print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Owners are required'}), 400
-  keywords = data.get('keywords', [])
-  owners = data.get('owners', [])
-  ref_claims = data.get('claims', [])
-  country = data.get('country', '')
-  context = data.get('context', '')
-  search_limitations = data.get('search_limitations', {})
+    return jsonify({
+      'success': False, 
+      'message': 'User ID is not in session'
+      }), 400
   
   if case_id is None:
     print(f'\nERROR: LiveSearch: Case ID is required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+    return jsonify({
+      'success': False, 
+      'message': 'Case ID is required'
+      }), 400
   case_data = get_case_by_id(case_id)
   if case_data is None:
     print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Case not found'}), 404
+    return jsonify({
+      'success': False, 
+      'message': 'Case not found'
+      }), 404
   
+  ref_claims = case_data['claims']
+  if 'claims' in case_data:
+    temp_claims = case_data['claims']
+    ref_claims = temp_claims
+  owners = case_data.get('owners', [])
+  country = case_data.get('country', '')
   keywords = case_data.get('keywords', [])
   ref_case_title = case_data.get('title', '')
+  ids_to_avoid = case_data.get('excluded_case_ids', [])
   ref_case_id = case_data.get('_id', '').split('_')[-1]
   titles_to_avoid = case_data.get('excluded_case_titles', [])
-  ids_to_avoid = case_data.get('excluded_case_ids', [])
+  search_limitations = case_data.get('search_limitations', {})
+
+  if (keywords is None) or (len(keywords) == 0):
+    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
+    return jsonify({
+      'success': False, 
+      'message': 'Keywords are required'
+      }), 400
+  if (ref_claims is None) or (ref_claims == []) or (ref_claims == {}):
+    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+    return jsonify({
+      'success': False, 
+      'message': 'Claims are required'
+      }), 400
 
   if (len(keywords) == 0) or (keywords is None):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Keywords are required'}), 400
-  if (len(ref_claims) == 0) or (ref_claims is None):
-    print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Claims are required'}), 400
+  if isinstance(ref_claims, list):
+    if (len(ref_claims) == 0) or (ref_claims is None):
+      print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+      return jsonify({'success': False, 'message': 'Claims are required'}), 400
+  else:
+    if ref_claims is None:
+      print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+      return jsonify({'success': False, 'message': 'Claims are required'}), 400
+    if isinstance(ref_claims, dict):
+      if (len(ref_claims.keys()) == 0) or (ref_claims is None):
+        print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
+        return jsonify({'success': False, 'message': 'Claims are required'}), 400
+  if (len(owners) == 0) or (owners is None):
+    owners = list(case_data.get('current_assignee') or [])
+    if case_data.get('applicant'):
+      owners.append(case_data['applicant'])
+    owners.extend(case_data.get('inventors') or [])
+    owners = [o.strip() for o in owners if isinstance(o, str) and o.strip()]
   if (len(owners) == 0) or (owners is None):
     print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
     return jsonify({'success': False, 'message': 'Owners are required'}), 400
-  
-  start_time = time.time()
-  update_case(case_id, {'infringement_analysis_status': 'Started', 'last_updated': dt.now()})
-  # Perform Live Patent Search
-  try:
-    patentResults = searchPatentSources(keywords, country, ref_claims, ref_case_title, ref_case_id)
-    update_infringements(case_id, patentResults)
-    update_case(case_id, {'infringements': patentResults, 'infringement_analysis_status': 'Patent Sources Completed', 'last_updated': dt.now()})
-  except Exception as e:
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Patent Sources', 'last_updated': dt.now()})
-    print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
-    return jsonify({
-      'success': False, 
-      'message': f'Error performing patent source infringement analysis: {str(e)}',
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 500
-  
-  # Perform Live Product Search
-  try:
-    product_details_list = searchProductSources(keywords, owners, ref_claims, search_limitations)
-    update_infringements(case_id, product_details_list)
-    update_case(case_id, {'infringement_analysis_status': 'Product Sources Completed', 'last_updated': dt.now()})
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Completed', 'last_updated': dt.now()})
-    return jsonify({
-      'success': True, 
-      'message': 'Infringement analysis completed - Product Sources, Patent Sources', 
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 200
-  except Exception as e:
-    current_time = time.time()
-    time_in_seconds = current_time - start_time
-    time_in_minutes = time_in_seconds // 60
-    time_in_hours = int(time_in_minutes // 60)
-    time_in_seconds = time_in_seconds % 60
-    time_in_minutes = int(time_in_minutes % 60)
-    update_case(case_id, {'infringement_analysis_status': 'Failed during Product Sources', 'last_updated': dt.now()})
-    print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
-    return jsonify({
-      'success': False, 
-      'message': f'Error performing product sourceinfringement analysis: {str(e)}',
-      'search_results': product_details_list,
-      'execution_time': f"{time_in_hours}h {time_in_minutes}m {time_in_seconds}s"
-      }), 500
+
+  # Filter original claims into buckets
+  original_lang_asserted_claims = []
+  original_lang_independent_claims = []
+  original_lang_core_claims = []
+  original_lang_pivotal_claims = []
+
+  # Filter market language claims into buckets
+  market_lang_asserted_claims = []
+  market_lang_independent_claims = []
+  market_lang_core_claims = []
+  market_lang_pivotal_claims = []
+
+  search_type = 'bucketed'
+  if isinstance(ref_claims, list):
+    search_type = 'generic'
+    for i, claim in enumerate(ref_claims):
+      if isinstance(claim, str) and claim.strip():
+        original_lang_asserted_claims.append({
+          'ref_claim_index': i,
+          'text': claim.strip(),
+        })
+  if isinstance(ref_claims, dict):
+    for key, claimData in ref_claims.items():
+      if not isinstance(claimData, dict):
+        continue
+      try:
+        claim_index = int(key)
+      except (TypeError, ValueError):
+        claim_index = key
+      documented = (claimData.get('documented_claim', '') or '').strip()
+      market = (claimData.get('market_language_claim', '') or '').strip()
+      if claimData.get('claim_type') == 'asserted_claim':
+        if documented:
+          original_lang_asserted_claims.append({'ref_claim_index': claim_index, 'text': documented})
+        if market:
+          market_lang_asserted_claims.append({'ref_claim_index': claim_index, 'text': market})
+      elif claimData.get('claim_type') == 'independent_claim':
+        if documented:
+          original_lang_independent_claims.append({'ref_claim_index': claim_index, 'text': documented})
+        if market:
+          market_lang_independent_claims.append({'ref_claim_index': claim_index, 'text': market})
+      elif claimData.get('claim_type') == 'core_claim':
+        if documented:
+          original_lang_core_claims.append({'ref_claim_index': claim_index, 'text': documented})
+        if market:
+          market_lang_core_claims.append({'ref_claim_index': claim_index, 'text': market})
+      elif claimData.get('claim_type') == 'pivotal_claim':
+        if documented:
+          original_lang_pivotal_claims.append({'ref_claim_index': claim_index, 'text': documented})
+        if market:
+          market_lang_pivotal_claims.append({'ref_claim_index': claim_index, 'text': market})
+
+  # Start Live Patent Search in background thread
+  update_case(case_id, {
+    'product_analysis_time_taken': '',
+    'patent_analysis_time_taken': '',
+    })
+  patent_thread = threading.Thread(
+    target=start_patent_analysis,
+    name=f'patent_analysis_{case_id}',
+    args=(
+      app, 
+      case_id, 
+      keywords, 
+      country, 
+      ref_case_title, 
+      ref_case_id, 
+      titles_to_avoid, 
+      ids_to_avoid, 
+      search_type,
+      original_lang_asserted_claims, 
+      original_lang_independent_claims, 
+      original_lang_core_claims, 
+      original_lang_pivotal_claims),
+    daemon=False,
+  )
+  patent_thread.start()
+
+  # Start Live Patent Search in background thread
+  product_thread = threading.Thread(
+    target=start_product_analysis,
+    name=f'product_analysis_{case_id}',
+    args=(
+      app, 
+      case_id, 
+      ref_case_title,
+      keywords, 
+      owners, 
+      search_limitations, 
+      original_lang_asserted_claims, 
+      original_lang_independent_claims, 
+      original_lang_core_claims, 
+      original_lang_pivotal_claims,
+      market_lang_asserted_claims,
+      market_lang_independent_claims,
+      market_lang_core_claims,
+      market_lang_pivotal_claims,
+      search_type),
+    daemon=False,
+  )
+  product_thread.start()
+
+  return jsonify({
+    'success': True, 
+    'message': 'Product analysis started successfully',
+    'patent_thread_id': patent_thread.ident,
+    'product_thread_id': product_thread.ident,
+    }), 200
 
 @app.route('/api/document/<document_id>', methods=['GET'])
 def get_document(document_id):
@@ -2216,38 +2297,17 @@ def generate_patent_description(case_id):
   if data is None:
     return jsonify({'success': False, 'message': 'No data provided'}), 400
   
-  case_data = get_case_by_id(case_id)
-  if case_data is None:
-    return jsonify({'success': False, 'message': 'Case not found'}), 404
+  resultBody = generate_patent_description(case_id)
+  statusCode = 200
+  if not resultBody['success']:
+    if resultBody['message'] == 'Case not found':
+      statusCode = 401
+    elif resultBody['message'] == 'No viable document contents provided':
+      statusCode = 402
+    else:
+      statusCode = 400
+  return jsonify(resultBody), statusCode
   
-  
-  document_urls = case_data.get('document_urls', [])
-  document_contents = []
-  for document in document_urls:
-    content  = readDocumentFromUrl(document, headers={"X-API-KEY": getEnvKey('uspto')})
-    document_contents.append(content)
-  
-  if (len(document_contents) == 0) or (document_contents is None):
-    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-  
-  complete_document_contents = ""
-  for content in document_contents:
-    if content.strip() != "":
-      complete_document_contents = f"{complete_document_contents}\n\n{content}"
-  
-  if complete_document_contents.strip() == "":
-    return jsonify({'success': False, 'message': 'No viable document contents provided'}), 400
-
-  summary = get_patent_summary(complete_document_contents)
-  
-  # Update Case Data for the Generated Description
-  result = update_case(case_id, {'description': summary, 'last_updated': dt.now()})
-  print('TEST 6: Result')
-  return jsonify({
-    'success': True, 
-    'message': 'Patent summary generated successfully', 
-    'summary': summary}), 200
-
 INFRINGEMENT_CHART_ERROR_RESPONSES = {
   'CASE_NOT_FOUND': (404, 'Case not found.'),
   'NO_PARENT_CLAIMS': (422, 'This case has no claims. Add claims before generating an infringement chart.'),
@@ -2349,32 +2409,23 @@ def getInfringementChart(case_id):
     }), 401
   print(f'LOG: {user_id} Getting Infringement Chart for Case: {case_id}')
   try:
-    infringement_chart, error_code = get_case_infringement_chart(case_id)
+    result = get_case_infringement_chart(case_id)
+    if not result['success']:
+      if result['error_code'] == 'NO_MATCHES_ABOVE_THRESHOLD':
+        return jsonify(result), 200
+      return jsonify(result), result['status_code']
+
+    infringement_chart = result['chart_data']
+    patent_chart_data = result['patent_chart_data']
+    product_chart_data = result['product_chart_data']
     rows_count = len(infringement_chart) if infringement_chart is not None else 0
-    print(f'LOG: Infringement Chart rows: {rows_count} (error_code={error_code})')
-
-    if error_code == 'NO_MATCHES_ABOVE_THRESHOLD':
-      return jsonify({
-        'success': True,
-        'chart_data': [],
-        'error_code': error_code,
-        'message': 'No claim pairs met the similarity threshold.',
-      }), 200
-
-    if error_code is not None:
-      status, message = INFRINGEMENT_CHART_ERROR_RESPONSES.get(
-        error_code,
-        (400, 'No infringement chart found. Please check Claims and Infringements'),
-      )
-      return jsonify({
-        'success': False,
-        'error_code': error_code,
-        'message': message,
-      }), status
+    print(f'LOG: Infringement Chart rows: {rows_count}')
 
     return jsonify({
       'success': True,
       'chart_data': infringement_chart,
+      'patent_chart_data': patent_chart_data,
+      'product_chart_data': product_chart_data
     }), 200
   except Exception as e:
     print(f'\nERROR:Error getting infringement chart data: {str(e)}')
@@ -2456,6 +2507,949 @@ def add_search_history():
   if not added:
     return jsonify({'success': False, 'message': 'Failed to add search history'}), 400
   return jsonify({'success': True, 'message': 'Search history added successfully', 'search_results': search_results}), 200
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Endpoints for Folders CRUD Operations
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/folders/list', methods=['GET'])
+def get_folders():
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False, 
+      'message': 'Not authenticated'
+      }), 401
+  folders = model_list_folders(user_id)
+  return jsonify({
+    'success': True, 
+    'message': 'Folders retrieved successfully', 
+    'folders': folders
+    }), 200
+  
+@app.route('/api/folders/get/<folder_id>', methods=['GET'])
+def api_get_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Folder not found'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  viewers = folder.get('viewers') or []
+  if (user_id not in editors) and (user_id not in viewers) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Access Permission denied to folder'
+      }), 403
+
+  return jsonify({
+    'success': True,
+    'message': 'Folder retrieved successfully',
+    'folder': folder
+  }), 200
+
+@app.route('/api/folders/delete/<folder_id>', methods=['POST'])
+def api_delete_folder(folder_id):
+  """
+  Delete a folder.
+  Caller must be the folder creator or owner.
+  If delete_all_cases is true, every case in the folder is deleted (delete_case_ids is ignored).
+  If delete_all_cases is false, delete_case_ids is required (may be empty). Listed cases
+  are deleted; remaining cases are unlinked from the folder, not deleted.
+  The folder is removed first. Case delete/unlink problems are returned as 200 with errors.
+  ---
+  tags:
+    - Folders
+  summary: Delete a folder
+  description: |
+    Deletes a folder. Only the folder creator or owner may call this.
+    Requires an authenticated session (user_id in session or X-User-ID header)
+    and a folder_id path parameter.
+    JSON body:
+    - delete_all_cases (boolean, required): if true, try to delete every case in the folder.
+      delete_case_ids is ignored.
+    - delete_case_ids (array of strings, required when delete_all_cases is false): case ids
+      to delete. Empty list means delete the folder only and unlink all remaining cases.
+    Surviving cases (not deleted, or delete failed) have this folder id removed from
+    their folders list. User-profile folder links are not updated yet.
+    A case deleted here is removed globally, including from other folders.
+  security:
+    - session: []
+  parameters:
+    - in: path
+      name: folder_id
+      required: true
+      type: string
+      description: Folder id to delete
+    - in: body
+      name: body
+      required: true
+      schema:
+        type: object
+        required:
+          - delete_all_cases
+        properties:
+          delete_all_cases:
+            type: boolean
+            description: If true, delete all cases in the folder. If false, use delete_case_ids.
+          delete_case_ids:
+            type: array
+            items:
+              type: string
+            description: Case ids to delete when delete_all_cases is false. Required key in that case; may be empty.
+  responses:
+    200:
+      description: |
+        Folder deleted. success true if every requested case delete/unlink succeeded.
+        success false if the folder was deleted but some cases could not be deleted or unlinked.
+        Body includes deleted_case_ids and, on partial failure, errors.
+    400:
+      description: Missing/invalid JSON body, missing delete_all_cases, missing delete_case_ids when required, permission denied, folder not found, or other ValueError from delete_folder
+    401:
+      description: Not authenticated
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'delete_all_cases' not in data:
+    return jsonify({'success': False, 'message': 'Delete all cases is required'}), 400
+  delete_all_cases = data.get('delete_all_cases', False)
+  delete_case_ids = []
+  if not delete_all_cases:
+    if 'delete_case_ids' not in data:
+      return jsonify({'success': False, 'message': 'Delete case IDs are required'}), 400
+    delete_case_ids = data.get('delete_case_ids', [])
+  try:
+    case_remove_errors, deleted_case_ids = model_delete_folder(user_id, folder_id, delete_all_cases, delete_case_ids)
+    if len(case_remove_errors) > 0:
+      # Returns list of errors faced and list of cases that were deleted
+      return jsonify({
+        'success': False, 
+        'message': f'Folder deleted, but {len(case_remove_errors)} errors were faced when deleting/unlinking cases', 
+        'errors': case_remove_errors,
+        'deleted_case_ids': deleted_case_ids
+        }), 200
+    return jsonify({
+      'success': True, 
+      'message': 'Folder deleted successfully', 
+      'deleted_case_ids': deleted_case_ids
+      }), 200
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+@app.route('/api/folders/create', methods=['POST'])
+def api_create_folder():
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False, 
+      'message': 'Not authenticated'
+      }), 401
+
+  creator_profile = get_user_profile(user_id)
+  if creator_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'folder_name' not in data:
+    return jsonify({'success': False, 'message': 'Folder name is required'}), 400
+  
+  folder_name = data.get('folder_name', '')
+  viewers = data.get('viewers', [])
+  editors = data.get('editors', [])
+  cases = data.get('cases', [])
+
+  profile_update_errors = []
+
+  if len(folder_name.strip()) == 0:
+    return jsonify({'success': False, 'message': 'Folder name cannot be empty'}), 400  
+
+  folder_id = model_create_folder(user_id, folder_name, viewers, editors, cases)
+  creator_folders = list(creator_profile.get('folders') or [])
+  if folder_id not in creator_folders:
+    creator_folders.append(folder_id)
+  creator_update_result = update_user({'folders': creator_folders}, user_id)
+  if not creator_update_result.get('success'):
+    profile_update_errors.append(f'Failed to update creator profile: {user_id}')
+
+  for viewer_id in viewers:
+    viewer_profile = get_user_profile(viewer_id)
+    if viewer_profile is None:
+      profile_update_errors.append(f'Invalid viewer: {viewer_id}')
+    else:
+      viewer_folders = list(viewer_profile.get('folders') or [])
+      if folder_id not in viewer_folders:
+        viewer_folders.append(folder_id)
+      viewer_update_result = update_user({'folders': viewer_folders}, viewer_id)
+      if not viewer_update_result.get('success'):
+        profile_update_errors.append(f'Failed to update viewer profile: {viewer_id}')
+    
+  for editor_id in editors:
+    editor_profile = get_user_profile(editor_id)
+    if editor_profile is None:
+      profile_update_errors.append(f'Invalid editor: {editor_id}')
+    else:
+      editor_folders = list(editor_profile.get('folders') or [])
+      if folder_id not in editor_folders:
+        editor_folders.append(folder_id)
+      editor_update_result = update_user({'folders': editor_folders}, editor_id)
+      if not editor_update_result.get('success'):
+        profile_update_errors.append(f'Failed to update editor profile: {editor_id}')
+
+  folder = model_get_folder(folder_id)
+  return jsonify({
+    'success': True, 
+    'message': 'Folder created successfully', 
+    'profile_update_errors': profile_update_errors,
+    'folder': folder
+    }), 200
+
+@app.route('/api/folders/rename/<folder_id>', methods=['POST'])
+def api_rename_folder(folder_id):
+  """
+  Rename a folder.
+  Caller must be the folder creator, owner, or an editor.
+  Empty or whitespace-only names are rejected. Same name as current is success with no write.
+  ---
+  tags:
+    - Folders
+  summary: Rename a folder
+  description: |
+    Updates a folder's name. Creator, owner, or editor may call this.
+    Requires an authenticated session (user_id in session or X-User-ID header)
+    and a folder_id path parameter.
+    JSON body:
+    - new_name (string, required): non-empty after trim.
+    Returns the updated folder. If new_name matches the current name, returns 200
+    without changing the document.
+  security:
+    - session: []
+  parameters:
+    - in: path
+      name: folder_id
+      required: true
+      type: string
+      description: Folder id to rename
+    - in: body
+      name: body
+      required: true
+      schema:
+        type: object
+        required:
+          - new_name
+        properties:
+          new_name:
+            type: string
+            description: New folder name (trimmed; must not be empty)
+  responses:
+    200:
+      description: Folder renamed (or already had this name). Body includes folder.
+    400:
+      description: Missing/invalid JSON body, missing or empty new_name, or rename failed
+    401:
+      description: Not authenticated
+    403:
+      description: Caller profile missing, or caller is not creator/owner/editor
+    404:
+      description: Folder not found
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+  
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'new_name' not in data:
+    return jsonify({'success': False, 'message': 'New name is required'}), 400
+
+  new_name = str(data.get('new_name', '')).strip()
+  if not new_name:
+    return jsonify({'success': False, 'message': 'New name cannot be empty'}), 400
+  try:
+    model_rename_folder(folder_id, new_name, user_id)
+    return jsonify({
+      'success': True,
+      'message': 'Folder renamed successfully',
+      'folder': model_get_folder(folder_id)
+      }), 200
+  except ValueError as e:
+    if 'permission denied' in str(e).lower():
+      return jsonify({
+        'success': False,
+        'message': 'Edit Permission denied to folder'
+        }), 403
+    if 'folder not found' in str(e).lower():
+      return jsonify({
+        'success': False,
+        'message': 'Invalid folder id'
+        }), 404
+    return jsonify({'success': False, 'message': str(e)}), 400
+  
+@app.route('/api/folders/add-viewer/<folder_id>', methods=['POST'])
+def api_add_viewer_to_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'viewer_id' not in data:
+    return jsonify({'success': False, 'message': 'Viewer ID is required'}), 400
+
+  viewer_id = str(data.get('viewer_id', '')).strip()
+  if not viewer_id:
+    return jsonify({'success': False, 'message': 'Viewer ID cannot be empty'}), 400
+
+  viewer_profile = get_user_profile(viewer_id)
+  if viewer_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid viewer'
+      }), 400
+
+  try:
+    add_viewer_flag = model_add_viewer_to_folder(folder_id, viewer_id)
+    if not add_viewer_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to add viewer to folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  viewer_folders = list(viewer_profile.get('folders') or [])
+  if folder_id not in viewer_folders:
+    viewer_folders.append(folder_id)
+  update_result = update_user({'folders': viewer_folders}, viewer_id)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update viewer profile')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Viewer added to folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/remove-viewer/<folder_id>', methods=['POST'])
+def api_remove_viewer_from_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'viewer_id' not in data:
+    return jsonify({'success': False, 'message': 'Viewer ID is required'}), 400
+
+  viewer_id = str(data.get('viewer_id', '')).strip()
+  if not viewer_id:
+    return jsonify({'success': False, 'message': 'Viewer ID cannot be empty'}), 400
+
+  viewer_profile = get_user_profile(viewer_id)
+  if viewer_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid viewer'
+      }), 400
+
+  try:
+    add_viewer_flag = model_remove_viewer_from_folder(folder_id, viewer_id)
+    if not add_viewer_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to remove viewer from folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  viewer_folders = list(viewer_profile.get('folders') or [])
+  if folder_id in viewer_folders:
+    viewer_folders.remove(folder_id)
+  update_result = update_user({'folders': viewer_folders}, viewer_id)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update viewer profile')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Viewer removed from folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/add-editor/<folder_id>', methods=['POST'])
+def api_add_editor_to_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'editor_id' not in data:
+    return jsonify({'success': False, 'message': 'Editor ID is required'}), 400
+
+  editor_id = str(data.get('editor_id', '')).strip()
+  if not editor_id:
+    return jsonify({'success': False, 'message': 'Editor ID cannot be empty'}), 400
+
+  editor_profile = get_user_profile(editor_id)
+  if editor_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid editor'
+      }), 400
+
+  try:
+    add_editor_flag = model_add_editor_to_folder(folder_id, editor_id)
+    if not add_editor_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to add editor to folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  editor_folders = list(editor_profile.get('folders') or [])
+  if folder_id not in editor_folders:
+    editor_folders.append(folder_id)
+  update_result = update_user({'folders': editor_folders}, editor_id)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update editor profile')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Editor added to folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/remove-editor/<folder_id>', methods=['POST'])
+def api_remove_editor_from_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'editor_id' not in data:
+    return jsonify({'success': False, 'message': 'Editor ID is required'}), 400
+
+  editor_id = str(data.get('editor_id', '')).strip()
+  if not editor_id:
+    return jsonify({'success': False, 'message': 'Editor ID cannot be empty'}), 400
+
+  editor_profile = get_user_profile(editor_id)
+  if editor_profile is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid editor'
+      }), 400
+
+  try:
+    add_editor_flag = model_remove_editor_from_folder(folder_id, editor_id)
+    if not add_editor_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to remove editor from folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  editor_folders = list(editor_profile.get('folders') or [])
+  if folder_id in editor_folders:
+    editor_folders.remove(folder_id)
+  update_result = update_user({'folders': editor_folders}, editor_id)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update editor profile')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Editor removed from folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/add-case/<folder_id>', methods=['POST'])
+def api_add_case_to_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'case_id' not in data:
+    return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+
+  case_id = str(data.get('case_id', '')).strip()
+  if not case_id:
+    return jsonify({'success': False, 'message': 'Case ID cannot be empty'}), 400
+
+  case_data = get_case_by_id(case_id)
+  if case_data is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+  try:
+    add_case_flag = model_add_case_to_folder(folder_id, case_id)
+    if not add_case_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to add case to folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  case_folders = list(case_data.get('folders') or [])
+  if folder_id not in case_folders:
+    case_folders.append(folder_id)
+  update_body = {
+    'folders': case_folders,
+  }
+  update_result = update_case(case_id, update_body)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update case')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Case added to folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+@app.route('/api/folders/remove-case/<folder_id>', methods=['POST'])
+def api_remove_case_from_folder(folder_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({
+      'success': False,
+      'message': 'Not authenticated'
+      }), 401
+
+  if get_user_profile(user_id) is None:
+    return jsonify({
+      'success': False,
+      'message': 'Permission denied'
+      }), 403
+
+  folder = model_get_folder(folder_id)
+  if folder is None:
+    return jsonify({
+      'success': False,
+      'message': 'Invalid folder id'
+      }), 404
+
+  creator_id = folder.get('created_by')
+  editors = folder.get('editors') or []
+  if (user_id not in editors) and (user_id != creator_id):
+    return jsonify({
+      'success': False,
+      'message': 'Edit Permission denied to folder'
+      }), 403
+
+  data = request.get_json()
+  if data is None:
+    return jsonify({'success': False, 'message': 'No data provided'}), 400
+  if 'case_id' not in data:
+    return jsonify({'success': False, 'message': 'Case ID is required'}), 400
+
+  case_id = str(data.get('case_id', '')).strip()
+  if not case_id:
+    return jsonify({'success': False, 'message': 'Case ID cannot be empty'}), 400
+
+  case_data = get_case_by_id(case_id)
+  if case_data is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+  try:
+    add_case_flag = model_remove_case_from_folder(folder_id, case_id)
+    if not add_case_flag:
+      return jsonify({
+        'success': False,
+        'message': 'Failed to remove case from folder'
+        }), 400
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+
+  case_folders = list(case_data.get('folders') or [])
+  if folder_id in case_folders:
+    case_folders.remove(folder_id)
+  update_body = {
+    'folders': case_folders,
+  }
+  update_result = update_case(case_id, update_body)
+  if not update_result.get('success'):
+    return jsonify({
+      'success': False,
+      'message': update_result.get('message', 'Failed to update case')
+      }), 500
+
+  return jsonify({
+    'success': True,
+    'message': 'Case removed from folder successfully',
+    'folder': model_get_folder(folder_id),
+  }), 200
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Infringement CRUD endpoints
+#
+# All operations are case-scoped: every endpoint requires a case_id in the
+# path and a user_id that resolves to an existing user. Bodies carry user_id
+# for POST/PUT/DELETE; GET falls back to the X-User-ID header / session via
+# get_user_id() for parity with the rest of the API.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _resolve_infringement_request(case_id, body_data=None, require_body=False):
+  """
+  Shared validation for infringement routes.
+
+  Returns ``(user_id, case, error_response)``. When ``error_response`` is not
+  None, the route should return it directly.
+  """
+  if require_body and body_data is None:
+    return None, None, (jsonify({'success': False, 'message': 'No data provided'}), 400)
+
+  user_id = None
+  if body_data is not None:
+    user_id = body_data.get('user_id')
+  if not user_id:
+    user_id = get_user_id()
+  if not user_id:
+    return None, None, (jsonify({'success': False, 'message': 'user_id is required'}), 400)
+
+  if get_user_profile(user_id) is None:
+    return None, None, (jsonify({'success': False, 'message': 'User not found'}), 404)
+
+  if not case_id:
+    return None, None, (jsonify({'success': False, 'message': 'case_id is required'}), 400)
+
+  case = get_case_by_id(case_id)
+  if case is None:
+    return None, None, (jsonify({'success': False, 'message': 'Case not found'}), 404)
+
+  return user_id, case, None
+
+@app.route('/api/cases/<case_id>/infringements', methods=['GET'])
+def list_case_infringements(case_id):
+  """
+  List infringements for a case, optionally filtered by a created_at range.
+  ---
+  tags:
+    - Infringements
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+    - name: start_date
+      in: query
+      required: false
+      type: string
+      description: ISO-8601 timestamp; lower bound for created_at (inclusive).
+    - name: end_date
+      in: query
+      required: false
+      type: string
+      description: ISO-8601 timestamp; upper bound for created_at (inclusive).
+  responses:
+    200:
+      description: Infringements retrieved successfully.
+    400:
+      description: Missing user_id or case_id.
+    404:
+      description: User or case not found.
+  """
+  user_id, case, error = _resolve_infringement_request(case_id)
+  if error is not None:
+    return error
+  print(f'LOG: {user_id} List Infringements for Case: {case_id}')
+
+  start_date = request.args.get('start_date') or None
+  end_date = request.args.get('end_date') or None
+
+  if start_date or end_date:
+    result = _model_get_infringements_by_created_date(case_id, start_date=start_date, end_date=end_date)
+  else:
+    result = _model_get_infringements_by_parent_case_id(case_id)
+
+  status = 200 if result.get('success') else 500
+  return jsonify(result), status
+
+@app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['GET'])
+def get_case_infringement(case_id, infringement_id):
+  """
+  Fetch a single infringement scoped to the given case.
+  ---
+  tags:
+    - Infringements
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+    - name: infringement_id
+      in: path
+      required: true
+      type: string
+  responses:
+    200:
+      description: Infringement retrieved successfully.
+    400:
+      description: Missing user_id or case_id.
+    404:
+      description: User, case, or infringement not found.
+  """
+  user_id, case, error = _resolve_infringement_request(case_id)
+  if error is not None:
+    return error
+  print(f'LOG: {user_id} Get Infringement {infringement_id} for Case: {case_id}')
+
+  result = _model_get_infringement_by_id(infringement_id, parent_case_id=case_id)
+  status = 200 if result.get('success') else 404
+  return jsonify(result), status
+
+@app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['PUT'])
+def update_case_infringement(case_id, infringement_id):
+  """
+  Update an existing infringement scoped to the given case.
+
+  Body shape:
+    { "user_id": str, "update_data": { ... } }
+  ---
+  tags:
+    - Infringements
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+    - name: infringement_id
+      in: path
+      required: true
+      type: string
+  responses:
+    200:
+      description: Infringement updated successfully.
+    400:
+      description: Missing user_id, case_id, or update_data.
+    404:
+      description: User, case, or infringement not found.
+  """
+  data = request.get_json(silent=True)
+  user_id, case, error = _resolve_infringement_request(case_id, body_data=data, require_body=True)
+  if error is not None:
+    return error
+  print(f'LOG: {user_id} Update Infringement {infringement_id} for Case: {case_id}')
+
+  update_data = data.get('update_data')
+  if not isinstance(update_data, dict) or len(update_data) == 0:
+    return jsonify({'success': False, 'message': 'update_data must be a non-empty object'}), 400
+
+  update_data.pop('_id', None)
+  update_data.pop('parent_case_id', None)
+
+  result = _model_update_infringement_by_id(infringement_id, update_data, parent_case_id=case_id)
+  status = 200 if result.get('success') else 404
+  return jsonify(result), status
+
+@app.route('/api/cases/<case_id>/infringements/<infringement_id>', methods=['DELETE'])
+def delete_case_infringement(case_id, infringement_id):
+  """
+  Delete a single infringement scoped to the given case.
+
+  Body shape:
+    { "user_id": str }
+  ---
+  tags:
+    - Infringements
+  parameters:
+    - name: case_id
+      in: path
+      required: true
+      type: string
+    - name: infringement_id
+      in: path
+      required: true
+      type: string
+  responses:
+    200:
+      description: Infringement deleted successfully.
+    400:
+      description: Missing user_id or case_id.
+    404:
+      description: User, case, or infringement not found.
+  """
+  data = request.get_json(silent=True)
+  user_id, case, error = _resolve_infringement_request(case_id, body_data=data)
+  if error is not None:
+    return error
+  print(f'LOG: {user_id} Delete Infringement {infringement_id} for Case: {case_id}')
+
+  result = _model_delete_infringement_by_id(infringement_id, parent_case_id=case_id)
+  status = 200 if result.get('success') else 404
+  return jsonify(result), status
 
 if __name__ == '__main__':
     port = app.config['PORT']

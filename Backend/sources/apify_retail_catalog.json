@@ -1,0 +1,101 @@
+[
+  {
+    "catalog_id": "amazon_us",
+    "source_title": "Amazon US",
+    "source_identifier": "aaravrawlley/amazon-product-scraper",
+    "source_url": "https://www.amazon.com",
+    "country": "United States",
+    "countryCode": "US",
+    "hosts": ["amazon.com", "www.amazon.com"]
+  },
+  {
+    "catalog_id": "amazon_uk",
+    "source_title": "Amazon UK",
+    "source_identifier": "aaravrawlley/amazon-product-scraper",
+    "source_url": "https://www.amazon.co.uk",
+    "country": "United Kingdom",
+    "countryCode": "UK",
+    "hosts": ["amazon.co.uk", "www.amazon.co.uk"]
+  },
+  {
+    "catalog_id": "amazon_de",
+    "source_title": "Amazon Germany",
+    "source_identifier": "aaravrawlley/amazon-product-scraper",
+    "source_url": "https://www.amazon.de",
+    "country": "Germany",
+    "countryCode": "DE",
+    "hosts": ["amazon.de", "www.amazon.de"]
+  },
+  {
+    "catalog_id": "amazon_fr",
+    "source_title": "Amazon France",
+    "source_identifier": "aaravrawlley/amazon-product-scraper",
+    "source_url": "https://www.amazon.fr",
+    "country": "France",
+    "countryCode": "FR",
+    "hosts": ["amazon.fr", "www.amazon.fr"]
+  },
+  {
+    "catalog_id": "ebay_us",
+    "source_title": "eBay US",
+    "source_identifier": "burbn/ebay-search-scraper",
+    "source_url": "https://www.ebay.com",
+    "country": "United States",
+    "countryCode": "US",
+    "hosts": ["ebay.com", "www.ebay.com"]
+  },
+  {
+    "catalog_id": "ebay_uk",
+    "source_title": "eBay UK",
+    "source_identifier": "burbn/ebay-search-scraper",
+    "source_url": "https://www.ebay.co.uk",
+    "country": "United Kingdom",
+    "countryCode": "UK",
+    "hosts": ["ebay.co.uk", "www.ebay.co.uk"]
+  },
+  {
+    "catalog_id": "walmart_us",
+    "source_title": "Walmart",
+    "source_identifier": "burbn/walmart-product-search",
+    "source_url": "https://www.walmart.com",
+    "country": "United States",
+    "countryCode": "US",
+    "hosts": ["walmart.com", "www.walmart.com"]
+  },
+  {
+    "catalog_id": "target_us",
+    "source_title": "Target",
+    "source_identifier": "automation-lab/target-scraper",
+    "source_url": "https://www.target.com",
+    "country": "United States",
+    "countryCode": "US",
+    "hosts": ["target.com", "www.target.com"]
+  },
+  {
+    "catalog_id": "bestbuy_us",
+    "source_title": "Best Buy",
+    "source_identifier": "sovereigntaylor/bestbuy-scraper",
+    "source_url": "https://www.bestbuy.com",
+    "country": "United States",
+    "countryCode": "US",
+    "hosts": ["bestbuy.com", "www.bestbuy.com"]
+  },
+  {
+    "catalog_id": "homedepot_us",
+    "source_title": "Home Depot",
+    "source_identifier": "crawlerbros/homedepot-scraper",
+    "source_url": "https://www.homedepot.com",
+    "country": "United States",
+    "countryCode": "US",
+    "hosts": ["homedepot.com", "www.homedepot.com"]
+  },
+  {
+    "catalog_id": "lowes_us",
+    "source_title": "Lowe's",
+    "source_identifier": "studio-amba/lowes-scraper",
+    "source_url": "https://www.lowes.com",
+    "country": "United States",
+    "countryCode": "US",
+    "hosts": ["lowes.com", "www.lowes.com"]
+  }
+]

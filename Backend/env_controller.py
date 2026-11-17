@@ -16,6 +16,12 @@ def getEnvKey(key):
         return os.environ.get('OPENAI_API_KEY')
     elif key == 'gemini':
         return os.environ.get('GEMINI_API_KEY')
+    elif key == 'google':
+        return os.environ.get('GOOGLE_API_KEY')
+    elif key == 'google_cse':
+        return os.environ.get('GOOGLE_CSE_ID')
+    elif key == 'apify':
+        return os.environ.get('APIFY_API_KEY')
     else:
         return None
 
@@ -28,16 +34,6 @@ def getDatabaseConnectionString():
     load_dotenv()
 
     return os.environ.get('PYTHON_MONGODB_CONNECT_STRING')
-    
-    environment = os.environ.get('ENVIRONMENT')
-    if environment == production:
-        return os.environ.get('DATABASE_CONNECTION_STRING_PROD')
-    elif environment == development:
-        return os.environ.get('DATABASE_CONNECTION_STRING_DEV')
-    elif environment == testing:
-        return os.environ.get('DATABASE_CONNECTION_STRING_TEST')
-    else:
-        return os.environ.get('DATABASE_CONNECTION_STRING_DEV')
 
 def getCaseDatabaseName():
     # Load environment variables
@@ -109,6 +105,20 @@ def getDocumentDatabaseName():
     else:
         return os.environ.get('DOCUMENTS_DATABASE_NAME_DEV')
 
+def getInfringementDatabaseName():
+    # Load environment variables
+    load_dotenv()
+
+    environment = os.environ.get('ENVIRONMENT')
+    if environment == production:
+        return os.environ.get('INFRINGEMENT_DATABASE_NAME_PROD')
+    elif environment == development:
+        return os.environ.get('INFRINGEMENT_DATABASE_NAME_DEV')
+    elif environment == testing:
+        return os.environ.get('INFRINGEMENT_DATABASE_NAME_TEST')
+    else:
+        return os.environ.get('INFRINGEMENT_DATABASE_NAME_DEV')
+
 def getSearchHistoryDatabaseName():
     # Load environment variables
     load_dotenv()
@@ -122,3 +132,17 @@ def getSearchHistoryDatabaseName():
         return os.environ.get('SEARCH_HISTORY_DATABASE_NAME_TEST')
     else:
         return os.environ.get('SEARCH_HISTORY_DATABASE_NAME_DEV')
+
+def getFolderDatabaseName():
+    # Load environment variables
+    load_dotenv()
+    
+    environment = os.environ.get('ENVIRONMENT')
+    if environment == production:
+        return os.environ.get('FOLDER_DATABASE_NAME_PROD')
+    elif environment == development:
+        return os.environ.get('FOLDER_DATABASE_NAME_DEV')
+    elif environment == testing:
+        return os.environ.get('FOLDER_DATABASE_NAME_TEST')
+    else:
+        return os.environ.get('FOLDER_DATABASE_NAME_DEV')

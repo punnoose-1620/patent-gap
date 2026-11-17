@@ -1,21 +1,62 @@
 import time
 import json
+import sys
+import threading
 import requests
+from urllib.parse import urlparse
 from tqdm import tqdm
 from bs4 import BeautifulSoup
+from datetime import datetime
 from file_controller import readFromXmlUrl, readFromPdfUrl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from llm_brain.gemini import Gemini
-from live_search.searchUrlBuilder import SearchUrlBuilderByKeywords
+import models.infringements as infringement_model
+import models.cases as case_model
+from infringement_score_filters import (
+    filter_infringement_entry,
+    filter_similar_claims,
+)
+from models.live_search_results import (
+    ProductTargetSources,
+    blocked_product_url_reason,
+    is_dummy_product_value,
+    is_product_listing_url,
+    is_valid_product_url,
+)
+from live_search.googleSearch import (
+    is_google_custom_search_configured, 
+    productGoogleSearch
+    )
+from live_search.apifySearch import (
+    Apify,
+    is_apify_configured,
+    is_apify_enabled_for_case,
+    search_limitations_excluding_apify_hosts,
+)
+from live_search.searchUrlBuilder import (
+    SearchUrlBuilderByKeywords,
+    chunk_keywords_for_search,
+    KEYWORD_SEARCH_MAX_URLS,
+)
 from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResults
 
 from web_scraper.free_patents_online import FreePatentsOnline
 from web_scraper.google_patents import GooglePatents
+from web_search import check_html_for_runtime_errors
 
 TITLE_SIMILARITY_THRESHOLD = 0.85
+PRODUCT_TITLE_SIMILARITY_THRESHOLD = 0.10
+PRODUCT_REFERENCE_KEYWORD_LIMIT = 10
+PRODUCT_CLAIMS_FOR_RELEVANCE_LIMIT = 12
+PRODUCT_CLAIM_CHARS_FOR_RELEVANCE = 250
+DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
 SEARCH_TIMEOUT = 10
+MAX_SEARCH_ATTEMPTS = 10
+DEFAULT_PRODUCT_SEARCH_MAX_RESULTS = 30
+MIN_PRODUCT_SEARCH_MAX_RESULTS = 3
+MAX_PRODUCT_SEARCH_MAX_RESULTS = 100
 SESSION_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -28,6 +69,13 @@ SESSION_HEADERS = {
     'Sec-Fetch-Site': 'none',
     'Sec-Fetch-User': '?1'
 }
+
+def _tqdm(iterable, **kwargs):
+    """Avoid tqdm OSError [Errno 22] in Flask background threads on Windows."""
+    disable = kwargs.pop('disable', None)
+    if disable is None:
+        disable = not sys.stdout.isatty() or threading.current_thread() is not threading.main_thread()
+    return tqdm(iterable, disable=disable, **kwargs)
 
 SOURCES = [
     {
@@ -77,6 +125,106 @@ def calculate_cosine_similarity(text1: str, text2: str) -> float:
     vectors = vectorizer.fit_transform([text1, text2])
     return cosine_similarity(vectors[0], vectors[1])[0][0]
 
+
+def calculate_product_relevance_similarity(text1: str, text2: str) -> float:
+    """Char n-gram cosine for short patent title/keyword vs product name matching."""
+    vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5))
+    vectors = vectorizer.fit_transform([text1, text2])
+    return cosine_similarity(vectors[0], vectors[1])[0][0]
+
+
+def build_patent_reference_text(
+    patent_title: str,
+    keywords: list[str],
+    max_keywords: int = PRODUCT_REFERENCE_KEYWORD_LIMIT,
+) -> str:
+    parts = []
+    if isinstance(patent_title, str) and patent_title.strip():
+        parts.append(patent_title.strip())
+    for keyword in (keywords or [])[:max_keywords]:
+        if isinstance(keyword, str) and keyword.strip():
+            parts.append(keyword.strip())
+    return " ".join(parts)
+
+
+def build_product_reference_text(
+    product_name: str,
+    product_claims: list[str] | None = None,
+    max_claims: int = PRODUCT_CLAIMS_FOR_RELEVANCE_LIMIT,
+    max_chars_per_claim: int = PRODUCT_CLAIM_CHARS_FOR_RELEVANCE,
+) -> str:
+    parts = []
+    if isinstance(product_name, str) and product_name.strip():
+        parts.append(product_name.strip())
+    for claim in (product_claims or [])[:max_claims]:
+        if isinstance(claim, str) and claim.strip():
+            parts.append(claim.strip()[:max_chars_per_claim])
+    return " ".join(parts)
+
+
+def product_matches_patent_context(
+    patent_title: str,
+    keywords: list[str],
+    product_name: str,
+    product_claims: list[str] | None = None,
+    threshold: float = PRODUCT_TITLE_SIMILARITY_THRESHOLD,
+) -> tuple[bool, float]:
+    reference_text = build_patent_reference_text(patent_title, keywords)
+    if not reference_text:
+        return False, 0.0
+    name_text = (product_name or "").strip()
+    full_text = build_product_reference_text(product_name, product_claims)
+    scores = []
+    try:
+        if name_text:
+            scores.append(
+                float(calculate_product_relevance_similarity(reference_text, name_text))
+            )
+        if full_text and (not name_text or full_text != name_text):
+            scores.append(
+                float(calculate_product_relevance_similarity(reference_text, full_text))
+            )
+    except ValueError:
+        return False, 0.0
+    if not scores:
+        return False, 0.0
+    score = max(scores)
+    return score >= threshold, score
+
+
+def normalize_product_url(url: str) -> str:
+    """Normalize URL for cross-bucket deduplication (host + path, no query/fragment)."""
+    if not isinstance(url, str) or not url.strip():
+        return ""
+    parsed = urlparse(url.strip().lower())
+    host = parsed.netloc
+    if host.startswith("www."):
+        host = host[4:]
+    path = (parsed.path or "").rstrip("/")
+    return f"{host}{path}"
+
+
+def product_url_already_saved(
+    url: str,
+    product_details_list: list,
+    saved_product_urls: set | None = None,
+) -> bool:
+    norm = normalize_product_url(url)
+    if not norm:
+        return False
+    if saved_product_urls is not None and norm in saved_product_urls:
+        return True
+    for product in product_details_list:
+        other_url = (
+            product.get("product_url")
+            if isinstance(product, dict)
+            else getattr(product, "product_url", None)
+        )
+        if normalize_product_url(other_url) == norm:
+            return True
+    return False
+
+
 def checkSimilarTitleExists(title1:str, references: list[str]):
     for reference in references:
         similarity = calculate_cosine_similarity(title1, reference)
@@ -84,7 +232,7 @@ def checkSimilarTitleExists(title1:str, references: list[str]):
             return True
     return False
 
-def _live_result_to_dict(obj):
+def _live_result_to_dict(obj, case_id: str = ''):
     """Convert LiveSearchResults (or similar) to a JSON-serializable dict for API and alreadyExists()."""
     if obj is None:
         return None
@@ -93,35 +241,143 @@ def _live_result_to_dict(obj):
     elif hasattr(obj, 'dict'):
         d = obj.dict()
     else:
-        return obj
+        d = dict(obj) if isinstance(obj, dict) else obj
+    if not isinstance(d, dict):
+        return d
     if isinstance(d.get('claims'), dict) and 'claims' in d['claims']:
         d['claims'] = d['claims']['claims']
+    # Pydantic v2 omits leading-underscore fields from model_dump; use patent id from URL.
+    patent_id = case_id or d.get('case_id') or d.get('_id') or ''
+    if patent_id:
+        d['case_id'] = patent_id
+        d['_id'] = patent_id
     return d
 
-def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float = 2.0, attempt: int = 0):
+def claims_to_strings(claims) -> list[str]:
+    """Normalize case claims (list[str], list[dict], or dict of SingleClaim) to plain strings for Gemini."""
+    if not claims:
+        return []
+    if isinstance(claims, list):
+        strings = []
+        for c in claims:
+            if isinstance(c, str) and c.strip():
+                strings.append(c.strip())
+            elif isinstance(c, dict):
+                text = (
+                    c.get("text")
+                    or c.get("documented_claim")
+                    or c.get("market_language_claim")
+                    or ""
+                )
+                if isinstance(text, str) and text.strip():
+                    strings.append(text.strip())
+        return strings
+    if isinstance(claims, dict):
+        strings = []
+        for claim_data in claims.values():
+            if isinstance(claim_data, dict):
+                documented = (claim_data.get('documented_claim') or '').strip()
+                if documented:
+                    strings.append(documented)
+            elif isinstance(claim_data, str) and claim_data.strip():
+                strings.append(claim_data.strip())
+        return strings
+    return []
+
+
+def normalize_reference_claim_entries(claims) -> tuple[list[str], list[int]]:
+    """Split reference claim entries into texts + case claim indices.
+
+    Accepts list[str] or list[{"ref_claim_index"|"index", "text"|...}].
+    """
+    texts: list[str] = []
+    indices: list[int] = []
+    if not claims:
+        return texts, indices
+    for i, entry in enumerate(claims):
+        if isinstance(entry, str):
+            text = entry.strip()
+            if not text:
+                continue
+            texts.append(text)
+            indices.append(i)
+            continue
+        if isinstance(entry, dict):
+            text = (
+                entry.get("text")
+                or entry.get("documented_claim")
+                or entry.get("market_language_claim")
+                or ""
+            )
+            text = text.strip() if isinstance(text, str) else ""
+            if not text:
+                continue
+            raw_idx = entry.get("ref_claim_index", entry.get("index", i))
+            try:
+                idx = int(raw_idx)
+            except (TypeError, ValueError):
+                idx = i
+            texts.append(text)
+            indices.append(idx)
+    return texts, indices
+
+def _normalize_isolated_claims_for_import(isolated_claims):
+    """Backfill missing claim fields so portfolio import validation can pass."""
+    allowed = frozenset({
+        "asserted_claim", "independent_claim", "core_claim", "pivotal_claim",
+    })
+    for i, claim in enumerate(isolated_claims.claims):
+        if not str(claim.market_language_claim or "").strip():
+            claim.market_language_claim = claim.documented_claim
+        if str(claim.claim_type or "").strip().lower() not in allowed:
+            claim.claim_type = "independent_claim" if i == 0 else "pivotal_claim"
+
+def passToGeminiForMetadata(
+    text: str,
+    claims_content: str | None = None,
+    max_attempts: int = 3,
+    base_delay: float = 2.0,
+    attempt: int = 0,
+    claims_mode: str = "parent",
+    default_source: str = None,
+    ):
     """
     Call Gemini to extract metadata and claims with simple retry/backoff.
-    Retries on transient errors (including 5xx) up to max_attempts times.
+
+    ``claims_mode``:
+      - ``parent``: full SingleClaim dict (documented + market + claim_type) for portfolio import.
+      - ``infringement_candidate``: plain list[str] of documented claims for live-search hits.
     """
     last_error: Exception | None = None
+    metadata_content = str(text)
+    claim_source = claims_content.strip() if claims_content and claims_content.strip() else metadata_content
     while attempt < max_attempts:
         try:
-            case_data = Gemini().extract_patent_metadata(patent_content=str(text))
+            case_data = Gemini().extract_patent_metadata(
+                patent_content=metadata_content, 
+                default_source=default_source
+                )
             title = case_data.title
             filing_date = case_data.filingDate
             if (title.strip() == "") or (filing_date.strip() == ""):
+                print(f"Error: Failed to extract patent metadata after {max_attempts} attempts. {last_error}")
                 raise Exception("Error: Failed to extract patent metadata after 3 attempts")
 
-            # Extract claims as a separate model, then attach just the list.
-            isolated_claims = Gemini().extract_claims(patent_content=str(text))
-            try:
-                claims_list = getattr(isolated_claims, "claims", [])
-                if isinstance(claims_list, list):
-                    if len(claims_list) <3:
-                        raise Exception("ClaimsError: Claims not properly isolated")
-            except Exception:
-                claims_list = []
-            case_data.claims = claims_list
+            if claims_mode == "infringement_candidate":
+                documented = Gemini().extract_documented_claims(patent_content=claim_source)
+                case_data.claims = documented.claims
+            else:
+                isolated_claims = Gemini().extract_claims(patent_content=claim_source)
+                _normalize_isolated_claims_for_import(isolated_claims)
+                validated, error_message = isolated_claims.verify_isolated_claims()
+                if not validated:
+                    print(f"Error: Failed to extract claims after {max_attempts} attempts. {error_message}")
+                    raise Exception(f"Error: Failed to extract claims after {max_attempts} attempts. {error_message}")
+                final_claims = {}
+                for i in range(len(isolated_claims.claims)):
+                    claim = isolated_claims.claims[i]
+                    final_claims[str(i)] = claim.model_dump()
+                case_data.claims = final_claims
             return case_data
         except Exception as e:
             last_error = e
@@ -130,14 +386,20 @@ def passToGeminiForMetadata(text: str, max_attempts: int = 3, base_delay: float 
                 message = e.message
             else:
                 message = str(e)
-            print(f"\nLOG: Attempt {attempt} failed: {message}")
-            # If we've exhausted retries, re-raise
+            print(f"\nLOG: Attempt {attempt} failed: {message} : {last_error}")
             if attempt >= max_attempts:
                 print(f"\nMAX_ATTEMPTS_ERROR: Failed to extract patent metadata after {max_attempts} attempts")
                 return None
-            # Basic backoff between retries
             time.sleep(base_delay * attempt)
-            passToGeminiForMetadata(str(text), max_attempts, base_delay, attempt)
+            return passToGeminiForMetadata(
+                text=metadata_content,
+                claims_content=claims_content,
+                max_attempts=max_attempts,
+                base_delay=base_delay,
+                attempt=attempt,
+                claims_mode=claims_mode,
+                default_source=default_source
+            )
 
 def htmlToText(html:str, selector:str):
     soup = BeautifulSoup(html, "html.parser")
@@ -170,8 +432,25 @@ def get_case_datas(
     selector:str = '',
     count:int = 0):
     try:
-        caseDataHtml = fetchCaseData(case_data_url, session, selector)
-        caseData = passToGeminiForMetadata(str(caseDataHtml))
+        if 'patents.google.com' in case_data_url:
+            html_content = performSearch(case_data_url, session)
+            gp = GooglePatents()
+            sections = gp.isolate_patent_sections(html_content)
+            metadata_content = gp.content_for_metadata_extraction(sections)
+            claims_content = gp.content_for_claims_extraction(sections)
+            caseData = passToGeminiForMetadata(
+                metadata_content,
+                claims_content=claims_content,
+                default_source="Google Patents",
+                claims_mode="infringement_candidate",
+            )
+        else:
+            caseDataHtml = fetchCaseData(case_data_url, session, selector)
+            caseData = passToGeminiForMetadata(
+                str(caseDataHtml),
+                default_source="Free Patents Online",
+                claims_mode="infringement_candidate",
+            )
         if caseData is None:
             return None
         return caseData
@@ -188,159 +467,235 @@ def get_case_datas(
         print(f"\nERROR: Error getting case data: {str(e)}")
         raise e
 
-def searchFreePatentsOnline(keywords:list[str], count:int = 0):
-    resultCasesList = []
-    caseDataUrlsList = []
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
-    selector = SOURCES[0].get('url_builder_selector', '')
+def _is_fpo_result_list_url(url: str) -> bool:
+    """Skip FPO pagination / result-index links; keep patent detail pages."""
+    if not url:
+        return True
+    return "result.html" in url.split("?", 1)[0]
 
-    try:
-        freePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[0].get('search_url', ''))
-        freePatentsUrl = freePatentsUrlBuilder.build_url(
-            keywords=keywords, 
-            country='', 
-            selector=SOURCES[0].get('url_builder_selector', '')
+
+def _collect_case_data_urls_for_keyword_groups(
+    keywords: list[str],
+    source: dict,
+    count: int = 0,
+) -> tuple[list[str], CaseDataUrlFromSearchResults | None]:
+    """
+    Run one search per keyword chunk, merge unique result URLs.
+
+    Returns (urls, last_isolator). Isolator may be None if every chunk failed
+    before producing HTML; callers should still handle empty urls.
+    """
+    selector = source.get("url_builder_selector", "")
+    keyword_groups = chunk_keywords_for_search(keywords)
+    if not keyword_groups:
+        print("LOG: No usable keywords for patent search")
+        return [], None
+
+    url_builder = SearchUrlBuilderByKeywords(url=source.get("search_url", ""))
+    seen_urls: set[str] = set()
+    case_data_urls: list[str] = []
+    last_isolator = None
+    connection_errors = 0
+
+    for group_idx, group in enumerate(keyword_groups, start=1):
+        try:
+            search_url = url_builder.build_url(
+                keywords=group,
+                country="",
+                selector=selector,
             )
-    except Exception as e:
-        print(f"\nERROR: Error building free patents online URL: {str(e)}")
-        raise e
-        
-    try:
+        except Exception as e:
+            print(f"\nERROR: Error building {source.get('title')} URL (group {group_idx}): {e}")
+            raise
+
         session = requests.Session()
         session.headers.update(SESSION_HEADERS)
-        searchResultsHtml = performSearch(freePatentsUrl, session)
-        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
-            html_content=searchResultsHtml, 
-            ids=SOURCES[0].get('search_ids', {}), 
-            classes=SOURCES[0].get('search_classes', []), 
-            tags=SOURCES[0].get('search_tags', {}),
-            drop_list=SOURCES[0].get('search_classes_to_drop', [])
+        try:
+            search_results_html = performSearch(search_url, session)
+            isolator = CaseDataUrlFromSearchResults(
+                html_content=search_results_html,
+                ids=source.get("search_ids", {}),
+                classes=source.get("search_classes", []),
+                tags=source.get("search_tags", {}),
+                drop_list=source.get("search_classes_to_drop", []),
             )
-        caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(
-            selector=selector, 
-            base_url=SOURCES[0].get('search_url', '')
+            last_isolator = isolator
+            group_urls = isolator.isolate_case_data_urls(
+                selector=selector,
+                base_url=source.get("search_url", ""),
             )
-        print(f'LOG: Case Data URLs List:')
-        for caseDataUrl in caseDataUrlsList:
-            index = caseDataUrlsList.index(caseDataUrl)
-            print(f'LOG: {index + 1}: {caseDataUrl}')
+            added = 0
+            for url in group_urls:
+                if not url or url in seen_urls:
+                    continue
+                if selector == "free-patents-online" and _is_fpo_result_list_url(url):
+                    continue
+                if len(case_data_urls) >= KEYWORD_SEARCH_MAX_URLS:
+                    break
+                seen_urls.add(url)
+                case_data_urls.append(url)
+                added += 1
+            print(
+                f"LOG: {source.get('title')} group {group_idx}/{len(keyword_groups)} "
+                f"-> {len(group_urls)} raw URLs, {added} new "
+                f"(total unique {len(case_data_urls)})"
+            )
+            if len(case_data_urls) >= KEYWORD_SEARCH_MAX_URLS:
+                print(
+                    f"LOG: Reached KEYWORD_SEARCH_MAX_URLS={KEYWORD_SEARCH_MAX_URLS}; "
+                    f"stopping further keyword groups for {source.get('title')}"
+                )
+                break
+        except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
+            connection_errors += 1
+            print(f"\nERROR: Connection reset on {source.get('title')} group {group_idx}: {e}")
+            if count >= 2:
+                raise
+        except Exception as e:
+            print(f"\nERROR: Error searching {source.get('title')} group {group_idx}: {e}")
+            raise
+        finally:
+            session.close()
+
+        time.sleep(1)
+
+    if not case_data_urls and connection_errors and count < 2:
+        time.sleep(2)
+        return _collect_case_data_urls_for_keyword_groups(keywords, source, count + 1)
+
+    print(f"LOG: Case Data URLs List ({source.get('title')}):")
+    for index, case_data_url in enumerate(case_data_urls, start=1):
+        print(f"LOG: {index}: {case_data_url}")
+    print(f"Case Data URLs Length: {len(case_data_urls)}")
+    return case_data_urls, last_isolator
+
+
+def searchFreePatentsOnline(keywords: list[str], count: int = 0):
+    resultCasesList = []
+    selector = SOURCES[0].get("url_builder_selector", "")
+    source = SOURCES[0]
+
+    try:
+        caseDataUrlsList, caseDataUrlIsolator = _collect_case_data_urls_for_keyword_groups(
+            keywords=keywords,
+            source=source,
+            count=count,
+        )
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error: {str(e)}")
         if count >= 2:
             raise e
         time.sleep(2)
-        session.close()
-        session = requests.Session()
-        session.headers.update(SESSION_HEADERS)
         return searchFreePatentsOnline(keywords, count + 1)
     except Exception as e:
         print(f"\nERROR: Error performing search for free patents online: {str(e)}")
         raise e
 
-    print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
-    session.close()
+    if not caseDataUrlsList:
+        print("LOG: Result Cases List: 0")
+        return resultCasesList
+    if caseDataUrlIsolator is None:
+        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
+            html_content="",
+            ids=source.get("search_ids", {}),
+            classes=source.get("search_classes", []),
+            tags=source.get("search_tags", {}),
+            drop_list=source.get("search_classes_to_drop", []),
+        )
+
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
-    for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
+    for caseDataUrl in _tqdm(caseDataUrlsList, desc="Fetching Case Data for free patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
-            caseDataDict = _live_result_to_dict(caseData)
-            caseDataDict['case_id'] = str(caseDataUrl.split('/')[-1]).split('.')[0]
-            caseDataDict['url'] = caseDataUrl
-            caseDataDict['source'] = 'free_patents_online'
+            if caseData is None:
+                print(f"\nWARN: No case data for URL: {caseDataUrl}")
+                continue
+            patent_id = str(caseDataUrl.split("/")[-1]).split(".")[0]
+            caseDataDict = _live_result_to_dict(caseData, case_id=patent_id)
+            caseDataDict["url"] = caseDataUrl
+            caseDataDict["source"] = "free_patents_online"
             resultCasesList.append(caseDataDict)
+            time.sleep(DEFAULT_LLM_DELAY)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
             print(f"\nERROR: Skipping URL: {caseDataUrl} — {str(e)}")
-        # time.sleep(1)
-    print(f'LOG: Result Cases List: {len(resultCasesList)}')
+    session.close()
+    print(f"LOG: Result Cases List: {len(resultCasesList)}")
     return resultCasesList
 
-def searchGooglePatents(keywords:list[str], count:int = 0):
+
+def searchGooglePatents(keywords: list[str], count: int = 0):
     resultCasesList = []
-    caseDataUrlsList = []
-    selector = SOURCES[1].get('url_builder_selector', '')
+    selector = SOURCES[1].get("url_builder_selector", "")
+    source = SOURCES[1]
 
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
     try:
-        googlePatentsUrlBuilder = SearchUrlBuilderByKeywords(url=SOURCES[1].get('search_url', ''))
-        googlePatentsUrl = googlePatentsUrlBuilder.build_url(
-            keywords=keywords, 
-            country='', 
-            selector=SOURCES[1].get('url_builder_selector', '')
-            )
-    except Exception as e:
-        print(f"\nERROR: Error building Google Patents URL: {str(e)}")
-        raise e
-
-    session.close()
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
-    try:
-        searchResultsHtml = performSearch(googlePatentsUrl, session)
-        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
-            html_content=searchResultsHtml, 
-            ids=SOURCES[1].get('search_ids', {}), 
-            classes=SOURCES[1].get('search_classes', []), 
-            tags=SOURCES[1].get('search_tags', {}),
-            drop_list=SOURCES[1].get('search_classes_to_drop', [])
-            )
-        caseDataUrlsList = caseDataUrlIsolator.isolate_case_data_urls(
-            selector=selector, 
-            base_url=SOURCES[1].get('search_url', '')
-            )
-        print(f'LOG: Case Data URLs List: ')
-        for caseDataUrl in caseDataUrlsList:
-            index = caseDataUrlsList.index(caseDataUrl)
-            print(f'LOG: {index + 1}: {caseDataUrl}')
+        caseDataUrlsList, caseDataUrlIsolator = _collect_case_data_urls_for_keyword_groups(
+            keywords=keywords,
+            source=source,
+            count=count,
+        )
     except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
         print(f"\nERROR: Connection reset error: {str(e)}")
         if count >= 2:
             raise e
         time.sleep(2)
-        session.close()
-        session = requests.Session()
-        session.headers.update(SESSION_HEADERS)
         return searchGooglePatents(keywords, count + 1)
     except Exception as e:
         print(f"\nERROR: Error performing search for Google Patents: {str(e)}")
         raise e
-    
-    print(f"Case Data URLs Length: {len(caseDataUrlsList)}")
-    session.close()
+
+    if not caseDataUrlsList:
+        print("LOG: Result Cases List: []")
+        return resultCasesList
+    if caseDataUrlIsolator is None:
+        caseDataUrlIsolator = CaseDataUrlFromSearchResults(
+            html_content="",
+            ids=source.get("search_ids", {}),
+            classes=source.get("search_classes", []),
+            tags=source.get("search_tags", {}),
+            drop_list=source.get("search_classes_to_drop", []),
+        )
+
     session = requests.Session()
     session.headers.update(SESSION_HEADERS)
-    for caseDataUrl in tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
+    for caseDataUrl in _tqdm(caseDataUrlsList, desc="Fetching Case Data for google patents Urls"):
         try:
             caseData = get_case_datas(caseDataUrlIsolator, caseDataUrl, session, selector)
-            caseDataDict = _live_result_to_dict(caseData)
-            if '/en' in caseDataUrl:
-                caseDataDict['case_id'] = str(caseDataUrl.split('/')[-2])
+            if caseData is None:
+                print(f"\nWARN: No case data for URL: {caseDataUrl}")
+                continue
+            if "/en" in caseDataUrl:
+                patent_id = str(caseDataUrl.split("/")[-2])
             else:
-                caseDataDict['case_id'] = str(caseDataUrl.split('/')[-1])
-            caseDataDict['url'] = caseDataUrl
-            caseDataDict['source'] = 'google_patents'
+                patent_id = str(caseDataUrl.split("/")[-1])
+            caseDataDict = _live_result_to_dict(caseData, case_id=patent_id)
+            caseDataDict["url"] = caseDataUrl
+            caseDataDict["source"] = "google_patents"
             resultCasesList.append(caseDataDict)
+            time.sleep(DEFAULT_LLM_DELAY)
         except (ConnectionResetError, requests.exceptions.ConnectionError) as e:
             print(f"\nERROR: Skipping URL after retries: {caseDataUrl} — {str(e)}")
         except Exception as e:
             print(f"\nERROR: Skipping URL: {caseDataUrl} — {str(e)}")
-        # time.sleep(1)
-    print(f'LOG: Result Cases List: {resultCasesList}')
+    session.close()
+    print(f"LOG: Result Cases List: {len(resultCasesList)}")
     return resultCasesList
 
 def alreadyExists(patent:dict, merged_results:list[dict]):
+    patent_id = patent.get('_id') or patent.get('case_id')
+    patent_title = patent.get('title')
     for result in merged_results:
-        if result['_id'] == patent['_id']:
+        result_id = result.get('_id') or result.get('case_id')
+        if patent_id and result_id and result_id == patent_id:
             return True
-        if result['title'] == patent['title']:
+        if patent_title and result.get('title') == patent_title:
             return True
-        if result['case_id'] == patent['case_id']:
+        if patent.get('case_id') and result.get('case_id') == patent.get('case_id'):
             return True
-        if result['patent_id'] == patent['patent_id']:
+        if patent.get('patent_id') and result.get('patent_id') == patent.get('patent_id'):
             return True
     return False
 
@@ -352,6 +707,39 @@ def performLiveSearch(
     titles: list[str] = [],
     ids: list[str] = [],
     ):
+    """
+    Run live patent discovery on Free Patents Online and Google Patents, then merge
+    and deduplicate results.
+
+    Searches both sources with the given keywords. Each source's hits are filtered
+    before merge so the reference case and prior hits are not returned again.
+
+    Checks performed on each candidate result (per source):
+        - Exact title match against ``titles`` (includes ``ref_case_title`` and titles
+          accepted from earlier hits in this run).
+        - Exact case id match against ``ids`` (includes ``ref_case_id`` and ids from
+          earlier hits; case id is normalized via the last ``_`` segment).
+        - Near-duplicate title via ``checkSimilarTitleExists`` (cosine similarity >
+          ``TITLE_SIMILARITY_THRESHOLD``, 0.85).
+
+    After both searches, Free Patents Online results are kept as the base list. Google
+    Patents results are appended only when ``alreadyExists`` finds no duplicate by
+    ``_id``, ``title``, ``case_id``, or ``patent_id`` in the merged list.
+
+    Connection and other errors from either source are logged; the other source's
+    results are still returned when possible.
+
+    Args:
+        keywords: Search terms passed to both scrapers.
+        country: Reserved for scope filtering (not applied in this function yet).
+        ref_case_title: Reference case title excluded from results.
+        ref_case_id: Reference case id excluded from results.
+        titles: Seed list of titles to skip (mutated in place as new titles are accepted).
+        ids: Seed list of case ids to skip (mutated in place as new ids are accepted).
+
+    Returns:
+        list[dict]: Merged, deduplicated patent case dicts ready for infringement analysis.
+    """
     free_patents_results = []
     titles.append(ref_case_title)
     ids.append(ref_case_id)
@@ -386,8 +774,8 @@ def performLiveSearch(
     except Exception as e:
         print(f"\nERROR: Google Patents search failed: {str(e)}")
     # TODO: Change to all results when new version is ready
-    merged_results = list(free_patents_results)[:10]
-    for patent in google_patents_results[:10]:
+    merged_results = list(free_patents_results)
+    for patent in google_patents_results:
         if not alreadyExists(patent, merged_results):
             merged_results.append(patent)
     return merged_results
@@ -397,127 +785,489 @@ def performInfringementAnalysis(reference_claims:list[str], infringing_claims:li
     return infringement_analysis
 
 def alreadyExistsInProductDetailsList(product_detail, product_details_list: list):
-    pid = getattr(product_detail, "product_id", None) or (product_detail.get("product_id") if isinstance(product_detail, dict) else None)
+    pid = getattr(product_detail, "product_id", None) or (
+        product_detail.get("product_id") if isinstance(product_detail, dict) else None
+    )
+    purl = getattr(product_detail, "product_url", None) or (
+        product_detail.get("product_url") if isinstance(product_detail, dict) else None
+    )
+    norm_url = normalize_product_url(purl) if purl else ""
     for product in product_details_list:
-        other_pid = getattr(product, "product_id", None) or (product.get("product_id") if isinstance(product, dict) else None)
+        other_pid = getattr(product, "product_id", None) or (
+            product.get("product_id") if isinstance(product, dict) else None
+        )
+        other_url = getattr(product, "product_url", None) or (
+            product.get("product_url") if isinstance(product, dict) else None
+        )
         if pid and other_pid and pid == other_pid:
             return True
+        if norm_url and normalize_product_url(other_url) == norm_url:
+            return True
     return False
+
+
+def _focus_urls_from_search_limitations(search_limitations: dict) -> list[str]:
+    urls = []
+    for entry in search_limitations.get("priority_target_sources") or []:
+        if isinstance(entry, dict) and entry.get("url"):
+            urls.append(entry["url"])
+        elif isinstance(entry, str) and entry.strip():
+            urls.append(entry.strip())
+    for entry in search_limitations.get("urls") or []:
+        if isinstance(entry, str) and entry.strip():
+            urls.append(entry.strip())
+    return list(dict.fromkeys(urls))
+
+
+def _discover_products_via_gemini(
+    product_name: str,
+    reference_claims: list[str],
+    owners: list[str],
+    search_limitations: dict,
+    max_product_results: int,
+):
+    print(
+        "LOG: Gemini product search (full bucket claims; no query-generation LLM)"
+    )
+    error_results = {}
+    count = 0
+    extracted = []
+    while (count < MAX_SEARCH_ATTEMPTS) and (len(extracted) < MIN_PRODUCT_SEARCH_MAX_RESULTS):
+        count += 1
+        google_search_results = Gemini().perform_google_search_from_claims(
+            product_name=product_name,
+            reference_claims=reference_claims,
+            owners=owners,
+            search_limitations=search_limitations,
+            max_results=max_product_results,
+        )
+        print(f"LOG: Gemini returned {len(google_search_results)} search result(s)")
+        session = requests.Session()
+        session.headers.update(SESSION_HEADERS)
+        results_to_process = google_search_results[:max_product_results]
+        for result in _tqdm(
+            results_to_process,
+            desc="Fetching Product Details from Gemini Search Results",
+        ):
+            url = str(result.url).strip().lower()
+            if url in error_results:
+                continue
+            if is_product_listing_url(url):
+                print(f"LOG: Skipping listing/category URL: {url}")
+                error_results[url] = "Category or listing page URL"
+                continue
+            blocked = blocked_product_url_reason(url)
+            if blocked:
+                print(f"LOG: Skipping blocked product URL: {url} — {blocked}")
+                error_results[url] = blocked
+                continue
+            try:
+                html_content = performSearch(url, session)
+            except (
+                ConnectionResetError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.HTTPError,
+            ) as e:
+                print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+                error_results[url] = str(e)
+                continue
+            except Exception as e:
+                print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+                error_results[url] = str(e)
+                continue
+            is_error_page, error_keyword = check_html_for_runtime_errors(html_content, url=url)
+            if is_error_page:
+                print(
+                    f"\nERROR: Blocked page content for URL: {url} — {error_keyword}"
+                )
+                error_results[url] = "Bot check blocked page content"
+                continue
+            try:
+                product_details = Gemini().get_product_details(html_content)
+            except Exception as e:
+                print(f"\nERROR: Product details extraction failed for {url}: {str(e)}")
+                continue
+            if alreadyExistsInProductDetailsList(product_details, extracted):
+                continue
+            extracted.append(product_details)
+
+    print(f"LOG: Gemini discovery extracted {len(extracted)} product(s)")
+    return extracted
+
+
+def _persist_extracted_products(
+    extracted_products,
+    reference_claims: list,
+    parent_case_id: str,
+    product_details_list: list,
+    created_ids: list,
+    sites_searched: dict,
+    patent_title: str = "",
+    keywords: list[str] | None = None,
+    saved_product_urls: set | None = None,
+    ref_claim_flag: str = "market",
+):
+    ref_texts, ref_indices = normalize_reference_claim_entries(reference_claims)
+    flag = str(ref_claim_flag or "market").strip().lower()
+    if flag not in ("market", "original"):
+        flag = "market"
+    for product_details in extracted_products:
+        website_searched = product_details.source or "unknown"
+        sites_searched[website_searched] = sites_searched.get(website_searched, 0) + 1
+        try:
+            product_id = product_details.product_id
+            product_url = product_details.product_url
+            if alreadyExistsInProductDetailsList(product_details, product_details_list):
+                continue
+            if (
+                is_dummy_product_value(product_id)
+                or is_dummy_product_value(product_url)
+                or is_dummy_product_value(product_details.product_name)
+                or is_dummy_product_value(product_details.source)
+            ):
+                continue
+            if not is_valid_product_url(product_url):
+                continue
+            if is_product_listing_url(product_url):
+                print(f"LOG: Skipping listing/category product URL: {product_url}")
+                continue
+            blocked = blocked_product_url_reason(product_url)
+            if blocked:
+                print(f"LOG: Skipping blocked product URL: {product_url} — {blocked}")
+                continue
+            if product_url_already_saved(
+                product_url, product_details_list, saved_product_urls
+            ):
+                print(f"LOG: Skipping duplicate product URL: {product_url}")
+                continue
+            is_relevant, relevance_score = product_matches_patent_context(
+                patent_title,
+                keywords or [],
+                product_details.product_name,
+                product_claims=product_details.claims,
+            )
+            if not is_relevant:
+                print(
+                    "LOG: Skipping product with low relevance "
+                    f"({relevance_score:.3f} < {PRODUCT_TITLE_SIMILARITY_THRESHOLD}): "
+                    f"{product_details.product_name!r}"
+                )
+                continue
+            print(f"LOG: Product ID: {product_id}")
+            print(f"LOG: Product URL: {product_url}")
+            infringement_analysis = Gemini().analyze_product_infringements(
+                ref_texts,
+                product_details.claims,
+                ref_claim_indices=ref_indices,
+                ref_claim_flag=flag,
+            )
+            product_details.similar_claims = [
+                item.model_dump() if hasattr(item, "model_dump") else item
+                for item in infringement_analysis
+            ]
+            product_details.similar_claims = filter_similar_claims(product_details.similar_claims)
+            payload = product_details.model_dump()
+            payload = filter_infringement_entry(payload)
+            payload["_id"] = (
+                "product_"
+                + str(product_id)
+                + "_"
+                + str(datetime.now().strftime("%Y%m%d%H%M%S"))
+            )
+            creation_result = infringement_model.create_infringement(
+                payload,
+                parent_case_id=parent_case_id or None,
+            )
+            if creation_result["success"]:
+                created_ids.append(creation_result["infringement_id"])
+                if saved_product_urls is not None:
+                    saved_product_urls.add(normalize_product_url(product_url))
+            product_details_list.append(payload)
+        except Exception as e:
+            print(f"\nERROR: Error analyzing product infringements: {str(e)}")
+            continue
 
 # Final Search Functions
 
 def searchPatentSources(
     keywords:list[str], 
     country:str, 
-    reference_claims:list[str], 
+    reference_claims:list, 
     ref_case_title: str = '', 
     ref_case_id: str = '',
     titles_to_avoid: list[str] = [],
     ids_to_avoid: list[str] = [],
+    search_type: str = 'generic',
+    case_id: str = '',
+    ref_claim_flag: str = 'original',
     ):
     searchResults = []
     infringement_analysis_results = []
+    created_ids = []
+    status_key = f"{search_type}_claims_patent_analysis"
+    ref_texts, ref_indices = normalize_reference_claim_entries(reference_claims)
+    flag = str(ref_claim_flag or 'original').strip().lower()
+    if flag not in ('market', 'original'):
+        flag = 'original'
+    if not ref_texts:
+        print(f'\nLOG: Skipping patent search ({search_type}) — no reference claims')
+        return [], []
+    if case_id:
+        from database import getDataById, connect_to_database
+        from env_controller import getCaseDatabaseName
+        existing_case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
+        for inf in (existing_case or {}).get('infringements') or []:
+            if inf.get('product_id'):
+                continue
+            cid = str(inf.get('case_id') or '').strip()
+            if not cid and str(inf.get('_id', '')).startswith('patent_'):
+                cid = str(inf['_id']).split('_')[1]
+            if cid:
+                ids_to_avoid.append(cid)
+                ids_to_avoid.append(cid.split('_')[-1])
+            title = str(inf.get('title') or '').strip()
+            if title:
+                titles_to_avoid.append(title)
     # Perform Live Patent Search
     try:
+        found_ids = []
         results = performLiveSearch(
-            keywords, 
+            keywords=keywords, 
             country=country, 
             ref_case_title=ref_case_title, 
             ref_case_id=ref_case_id,
             titles=titles_to_avoid,
-            ids=ids_to_avoid,
+            ids=ids_to_avoid
             )
         for result in results:
+            foundId = result.get('_id') or result.get('case_id')
+            if not foundId:
+                continue
+            foundTitle = result.get('title', '')
+            if foundId in ids_to_avoid:
+                continue
+            if foundTitle in titles_to_avoid:
+                continue
+            found_ids.append(foundId)
             searchResults.append(result)
+        patent_sources = Gemini().get_patent_sources(found_ids)
+        for patent in patent_sources.patents:
+            for result in searchResults:
+                result_id = result.get('_id') or result.get('case_id')
+                if patent.id == result_id:
+                    result['source'] = patent.source
+                    result['country'] = patent.country
+                    break
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing live search: {str(e)}')
+        case_model.update_infringement_analysis_flags(
+            case_id=case_id,
+            update_type='error',
+            error_message='Live SearchError: ' + str(e)
+        )
         raise e
-    if len(searchResults) > 0:
-        print(f"TEST: Search Result: {json.dumps(searchResults[0], indent=4)}")
-    # Perform Infringement Analysis
+    # Perform Infringement Analysis (same shape as products: similar_claims + justification)
     try:
-        # TODO: Isolate to 10 results
+        sources = []
         for result in searchResults:
-            infringement_analysis = performInfringementAnalysis(
-                reference_claims,
-                result.get('claims', []),
-                result.get('context', '')
-            )
-            # Convert Pydantic model to plain dict so Flask/jsonify can serialize it
-            if hasattr(infringement_analysis, "model_dump"):
-                result['infringements'] = infringement_analysis.model_dump()
-            elif hasattr(infringement_analysis, "dict"):
-                result['infringements'] = infringement_analysis.dict()
-            else:
-                result['infringements'] = infringement_analysis
-            infringement_analysis_results.append(result)
-        return infringement_analysis_results
+            try:
+                infringing_claims = claims_to_strings(result.get('claims', []))
+                if not infringing_claims:
+                    print(f"\nLOG: Skipping patent {result.get('_id')} — no extractable claims")
+                    continue
+                infringement_analysis = Gemini().analyze_product_infringements(
+                    ref_texts,
+                    infringing_claims,
+                    ref_claim_indices=ref_indices,
+                    ref_claim_flag=flag,
+                )
+                result['similar_claims'] = [
+                    item.model_dump() if hasattr(item, 'model_dump') else item
+                    for item in infringement_analysis
+                ]
+                result['similar_claims'] = filter_similar_claims(result['similar_claims'])
+                result.pop('gemini_infringement', None)
+                result['infringements'] = []
+                result['claims'] = infringing_claims
+
+                result['_id'] = 'patent_' + str(result.get('_id', '')) + '_' + str(datetime.now().strftime('%Y%m%d%H%M%S'))
+                result = filter_infringement_entry(result)
+                creation_result = infringement_model.create_infringement(
+                    result,
+                    parent_case_id=case_id or None,
+                )
+                if creation_result['success']:
+                    created_ids.append(creation_result['infringement_id'])
+                    sources.append(result.get('source', ''))
+                infringement_analysis_results.append(result)
+                if case_id:
+                    case_model.update_case(case_id, {'infringement_sources': sources})
+            except Exception as e:
+                print(f'\nERROR: Error analyzing patent infringements: {str(e)}')
+                continue
+        return infringement_analysis_results, created_ids
     except Exception as e:
         print(f'\nERROR: LiveSearch: Error performing infringement analysis: {str(e)}')
+        case_model.update_infringement_analysis_flags(
+            case_id=case_id,
+            update_type='error',
+            error_message='Live SearchError: ' + str(e)
+        )
         raise e
-    return []
+    return [], []
 
-def searchProductSources(keywords:list[str], owners:list[str], reference_claims:list[str], search_limitations:dict):
-    # Generate Search String using Gemini
-    search_string = Gemini().get_search_string(keywords, owners, search_limitations)
-    print(f"LOG: Search String: {search_string}")
-    # Perform Google Search
-    google_search_results = Gemini().perform_google_search(search_string)
+def resolve_product_search_max_results(search_limitations: dict | None) -> int:
+    """Max product URLs to fetch/analyze; override via search_limitations.max_product_results."""
+    if not search_limitations:
+        return DEFAULT_PRODUCT_SEARCH_MAX_RESULTS
+    raw = search_limitations.get('max_product_results', DEFAULT_PRODUCT_SEARCH_MAX_RESULTS)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_PRODUCT_SEARCH_MAX_RESULTS
+    return max(1, min(n, MAX_PRODUCT_SEARCH_MAX_RESULTS))
+
+
+def normalize_search_limitations(search_limitations) -> dict:
+    if isinstance(search_limitations, dict):
+        return dict(search_limitations)
+    if isinstance(search_limitations, list):
+        if search_limitations and isinstance(search_limitations[0], dict):
+            return dict(search_limitations[0])
+        return {}
+    return {}
+
+
+def resolve_product_target_sources_for_analysis(
+    reference_claims: list[str],
+    search_limitations: dict | None = None,
+) -> dict:
+    """Merge reachable default retailer URLs into search_limitations (no LLM)."""
+    del reference_claims
+    search_limitations = normalize_search_limitations(search_limitations)
+    fallback = ProductTargetSources.default_catalog().filter_reachable()
+    print(
+        "LOG: Product target sources (catalog, no LLM):",
+        [source.url for source in fallback.target_sources],
+    )
+    return fallback.merge_urls_into_search_limitations(search_limitations)
+
+
+def searchProductSources(
+    product_name: str,
+    keywords:list[str],
+    owners:list[str],
+    reference_claims:list,
+    search_limitations:dict,
+    parent_case_id: str = '',
+    saved_product_urls: set | None = None,
+    seen_apify_runs: set | None = None,
+    apify_limit_flag: set | None = None,
+    ref_claim_flag: str = "market",
+):
+    search_limitations = normalize_search_limitations(search_limitations)
+    max_product_results = resolve_product_search_max_results(search_limitations)
+    ref_texts, _ref_indices = normalize_reference_claim_entries(reference_claims)
+    print(f"LOG: Product search max results: {max_product_results}")
+    print(f"LOG: Reference claims in bucket: {len(ref_texts)} flag={ref_claim_flag}")
     sites_searched = {}
     product_details_list = []
-    session = requests.Session()
-    session.headers.update(SESSION_HEADERS)
-    # TODO: Change to all results when new version is ready
-    # Iterate through Google Search Results
-    for result in tqdm(google_search_results[:10], desc="Fetching Product Details from Google Search Results"):
-        website_searched = result.website_name
-        if website_searched not in sites_searched.keys():
-            sites_searched[website_searched] = 0
-        sites_searched[website_searched] += 1
-        url = result.url
-        # Get HTML Content for each URL from search results
-        try:
-            html_content = performSearch(url, session)
-        except (ConnectionResetError, requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
-            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
-            continue
-        except Exception as e:
-            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
-            continue
-        # Pass HTML Content to Gemini to extract product details
-        product_details = Gemini().get_product_details(html_content)
-        # Analyze Product Infringements
-        try:
-            infringement_analysis = Gemini().analyze_product_infringements(reference_claims, product_details.claims)
-            product_details.similar_claims = infringement_analysis
-            product_id = product_details.product_id
-            product_url = product_details.product_url
-            print(f"LOG: Product ID: {product_id}")
-            print(f"LOG: Product URL: {product_url}")
-            if alreadyExistsInProductDetailsList(product_details, product_details_list):
-                continue
-            if (product_id is None) or (product_url is None):
-                continue
-            if (product_id == "") or (product_url == ""):
-                continue
-            if (str(product_id).lower() == "unknown") or (str(product_url).lower == "unknown"):
-                continue
-            if (str(product_id).lower() == "n/a") or (str(product_url).lower() == "n/a"):
-                continue
-            product_details_list.append(product_details)
-        except Exception as e:
-            print(f"\nERROR: Error analyzing product infringements: {str(e)}")
-            continue
+    created_ids = []
+
+    # Gemini/CSE: drop Apify marketplace hosts when Apify will cover them.
+    # Apify keeps the full search_limitations (including Amazon/eBay/etc.).
+    gemini_limitations = search_limitations
+    if is_apify_configured() and is_apify_enabled_for_case(search_limitations):
+        gemini_limitations = search_limitations_excluding_apify_hosts(search_limitations)
+        print(
+            "LOG: Stripped Apify catalog hosts from Gemini/CSE limitations; "
+            f"urls={gemini_limitations.get('urls')}"
+        )
+
+    focus_urls = _focus_urls_from_search_limitations(gemini_limitations)
+
+    extracted_products = _discover_products_via_gemini(
+        product_name,
+        ref_texts,
+        owners,
+        gemini_limitations,
+        max_product_results,
+    )
+    _persist_extracted_products(
+        extracted_products,
+        reference_claims,
+        parent_case_id,
+        product_details_list,
+        created_ids,
+        sites_searched,
+        patent_title=product_name,
+        keywords=keywords,
+        saved_product_urls=saved_product_urls,
+        ref_claim_flag=ref_claim_flag,
+    )
+
+    if is_apify_configured() and is_apify_enabled_for_case(search_limitations):
+        print("LOG: Running Apify retail product search")
+        apify_products = Apify().search(
+            reference_claims=ref_texts,
+            search_limitations=search_limitations,
+            keywords=keywords,
+            product_name=product_name,
+            max_results=max_product_results,
+            seen_runs=seen_apify_runs,
+            limit_flag=apify_limit_flag,
+        )
+        _persist_extracted_products(
+            apify_products,
+            reference_claims,
+            parent_case_id,
+            product_details_list,
+            created_ids,
+            sites_searched,
+            patent_title=product_name,
+            keywords=keywords,
+            saved_product_urls=saved_product_urls,
+            ref_claim_flag=ref_claim_flag,
+        )
+
+    if not product_details_list and is_google_custom_search_configured():
+        print(
+            "LOG: Gemini found no products; falling back to Google Custom Search "
+            "(claim-derived terms)"
+        )
+        extracted_products = productGoogleSearch(
+            ref_texts,
+            focus_urls,
+            owners=owners,
+            max_results=max_product_results,
+        )
+        _persist_extracted_products(
+            extracted_products,
+            reference_claims,
+            parent_case_id,
+            product_details_list,
+            created_ids,
+            sites_searched,
+            patent_title=product_name,
+            keywords=keywords,
+            saved_product_urls=saved_product_urls,
+            ref_claim_flag=ref_claim_flag,
+        )
+    elif not product_details_list:
+        print("LOG: No products found via Gemini; CSE not configured")
+
     print(f"LOG: Product Search Sources: {json.dumps(sites_searched, indent=4)}")
     print(f"LOG: Products Found: {len(product_details_list)}")
-    return product_details_list
+    return product_details_list, created_ids
 
 # New Search Functions
 
-def searchPatentSourcesNew(keywords:list[str], country:str, reference_claims:list[str], context:str):
-    searchResults = []
-    infringement_analysis_results = []
-
+def searchPatentSourcesNew(
+    keywords:list[str], 
+    country:str, 
+    reference_claims:list[str], 
+    context:str):
+    
     all_patent_details = []
     # TODO: Perform Live Patent Search
     try:
@@ -526,7 +1276,7 @@ def searchPatentSourcesNew(keywords:list[str], country:str, reference_claims:lis
         google_patents_urls = google_patents.initial_search_results(keywords)
         print(f"LOG: Google Patents URLs({len(google_patents_urls)})")
         search_urls = []
-        for data in tqdm(google_patents_urls, desc="Fetching Google Patents Details"):
+        for data in _tqdm(google_patents_urls, desc="Fetching Google Patents Details"):
             search_urls.append(data['case_data'])
             case_details = google_patents.get_single_patent_details(data['case_data'])
             if case_details is not None:
@@ -543,7 +1293,7 @@ def searchPatentSourcesNew(keywords:list[str], country:str, reference_claims:lis
         free_patents_urls = free_patents.initial_search_results(keywords)
         print(f"LOG: Free Patents Online URLs({len(free_patents_urls)})")
         search_urls = []
-        for data in tqdm(free_patents_urls, desc="Fetching Free Patents Online Details"):
+        for data in _tqdm(free_patents_urls, desc="Fetching Free Patents Online Details"):
             search_urls.append(data['case_data'])
             case_details = free_patents.get_single_patent_details(data['case_data'])
             if case_details is not None:
@@ -558,7 +1308,7 @@ def searchPatentSourcesNew(keywords:list[str], country:str, reference_claims:lis
             print(f"LOG: Free Patents Online Details({len(all_patent_details)})")
         # Get Details using Gemini
         patent_details_final = []
-        for data in tqdm(all_patent_details, desc="Isolating MetaData"):
+        for data in _tqdm(all_patent_details, desc="Isolating MetaData"):
             case_details = passToGeminiForMetadata(str(data['case_data']))
             if case_details is not None:
                 data.pop('case_data')

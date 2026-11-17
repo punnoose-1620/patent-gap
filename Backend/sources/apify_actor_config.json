@@ -1,0 +1,150 @@
+{
+  "amazon_us": {
+    "body": {
+      "searchQuery": "{{search_string}}",
+      "maxResults": "{{max_results}}",
+      "marketplace": "com",
+      "sortBy": "relevance"
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["asin", "ASIN", "productId", "id"],
+      "claims_from": ["title", "price", "rating", "reviews", "brand", "description"]
+    }
+  },
+  "amazon_uk": {
+    "body": {
+      "searchQuery": "{{search_string}}",
+      "maxResults": "{{max_results}}",
+      "marketplace": "co.uk",
+      "sortBy": "relevance"
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["asin", "ASIN", "productId", "id"],
+      "claims_from": ["title", "price", "rating", "reviews", "brand", "description"]
+    }
+  },
+  "amazon_de": {
+    "body": {
+      "searchQuery": "{{search_string}}",
+      "maxResults": "{{max_results}}",
+      "marketplace": "de",
+      "sortBy": "relevance"
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["asin", "ASIN", "productId", "id"],
+      "claims_from": ["title", "price", "rating", "reviews", "brand", "description"]
+    }
+  },
+  "amazon_fr": {
+    "body": {
+      "searchQuery": "{{search_string}}",
+      "maxResults": "{{max_results}}",
+      "marketplace": "fr",
+      "sortBy": "relevance"
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["asin", "ASIN", "productId", "id"],
+      "claims_from": ["title", "price", "rating", "reviews", "brand", "description"]
+    }
+  },
+  "ebay_us": {
+    "body": {
+      "query": "{{search_string}}",
+      "domain": "com",
+      "sort_by": "BEST_MATCH",
+      "maxPages": 1
+    },
+    "field_map": {
+      "product_url": ["url", "link"],
+      "product_name": ["title", "name"],
+      "product_id": ["itemId", "item_id", "id"],
+      "claims_from": ["title", "price", "condition", "shipping", "sellerName", "rating"]
+    }
+  },
+  "ebay_uk": {
+    "body": {
+      "query": "{{search_string}}",
+      "domain": "co.uk",
+      "sort_by": "BEST_MATCH",
+      "maxPages": 1
+    },
+    "field_map": {
+      "product_url": ["url", "link"],
+      "product_name": ["title", "name"],
+      "product_id": ["itemId", "item_id", "id"],
+      "claims_from": ["title", "price", "condition", "shipping", "sellerName", "rating"]
+    }
+  },
+  "walmart_us": {
+    "body": {
+      "query": "{{search_string}}",
+      "domain": "us",
+      "sort_by": "best_match",
+      "maxPages": 1
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["id", "usItemId", "itemId", "productId"],
+      "claims_from": ["title", "price", "brand", "description", "rating"]
+    }
+  },
+  "target_us": {
+    "body": {
+      "searchQueries": ["{{search_string}}"],
+      "maxProductsPerSearch": "{{max_results}}",
+      "maxSearchPages": 1,
+      "sort": "relevance"
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link", "tcin_url"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["tcin", "id", "productId"],
+      "claims_from": ["title", "price", "brand", "description", "rating", "reviewCount"]
+    }
+  },
+  "bestbuy_us": {
+    "body": {
+      "searchTerms": ["{{search_string}}"],
+      "maxResults": "{{max_results}}"
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["sku", "id", "productId"],
+      "claims_from": ["title", "price", "brand", "description", "rating", "reviewCount"]
+    }
+  },
+  "homedepot_us": {
+    "body": {
+      "searchQuery": "{{search_string}}",
+      "maxItems": "{{max_results}}"
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["id", "itemId", "productId", "sku"],
+      "claims_from": ["title", "price", "brand", "description", "rating"]
+    }
+  },
+  "lowes_us": {
+    "body": {
+      "searchQuery": "{{search_string}}",
+      "maxResults": "{{max_results}}"
+    },
+    "field_map": {
+      "product_url": ["url", "productUrl", "link"],
+      "product_name": ["title", "name", "productName"],
+      "product_id": ["id", "itemId", "productId", "sku"],
+      "claims_from": ["title", "price", "brand", "description", "rating"]
+    }
+  }
+}
