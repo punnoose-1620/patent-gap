@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Patent Gap AI — User Manual</title>
+<meta name="description" content="A step-by-step guide to using Patent Gap AI from your first visit through everyday infringement monitoring." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Jost:wght@300;400;500;600;700&family=Inconsolata:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --bg:        #FAFAF7;
+    --surf:      #F5F2EC;
+    --surf2:     rgba(13,40,24,0.06);
+    --deep:      #0D2818;
+    --ink:       #1a2e1e;
+    --ink2:      #2a3d2e;
+    --ink3:      #5a6b5e;
+    --accent:    #2E7D32;
+    --acc-soft:  rgba(46,125,50,0.10);
+    --acc-border:rgba(46,125,50,0.22);
+    --red:       #B91C1C;
+    --red-soft:  rgba(185,28,28,0.06);
+    --amber:     #b45309;
+    --amber-soft:rgba(180,83,9,0.10);
+    --grey:      #9aa19e;
+    --grey-soft: rgba(13,40,24,0.06);
+    --rule:      rgba(13,40,24,0.08);
+    --rule2:     rgba(13,40,24,0.05);
+    --radius:    14px;
+    --shadow-sm: 0 1px 2px 0 rgba(13,40,24,0.04);
+    --shadow-md: 0 4px 16px 0 rgba(13,40,24,0.08);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Jost', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 300;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── NAVBAR ───────────────────────────── */
+  .nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(250,250,247,0.85);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--rule);
+    height: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px;
+  }
+  .nav-brand {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--deep);
+    font-family: 'Libre Baskerville', serif;
+    font-weight: 700; font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+  .nav-glyph {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--deep);
+    display: flex; align-items: center; justify-content: center;
+    color: #FAFAF7;
+    font-family: 'Libre Baskerville', serif;
+    font-style: italic; font-size: 16px; font-weight: 700;
+  }
+  .nav-links {
+    display: flex; gap: 28px; list-style: none; margin: 0; padding: 0;
+  }
+  .nav-links a {
+    color: var(--ink2); font-size: 13px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    font-family: 'Inconsolata', monospace;
+    transition: color 0.15s;
+    text-decoration: none;
+  }
+  .nav-links a:hover { color: var(--accent); text-decoration: none; }
+  .nav-cta {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 16px; border-radius: 9px;
+    background: var(--deep); color: #FAFAF7;
+    font-family: 'Jost', sans-serif; font-size: 13px; font-weight: 600;
+    transition: background 0.15s, transform 0.15s;
+  }
+  .nav-cta:hover { background: #1b4229; transform: translateY(-1px); text-decoration: none; }
+
+  /* ── HERO ─────────────────────────────── */
+  .hero {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 80px 32px 48px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .eyebrow {
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    margin-bottom: 18px;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .hero h1 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 400;
+    color: var(--deep);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+    margin: 0 0 22px;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+  .hero-lead {
+    font-size: clamp(15px, 1.4vw, 17px);
+    color: var(--ink2);
+    font-weight: 300;
+    max-width: 720px;
+    line-height: 1.75;
+    margin: 0;
+  }
+  .hero-meta {
+    margin-top: 30px;
+    display: flex; flex-wrap: wrap; gap: 18px 28px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--ink3);
+  }
+  .hero-meta span strong {
+    color: var(--ink); font-weight: 600;
+  }
+
+  /* ── LAYOUT ───────────────────────────── */
+  .layout {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 32px 80px;
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+
+  /* ── TOC (sticky) ─────────────────────── */
+  .toc {
+    position: sticky;
+    top: 96px;
+    background: var(--surf);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 18px 14px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+  .toc-label {
+    font-family: 'Inconsolata', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink3);
+    padding: 0 8px 10px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--rule2);
+  }
+  .toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 8px 0 0;
+    counter-reset: toc;
+  }
+  .toc li {
+    counter-increment: toc;
+    margin: 0;
+  }
+  .toc a {
+    display: flex;
+    gap: 9px;
+    padding: 7px 8px;
+    font-family: 'Jost', sans-serif;
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--ink2);
+    border-radius: 6px;
+    line-height: 1.4;
+    transition: background 0.14s, color 0.14s;
+  }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    flex-shrink: 0;
+    font-family: 'Inconsolata', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink3);
+    width: 22px;
+    padding-top: 2px;
+  }
+  .toc a:hover {
+    background: var(--bg);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .toc a.active {
+    background: var(--acc-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .toc a.active::before {
+    color: var(--accent);
+  }
+
+  /* ── CONTENT ──────────────────────────── */
+  .content {
+    min-width: 0;
+  }
+  .section {
+    margin-bottom: 36px;
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 32px 36px;
+    box-shadow: var(--shadow-sm);
+    scroll-margin-top: 84px;
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+  }
+  .section.in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .section-head {
+    margin-bottom: 22px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--rule2);
+  }
+  .section h2 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--deep);
+    margin: 0;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+  }
+  .section h2 em {
+    font-style: italic;
+    color: var(--accent);
+    font-weight: 400;
+  }
+  .section h3 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 28px 0 12px;
+    line-height: 1.3;
+  }
+  .section h4 {
+    font-family: 'Jost', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 22px 0 8px;
+    text-transform: none;
+  }
+  .section p {
+    margin: 0 0 14px;
+    color: var(--ink2);
+    font-size: 14.5px;
+    line-height: 1.75;
+  }
+  .section ul, .section ol {
+    margin: 0 0 16px;
+    padding-left: 24px;
+    color: var(--ink2);
+    font-size: 14.5px;
+    line-height: 1.75;
+  }
+  .section li { margin-bottom: 6px; }
+  .section li > ul,
+  .section li > ol { margin-top: 6px; margin-bottom: 6px; }
+  .section strong { color: var(--ink); font-weight: 600; }
+  .section em { font-style: italic; }
+
+  .section code {
+    font-family: 'Inconsolata', monospace;
+    font-size: 12.5px;
+    background: var(--surf2);
+    color: var(--deep);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--rule2);
+  }
+
+  .section blockquote {
+    border-left: 3px solid var(--accent);
+    background: var(--acc-soft);
+    margin: 16px 0;
+    padding: 12px 18px;
+    border-radius: 0 8px 8px 0;
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .section blockquote p { margin: 0; color: var(--ink); }
+  .section blockquote p + p { margin-top: 8px; }
+
+  /* ── TABLES ───────────────────────────── */
+  .table-wrap {
+    overflow-x: auto;
+    margin: 16px 0;
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    background: var(--surf);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  table th {
+    text-align: left;
+    padding: 11px 14px;
+    background: rgba(13,40,24,0.04);
+    font-family: 'Inconsolata', monospace;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--ink3);
+    font-weight: 600;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  table td {
+    padding: 11px 14px;
+    color: var(--ink2);
+    border-bottom: 1px solid var(--rule2);
+    line-height: 1.6;
+    vertical-align: top;
+  }
+  table tr:last-child td { border-bottom: none; }
+  table tr:nth-child(even) td { background: rgba(250,250,247,0.5); }
+
+  /* ── SECTION 14 — Visual Swatches ─────── */
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin: 16px 0 8px;
+  }
+  .swatch {
+    background: var(--surf);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .swatch-label {
+    font-family: 'Inconsolata', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink3);
+    margin-top: 8px;
+  }
+
+  /* risk pills */
+  .risk-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.10em;
+    padding: 4px 10px; border-radius: 5px;
+  }
+  .risk-pill::before {
+    content: '';
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  .risk-pill.high   { background: var(--red-soft);   color: var(--red); }
+  .risk-pill.medium { background: var(--amber-soft); color: var(--amber); }
+  .risk-pill.low    { background: var(--acc-soft);   color: var(--accent); }
+
+  /* status pills */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.10em;
+    padding: 4px 10px; border-radius: 5px;
+  }
+  .status-pill::before {
+    content: '';
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill.patented   { background: var(--acc-soft);   color: var(--accent); }
+  .status-pill.expired    { background: var(--red-soft);   color: var(--red); }
+  .status-pill.abandoned  { background: var(--amber-soft); color: var(--amber); }
+  .status-pill.processing { background: var(--grey-soft);  color: var(--ink3); }
+
+  /* type pills */
+  .type-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: 6px;
+  }
+  .type-pill.patent  { background: var(--acc-soft);   color: var(--accent); }
+  .type-pill.product { background: var(--amber-soft); color: var(--amber); }
+
+  /* password strength bars */
+  .pw-strength {
+    display: flex; gap: 4px; margin-top: 8px;
+  }
+  .pw-bar {
+    flex: 1; height: 4px; border-radius: 2px;
+    background: var(--rule);
+  }
+  .pw-bar.on-1 { background: #dc2626; }
+  .pw-bar.on-2 { background: #f97316; }
+  .pw-bar.on-3 { background: #eab308; }
+  .pw-bar.on-4 { background: #84cc16; }
+  .pw-bar.on-5 { background: var(--accent); }
+  .pw-label {
+    font-family: 'Inconsolata', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    margin-top: 6px;
+    font-weight: 600;
+  }
+  .pw-label.l1 { color: #dc2626; }
+  .pw-label.l2 { color: #f97316; }
+  .pw-label.l3 { color: #eab308; }
+  .pw-label.l4 { color: #84cc16; }
+  .pw-label.l5 { color: var(--accent); }
+
+  /* updates pill (small inline mockup) */
+  .updates-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    color: #fff;
+    font-family: 'Inconsolata', monospace;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    padding: 3px 7px 3px 5px;
+    border-radius: 4px;
+  }
+  .updates-pill::before {
+    content: '';
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #fff; opacity: 0.9;
+  }
+
+  /* warn icon */
+  .warn-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(185,28,28,0.10);
+    color: var(--red);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  /* ── FOOTER ───────────────────────────── */
+  .footer {
+    border-top: 1px solid var(--rule);
+    background: var(--surf);
+    padding: 32px;
+    text-align: center;
+    color: var(--ink3);
+    font-size: 12.5px;
+  }
+  .footer a {
+    color: var(--accent);
+    font-family: 'Inconsolata', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+  }
+  .footer-sep {
+    margin: 0 12px;
+    color: var(--rule);
+  }
+
+  /* ── RESPONSIVE ───────────────────────── */
+  @media (max-width: 1023px) {
+    .layout {
+      grid-template-columns: 1fr;
+      gap: 24px;
+      padding: 24px 24px 60px;
+    }
+    .toc {
+      position: relative;
+      top: auto;
+      max-height: none;
+      padding: 14px;
+    }
+    .toc ol {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 2px;
+    }
+    .hero {
+      padding: 56px 24px 40px;
+    }
+    .nav-links { display: none; }
+    .section { padding: 26px 24px; }
+  }
+  @media (max-width: 599px) {
+    .nav { padding: 0 16px; }
+    .nav-brand span { display: none; }
+    .hero { padding: 40px 16px 32px; }
+    .layout { padding: 18px 16px 48px; }
+    .section { padding: 22px 18px; }
+    .section h2 { font-size: 22px; }
+    .toc ol { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── NAVBAR ──────────────────────────────────── -->
+<nav class="nav">
+  <a class="nav-brand" href="#top">
+    <div class="nav-glyph">P</div>
+    <span>Patent Gap AI</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#sec-1">Home</a></li>
+    <li><a href="#sec-2">Register</a></li>
+    <li><a href="#sec-4">Dashboard</a></li>
+    <li><a href="#sec-7">Detail</a></li>
+    <li><a href="#sec-10">Matches</a></li>
+    <li><a href="#sec-14">Reference</a></li>
+  </ul>
+  <a class="nav-cta" href="https://patentgap.ai" target="_blank" rel="noopener">
+    Back to App
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12"/>
+      <polyline points="12 5 19 12 12 19"/>
+    </svg>
+  </a>
+</nav>
+
+<!-- ── HERO ────────────────────────────────────── -->
+<header class="hero" id="top">
+  <div class="eyebrow">User Manual</div>
+  <h1>Patent Gap AI<br/><em>User Manual</em></h1>
+  <p class="hero-lead">
+    A step-by-step guide to using Patent Gap AI from your first visit through everyday infringement monitoring.
+  </p>
+  <div class="hero-meta">
+    <span><strong>Version</strong>&nbsp;&nbsp;Beta</span>
+    <span><strong>Audience</strong>&nbsp;&nbsp;Patent Attorneys &amp; IP Counsel</span>
+    <span><strong>Sections</strong>&nbsp;&nbsp;14</span>
+  </div>
+</header>
+
+<!-- ── LAYOUT ──────────────────────────────────── -->
+<div class="layout">
+
+  <!-- TOC -->
+  <aside class="toc" aria-label="Table of contents">
+    <div class="toc-label">Table of Contents</div>
+    <ol>
+      <li><a href="#sec-1">The Home Page</a></li>
+      <li><a href="#sec-2">Creating an Account</a></li>
+      <li><a href="#sec-3">Signing In</a></li>
+      <li><a href="#sec-4">The Dashboard</a></li>
+      <li><a href="#sec-5">Adding a Patent — by Patent ID</a></li>
+      <li><a href="#sec-6">Adding a Patent — by Local Upload</a></li>
+      <li><a href="#sec-7">The Patent Detail Page</a></li>
+      <li><a href="#sec-8">Editing Patent Details</a></li>
+      <li><a href="#sec-9">Running the Infringement Analysis</a></li>
+      <li><a href="#sec-10">Reviewing Potential Matches</a></li>
+      <li><a href="#sec-11">Notifications</a></li>
+      <li><a href="#sec-12">Your Profile</a></li>
+      <li><a href="#sec-13">Signing Out</a></li>
+      <li><a href="#sec-14">Reference — Colours, Badges &amp; Percentages</a></li>
+    </ol>
+  </aside>
+
+  <!-- CONTENT -->
+  <main class="content">
+
+    <!-- ──────── 1. The Home Page ──────── -->
+    <section class="section" id="sec-1">
+      <div class="section-head">
+        <div class="eyebrow">Section 01</div>
+        <h2>The Home <em>Page</em></h2>
+      </div>
+      <p>When you arrive at Patent Gap AI you'll land on the marketing home page. It has the following sections, all reachable from the top navigation:</p>
+      <ul>
+        <li><strong>Opportunity</strong> — why portfolio monitoring matters.</li>
+        <li><strong>How It Works</strong> — the 4-step process: claims analyzed → technologies monitored → infringements identified → attorneys review.</li>
+        <li><strong>Attorneys</strong> — how the platform fits legal workflows.</li>
+        <li><strong>Early Access</strong> — current beta status.</li>
+        <li><strong>Testimonials</strong> — feedback from beta partners.</li>
+      </ul>
+      <p>In the <strong>top-right</strong> of the navbar you'll see three buttons (when signed out):</p>
+      <ul>
+        <li><code>Login</code> — go to the sign-in page.</li>
+        <li><code>Contact Us</code> — open the contact form.</li>
+        <li><code>Request Demo</code> — open the demo request form.</li>
+      </ul>
+      <p>At the bottom of the page is a final <strong>Get Started</strong> call-to-action with two buttons that lead to <strong>Request Early Access</strong> and <strong>Contact Us</strong>.</p>
+      <p>Use one of the <strong>Request Demo</strong> or <strong>Contact Us</strong> buttons if you don't yet have access, or click <strong>Login</strong> if you've already been onboarded.</p>
+    </section>
+
+    <!-- ──────── 2. Creating an Account ──────── -->
+    <section class="section" id="sec-2">
+      <div class="section-head">
+        <div class="eyebrow">Section 02</div>
+        <h2>Creating an <em>Account</em></h2>
+      </div>
+      <p>Click <strong>Login</strong> at the top → on the login page, click <strong>Register</strong> at the bottom of the form. The registration is split into 3 steps.</p>
+
+      <h3>Step 1 — Identity</h3>
+      <ul>
+        <li><strong>Profile Picture</strong> <em>(optional)</em> — JPG/PNG/WEBP, max 5 MB.</li>
+        <li><strong>Title</strong> (required) — Mr / Ms / Mx / Dr / Prof.</li>
+        <li><strong>Full Name</strong> (required).</li>
+        <li><strong>Work Email</strong> (required).</li>
+        <li><strong>Job Title</strong> (required) — e.g. "Patent Counsel".</li>
+        <li><strong>Company / Firm</strong> <em>(optional)</em>.</li>
+        <li><strong>Phone</strong> <em>(optional)</em>.</li>
+      </ul>
+      <p>Click <strong>Continue</strong> to move to Step 2.</p>
+
+      <h3>Step 2 — Security</h3>
+      <ul>
+        <li>
+          <strong>Password</strong> (required, minimum 8 characters).
+          <p>As you type, you'll see a strength meter with five colour-coded bars:</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Strength</th><th>Bar colour</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Very weak</td><td>Red</td></tr>
+                <tr><td>Weak</td><td>Orange</td></tr>
+                <tr><td>Fair</td><td>Yellow</td></tr>
+                <tr><td>Good</td><td>Light green</td></tr>
+                <tr><td>Strong</td><td>Brand green</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>You must reach at least <strong>Fair</strong> to continue.</p>
+        </li>
+        <li><strong>Confirm Password</strong> (required) — must match. You'll see a green ✓ or red ✗ underneath.</li>
+      </ul>
+      <p>A note at the bottom explains that the platform also silently captures your timezone, locale, platform, and IP address in the background — you don't need to enter these.</p>
+
+      <h3>Step 3 — Address &amp; Terms</h3>
+      <p>All address fields (Line 1, Line 2, City, State/Region, Postal Code, Country) are <em>optional</em>.</p>
+      <p>Tick the <strong>I agree to the Terms of Service and Privacy Policy</strong> checkbox. Clicking the underlined link opens the Beta Agreement PDF in a modal viewer. You must accept the terms to proceed.</p>
+      <p>Click <strong>Create Account</strong>. When it succeeds, you'll be automatically signed in and redirected to your dashboard.</p>
+    </section>
+
+    <!-- ──────── 3. Signing In ──────── -->
+    <section class="section" id="sec-3">
+      <div class="section-head">
+        <div class="eyebrow">Section 03</div>
+        <h2>Signing <em>In</em></h2>
+      </div>
+      <p>On the <strong>Login</strong> page:</p>
+      <ol>
+        <li>Enter your <strong>Work Email</strong>.</li>
+        <li>Enter your <strong>Password</strong> (toggle the eye icon to show/hide).</li>
+        <li>Click <strong>Sign In</strong>.</li>
+      </ol>
+      <p>If the backend is cold-starting, you'll see the button text change to <em>"Waking up server, please wait…"</em>. This is normal — wait a few seconds.</p>
+      <p>If sign-in fails, an error banner appears at the top of the form with the reason (wrong password, account not found, etc.).</p>
+      <p>On success you're taken straight to the <strong>Dashboard</strong>.</p>
+    </section>
+
+    <!-- ──────── 4. The Dashboard ──────── -->
+    <section class="section" id="sec-4">
+      <div class="section-head">
+        <div class="eyebrow">Section 04</div>
+        <h2>The <em>Dashboard</em></h2>
+      </div>
+      <p>This is your main workspace. The layout is:</p>
+
+      <h3>Sidebar (left)</h3>
+      <p>The sidebar contains:</p>
+      <ul>
+        <li><strong>MAIN</strong>
+          <ul>
+            <li><strong>Dashboard</strong> — the page you're on.</li>
+            <li><strong>Monitoring</strong> — <em>not yet implemented (you'll see "Under development" on hover).</em></li>
+            <li><strong>Findings</strong> — <em>not yet implemented.</em></li>
+          </ul>
+        </li>
+        <li><strong>ANALYSIS</strong>
+          <ul>
+            <li><strong>Reports</strong> — <em>not yet implemented.</em></li>
+            <li><strong>History</strong> — <em>not yet implemented.</em></li>
+          </ul>
+        </li>
+        <li><strong>ACCOUNT</strong>
+          <ul>
+            <li><strong>Profile</strong> — opens your profile page.</li>
+            <li><strong>Settings</strong> — <em>not yet implemented.</em></li>
+            <li><strong>Report Bug</strong> — opens a Google Form in a new tab.</li>
+          </ul>
+        </li>
+      </ul>
+      <p>Your name, role and avatar are shown at the bottom of the sidebar. Clicking that block also takes you to your <strong>Profile</strong>.</p>
+      <p>On mobile, tap the hamburger icon in the top bar to open the sidebar.</p>
+
+      <h3>Top Bar</h3>
+      <ul>
+        <li><strong>Search box</strong> (centre) — filters your patents by title or patent number in real time. Click the "×" to clear.</li>
+        <li><strong>Notification bell</strong> (right) — see <a href="#sec-11">Notifications</a>.</li>
+        <li><strong>Home</strong> button — returns to the marketing home page.</li>
+        <li><strong>Log out</strong> button — signs you out and returns to the login page.</li>
+      </ul>
+
+      <h3>High-Risk Alert Banner</h3>
+      <p>If you have any HIGH-risk findings, a red alert banner appears at the top of the content area:</p>
+      <blockquote>
+        <p>⚠ <strong>N HIGH risk findings</strong> require attorney review — potential infringement detected.</p>
+      </blockquote>
+      <p>Click the <strong>×</strong> to dismiss it for the session.</p>
+
+      <h3>Stat Cards (clickable filters)</h3>
+      <p>Four cards summarise your portfolio. <strong>Click any card to filter the patent list below to only that category. Click again to clear the filter.</strong> The active card is highlighted.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Card</th>
+              <th>What the number on the card means</th>
+              <th>What clicking it filters to</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Active Scans</strong> (blue, magnifier icon)</td>
+              <td>Patents currently being processed by the backend (<code>current_status = processing</code>).</td>
+              <td>Patents with status <strong>Patented</strong>.</td>
+            </tr>
+            <tr>
+              <td><strong>Patents Analyzed</strong> (purple, document icon)</td>
+              <td>Patents that have completed analysis or already have at least one infringement.</td>
+              <td>The full portfolio.</td>
+            </tr>
+            <tr>
+              <td><strong>High Risk Matches</strong> (yellow, warning icon)</td>
+              <td>Patents whose overall overlap score is in the HIGH band (&gt; 90%).</td>
+              <td>Patents with status <strong>Patented</strong>.</td>
+            </tr>
+            <tr>
+              <td><strong>Cleared Patents</strong> (green, check icon)</td>
+              <td>Patents with no infringements found, or no analysis run yet.</td>
+              <td>Patents with status <strong>complete / cleared / expired / abandoned</strong>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <blockquote>
+        <p>Note: the <strong>count</strong> displayed on each card is computed on the server using the rules in the middle column, while the <strong>filter</strong> triggered by clicking is purely client-side using the rules in the right column. These may not always agree — for example, a patent listed under "Active Scans" on the server may not appear when you click that card if its status isn't "Patented". This is a known limitation.</p>
+      </blockquote>
+      <p>When a filter is active, a <strong>Clear filter</strong> pill appears in the top-right of the page header.</p>
+
+      <h3>Page Header — Buttons</h3>
+      <ul>
+        <li><strong>Export</strong> — button is present but no export endpoint is wired up on the backend yet, so clicking it currently does nothing usable.</li>
+        <li><strong>Add Patent</strong> — opens the <strong>New Patent Analysis</strong> modal (see <a href="#sec-5">section 5</a>).</li>
+      </ul>
+
+      <h3>Active Patents Grid</h3>
+      <p>Each patent is shown as a <strong>Project Card</strong> containing:</p>
+      <ul>
+        <li><strong>Status badge</strong> (top-left) — see the colour reference in <a href="#sec-14">section 14</a>.</li>
+        <li><strong>Risk badge</strong> if applicable — <em>High Risk</em> (red) or <em>Med Risk</em> (amber).</li>
+        <li><strong>NEW "Updates" pill</strong> — a small pulsing green badge that means the patent has been updated since your last visit.</li>
+        <li><strong>Analysis Status Icon</strong> — a red triangle (⚠) means the infringement analysis is still incomplete.</li>
+        <li><strong>Title</strong> of the patent.</li>
+        <li><strong>Patent number</strong>.</li>
+        <li><strong>Overlap Score</strong> — the percentage and 5-dot indicator showing how much your patent overlaps with detected infringements. Coloured by risk.</li>
+        <li><strong>Time ago</strong> — e.g. "3 hours ago".</li>
+        <li><strong>Matches count</strong> — number of potential infringement matches found (in amber).</li>
+        <li><strong>"Open in new view" button</strong> (top-right) — opens the patent detail page.</li>
+      </ul>
+      <p>Click anywhere on a card to open its <strong>Patent Detail Page</strong>.</p>
+      <p>The grid loads more patents automatically as you scroll (infinite scroll). When you reach the end, you'll see "End of list".</p>
+
+      <h3>Weekly Search Card</h3>
+      <p>Below the patent grid, when no filter is active, a <strong>Weekly Search Results</strong> card shows the last automated scan timestamp and the count of new results found. This is a system-wide weekly scan, separate from individual patent analysis.</p>
+
+      <h3>Section Header Actions</h3>
+      <ul>
+        <li><strong>Refresh button</strong> (circular arrow) — re-pulls patents and stats from the server.</li>
+        <li><strong>View All</strong> — clears any filter or search and shows all patents.</li>
+      </ul>
+    </section>
+
+    <!-- ──────── 5. Adding a Patent — by Patent ID ──────── -->
+    <section class="section" id="sec-5">
+      <div class="section-head">
+        <div class="eyebrow">Section 05</div>
+        <h2>Adding a Patent — by Patent <em>ID</em></h2>
+      </div>
+      <p>This is the <strong>fastest</strong> path: enter a patent number and we fetch everything automatically.</p>
+      <ol>
+        <li>From the dashboard, click <strong>+ Add Patent</strong> (top right).</li>
+        <li>The <strong>New Patent Analysis</strong> modal opens with two tabs at the top: <strong>Upload File</strong> and <strong>Patent ID</strong>. Click <strong>Patent ID</strong>.</li>
+        <li>Enter the patent number in the <strong>Patent Number</strong> field, e.g. <code>US10203040B2</code>.
+          <p><strong>Supported formats:</strong></p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Type</th><th>Examples</th></tr></thead>
+              <tbody>
+                <tr><td>US Granted</td><td><code>US10203040B2</code>, <code>US-10203040-B2</code></td></tr>
+                <tr><td>US Pre-grant</td><td><code>US20240412550A1</code></td></tr>
+                <tr><td>EP Patents</td><td><code>EP1234567</code>, <code>EP-1234567-A1</code></td></tr>
+                <tr><td>WO Patents</td><td><code>WO2023123456</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </li>
+        <li>Click <strong>Fetch &amp; Create Patent</strong>.</li>
+      </ol>
+      <p>The system runs three steps in sequence, shown live with a checklist of green checkmarks:</p>
+      <ol>
+        <li><strong>Fetching from USPTO</strong> — pulling the patent record.</li>
+        <li><strong>Generating description</strong> — if the patent description is too short, an AI summary is created.</li>
+        <li><strong>Isolating claims</strong> — extracting the patent's claims.</li>
+      </ol>
+      <p>When all three finish, the modal closes and you're taken to the <strong>Patent Detail Page</strong> for that patent.</p>
+      <blockquote>
+        <p>Note: This path does <strong>not</strong> run the infringement analysis automatically. To start the analysis, click <strong>Run Analysis</strong> on the detail page (see <a href="#sec-9">section 9</a>).</p>
+      </blockquote>
+      <blockquote>
+        <p>If a patent isn't found on USPTO, the backend falls back to Google Patents (and, where wired up, Free Patents Online) to enrich the data. This is transparent — you'll just see the source name change on the detail page.</p>
+      </blockquote>
+    </section>
+
+    <!-- ──────── 6. Adding a Patent — by Local Upload ──────── -->
+    <section class="section" id="sec-6">
+      <div class="section-head">
+        <div class="eyebrow">Section 06</div>
+        <h2>Adding a Patent — by Local <em>Upload</em></h2>
+      </div>
+      <p>Use this when your patent isn't in a public database or you have a PDF you want to analyse.</p>
+      <ol>
+        <li>From the dashboard, click <strong>+ Add Patent</strong>.</li>
+        <li>The modal opens on the <strong>Upload File</strong> tab by default.</li>
+        <li>Fill in <strong>Step 1 of 2 — Upload Patent</strong>:
+          <ul>
+            <li><strong>Project Name</strong> (required) — e.g. "Foldable Display Hinge Analysis".</li>
+            <li><strong>Patent ID</strong> (required) — your own identifier (e.g. <code>US1234</code>). It will be stored as <code>local_US1234</code>.</li>
+            <li><strong>PDF file</strong> (required) — click the dropzone to browse, or drag and drop. <strong>Max 12 MB</strong>, PDF only. (The dropzone only accepts <code>.pdf</code>; XML uploads are supported elsewhere — see the <strong>Add Document</strong> flow in <a href="#sec-7">section 7</a>.)</li>
+            <li><strong>Keywords</strong> <em>(optional)</em> — comma-separated, e.g. "AI, Machine Learning, Neural Networks".</li>
+            <li><strong>Filing Date</strong> <em>(optional)</em> — must be between 1950-01-01 and today.</li>
+            <li><strong>Status</strong> <em>(optional)</em> — choose from: Aborted, Patented, Expired, Payment Pending, Rejected, Withdrawn, Processing.</li>
+            <li><strong>Inventors</strong> <em>(optional)</em> — comma-separated.</li>
+          </ul>
+        </li>
+        <li>Click <strong>Continue</strong> to move to <strong>Step 2 of 2 — Add Context</strong>.</li>
+        <li>In Step 2:
+          <ul>
+            <li><strong>Patent Reference</strong> is shown as a read-only confirmation.</li>
+            <li><strong>Captured Details</strong> summarise what you entered in Step 1.</li>
+            <li><strong>Context Description</strong> — describe the core novelty, defensive goals, or specific technical elements the AI should focus on. The more specific, the better the analysis.</li>
+            <li>Two <strong>AI Refinement Questions</strong> are shown for your awareness (informational).</li>
+          </ul>
+        </li>
+        <li>Click <strong>Start creating patent</strong>.</li>
+      </ol>
+      <p>While the patent is being created you'll see:</p>
+      <ul>
+        <li><em>Creating Patent…</em></li>
+        <li><em>Uploading File…</em></li>
+      </ul>
+      <p>When complete, you're taken to the <strong>Patent Detail Page</strong>.</p>
+      <blockquote>
+        <p>Click <strong>Back</strong> to revisit Step 1 (you'll be warned that progress will be lost) or <strong>Cancel</strong> to abandon the modal entirely.</p>
+      </blockquote>
+    </section>
+
+    <!-- ──────── 7. The Patent Detail Page ──────── -->
+    <section class="section" id="sec-7">
+      <div class="section-head">
+        <div class="eyebrow">Section 07</div>
+        <h2>The Patent Detail <em>Page</em></h2>
+      </div>
+      <p>The detail page is organised top-to-bottom into the following sections.</p>
+
+      <h3>Top Action Bar</h3>
+      <ul>
+        <li><strong>Back</strong> — return to the previous page.</li>
+        <li><strong>Export</strong> — button is present, but the backend doesn't expose an export endpoint yet, so this is currently a placeholder.</li>
+        <li><strong>Run Analysis</strong> — start a fresh infringement analysis (only visible when no analysis is already running on the backend).</li>
+      </ul>
+
+      <h3>Hero Patent Card</h3>
+      <p>Shows the patent's <strong>status pill</strong>, <strong>source name</strong> (US Patent Office / Espacenet / Google / Manual Entry / Patent Gap), <strong>title</strong>, <strong>patent number</strong>, <strong>time since last update</strong>, and the <strong>matches count</strong> (in amber if &gt; 0).</p>
+
+      <h3>Case Information (left column)</h3>
+      <p>Read-only details: Created date, Filed date, Last Updated, Inventors, Keywords, Source.</p>
+
+      <h3>Context &amp; Description (right column) — Editable</h3>
+      <p>This is the main free-text description. Hover over it and click the <strong>pencil icon</strong> in the top-right to edit. Inside the editor:</p>
+      <ul>
+        <li>Type your new description.</li>
+        <li>Keyboard shortcuts: <strong>Ctrl+Enter</strong> to save, <strong>Esc</strong> to cancel.</li>
+        <li>Click <strong>Save</strong> or <strong>Cancel</strong>.</li>
+      </ul>
+      <p>Below the description you may also see <strong>Search Strategy</strong> chips showing target companies and search terms, if any were captured.</p>
+
+      <h3>Search Limitations — Editable</h3>
+      <p>Restrict the analysis to certain companies, keywords, or URLs. The analysis will <em>exclude</em> matches that come from these constraints (or focus on them, depending on the API behaviour).</p>
+      <ul>
+        <li><strong>Companies</strong> — type a name and press <strong>Enter</strong> or <strong>comma</strong> to add it as a tag. Only letters, numbers, spaces and <code>- _ . &amp;</code> are allowed.</li>
+        <li><strong>Keywords / Terms</strong> — same input style.</li>
+        <li><strong>Reference URLs</strong> — accepts <code>www.domain.tld</code>, <code>https://domain.tld</code>, or <code>domain.tld</code>. Invalid URLs show an inline red error.</li>
+      </ul>
+      <p>Click <strong>×</strong> on any tag to remove it. Click <strong>Save</strong> to persist, <strong>Cancel</strong> to revert.</p>
+
+      <h3>Related IDs</h3>
+      <p>If the patent has linked entries in other patent families (e.g. priority applications, continuations), they're listed here as pill chips, grouped by ID type. This section is read-only.</p>
+
+      <h3>Documents</h3>
+      <p>The grid shows one thumbnail per attached document. Each thumbnail displays a source-specific image (USPTO, Espacenet, Google Patents, Freepatentsonline, Local, etc.), the index number, the source name, and the file extension.</p>
+      <ul>
+        <li><strong>Add Document</strong> (top-right of the section) — uploads a new file to the case. The backend accepts <strong>PDF or XML</strong> only, with a maximum file size of <strong>12 MB</strong>. Files outside these limits are rejected with an error message.</li>
+        <li>Clicking a thumbnail opens it:
+          <ul>
+            <li><strong>USPTO</strong> and <strong>Local</strong> documents open inside an in-app <strong>Document Modal</strong> with previous/next navigation.</li>
+            <li>Anything else opens in a new browser tab.</li>
+          </ul>
+        </li>
+      </ul>
+
+      <h3>Claims for Analysis — Editable</h3>
+      <p>The list of patent claims used by the AI. Hover the section and click the <strong>pencil icon</strong> to enter edit mode. In edit mode you can:</p>
+      <ul>
+        <li>Re-write any claim text.</li>
+        <li><strong>Move a claim up/down</strong> with the chevron buttons.</li>
+        <li><strong>Remove</strong> a claim with the × button.</li>
+        <li><strong>Add Claim</strong> to append a new empty one.</li>
+        <li>Keyboard: <strong>Ctrl+Enter</strong> to save, <strong>Esc</strong> to cancel.</li>
+        <li>Click <strong>Save Claims</strong> when done.</li>
+      </ul>
+
+      <h3>Claims Chart</h3>
+      <p>When analysis has completed, each of your claim numbers is shown alongside coloured pill-borders for every infringement that overlaps it. Pill colour follows the standard:</p>
+      <ul>
+        <li><strong>Red</strong> — ≥ 90% similarity</li>
+        <li><strong>Orange</strong> — 70–89% similarity</li>
+        <li><strong>Green</strong> — &lt; 70% similarity</li>
+      </ul>
+
+      <h3>Potential Matches</h3>
+      <p>The heart of the analysis. See <a href="#sec-10">section 10</a>.</p>
+
+      <h3>Bottom Action Buttons</h3>
+      <ul>
+        <li><strong>Export Case</strong> — placeholder button; no backend export endpoint is wired up yet.</li>
+        <li><strong>Delete Case</strong> — currently <strong>non-functional</strong>. The UI asks for confirmation and dispatches a delete, but the backend does not expose a <code>DELETE /api/cases/&lt;id&gt;</code> route, so the call will fail. The card may temporarily disappear from your local list, but it is <strong>not actually removed on the server</strong> and will return on refresh.</li>
+      </ul>
+    </section>
+
+    <!-- ──────── 8. Editing Patent Details ──────── -->
+    <section class="section" id="sec-8">
+      <div class="section-head">
+        <div class="eyebrow">Section 08</div>
+        <h2>Editing Patent <em>Details</em></h2>
+      </div>
+      <p>Most editable fields use the same pattern: hover the section, click the <strong>pencil icon</strong> (top right of that section), make your changes, then press <strong>Save</strong> (or <strong>Ctrl+Enter</strong>). <strong>Esc</strong> cancels.</p>
+      <p>You can edit:</p>
+      <ul>
+        <li><strong>Title</strong> — not directly editable from the UI; the displayed title comes from the patent record fetched from USPTO/Google Patents (or the <strong>Project Name</strong> you entered for a local upload).</li>
+        <li><strong>Description / Context</strong> — Context &amp; Description card.</li>
+        <li><strong>Claims</strong> — Claims for Analysis card.</li>
+        <li><strong>Search Limitations</strong> — Companies, Keywords, Reference URLs.</li>
+        <li><strong>Documents</strong> — add new files; the section's <em>Add Document</em> button opens a file picker (PDF or XML, ≤ 12 MB).</li>
+      </ul>
+      <p>All edits are persisted via the backend's <code>update-patent</code> endpoint. If a save fails, an inline red error message appears with the reason.</p>
+    </section>
+
+    <!-- ──────── 9. Running the Infringement Analysis ──────── -->
+    <section class="section" id="sec-9">
+      <div class="section-head">
+        <div class="eyebrow">Section 09</div>
+        <h2>Running the Infringement <em>Analysis</em></h2>
+      </div>
+      <p>From the <strong>Patent Detail Page</strong>:</p>
+      <ol>
+        <li>Make sure the patent has both <strong>keywords</strong> and at least one <strong>document</strong>. If either is missing you'll see <em>"Cannot run analysis: missing keywords or documents."</em></li>
+        <li>Click <strong>Run Analysis</strong> (top-right of the page, or via the <strong>Start Analysis</strong> button when there are no matches yet).</li>
+        <li>You'll see a spinner with either:
+          <ul>
+            <li><em>Isolating Claims…</em></li>
+            <li><em>Finding Infringements…</em></li>
+          </ul>
+        </li>
+      </ol>
+      <p>While the analysis runs on the backend, the page <strong>polls every 15 seconds</strong> for updates. You can leave the page and come back — the analysis continues server-side.</p>
+
+      <h3>Analysis Statuses</h3>
+      <p>The backend exposes the current step of the analysis through the <code>infringement_analysis_status</code> field on the case. The Potential Matches section reflects this with the following states:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Backend status</th>
+              <th>What it means</th>
+              <th>What you see</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>Started</code></td>
+              <td>The analysis has just begun and is searching patent sources.</td>
+              <td>Amber spinner card with "Processing" pill. Re-run buttons hidden.</td>
+            </tr>
+            <tr>
+              <td><code>Patent Sources Completed</code></td>
+              <td>Patent-source search has finished; product-source search is now running.</td>
+              <td>Same spinner card (still in progress).</td>
+            </tr>
+            <tr>
+              <td><code>Product Sources Completed</code></td>
+              <td>Both patent and product searches have finished writing infringements.</td>
+              <td>Spinner card on the way to <strong>Completed</strong>.</td>
+            </tr>
+            <tr>
+              <td><code>Completed</code></td>
+              <td>The analysis run is fully done.</td>
+              <td>Either the grid of match cards (matches found) or a green ✓ panel with <strong>Start Analysis</strong> button.</td>
+            </tr>
+            <tr>
+              <td><code>Failed during Patent Sources</code></td>
+              <td>An error occurred while searching patent sources.</td>
+              <td>The detail page shows an error and a re-run button.</td>
+            </tr>
+            <tr>
+              <td><code>Failed during Product Sources</code></td>
+              <td>Patent search succeeded but product search threw an error. Any patent matches found are kept.</td>
+              <td>The detail page shows an error and a re-run button.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>While the analysis runs, the page polls every 15 seconds for status changes. Once finished, a small <strong>refresh button</strong> (top right of the Potential Matches section) lets you re-run the analysis on demand.</p>
+    </section>
+
+    <!-- ──────── 10. Reviewing Potential Matches ──────── -->
+    <section class="section" id="sec-10">
+      <div class="section-head">
+        <div class="eyebrow">Section 10</div>
+        <h2>Reviewing Potential <em>Matches</em></h2>
+      </div>
+      <p>Each potential infringement is shown as a <strong>Match Card</strong> in a 3-column grid (1 column on mobile).</p>
+
+      <h3>What's on each Match Card</h3>
+      <ul>
+        <li><strong>Risk badge</strong> (top-left) — High Risk (red), Med Risk (amber), or Low Risk (green).</li>
+        <li><strong>Type pill</strong> (top-right):
+          <ul>
+            <li><strong>📄 Patent</strong> (green) — another patent that overlaps yours.</li>
+            <li><strong>🛒 Product</strong> (amber) — a real-world product (e.g. from Amazon) that may infringe.</li>
+          </ul>
+        </li>
+        <li><strong>Title</strong> of the matching patent or product.</li>
+        <li><strong>ID</strong> — <code>Patent: …</code> or <code>Product: …</code>.</li>
+        <li><strong>Company</strong> (for patents) — when known.</li>
+        <li><strong>Claim snippet</strong> (for products) — the first ~80 characters of the closest claim.</li>
+        <li><strong>Overlap Score</strong> with a coloured progress bar (see the colour reference below).</li>
+        <li><strong>Time ago</strong> stamp.</li>
+        <li><strong>Exclude</strong> button (red, bottom-right) — see below.</li>
+      </ul>
+
+      <h3>Clicking a match</h3>
+      <p>Click the card body (or the open-in-window icon) to open the <strong>Infringement Detail Modal</strong>.</p>
+
+      <h3>The Infringement Detail Modal</h3>
+      <p>At the top of the modal you'll see:</p>
+      <ul>
+        <li>A <strong>type pill</strong> (📄 Patent or 🛒 Product).</li>
+        <li>A <strong>case chip</strong> (your patent's case number).</li>
+        <li>The entry/product ID.</li>
+        <li>A <strong>risk pill</strong> showing both the risk level (<code>HIGH RISK · 92%</code>) and the overall overlap percentage.</li>
+      </ul>
+      <p>If the match looks suspiciously similar to your own patent (e.g. the same patent re-filed in a different database), a yellow warning banner appears: <em>"Note: This infringement might be the same patent, but filed on a different database."</em></p>
+      <p>Below that you'll see:</p>
+      <ul>
+        <li><strong>Source</strong> and <strong>Entry ID</strong> cards.</li>
+        <li><strong>Product Claims</strong> (for product matches).</li>
+        <li>A large <strong>Overlap Score</strong> bar with the percentage in big serif type, coloured by risk.</li>
+        <li>A <strong>Visit Infringement Source / Visit Product Listing</strong> button — opens the original URL in a new tab.</li>
+      </ul>
+
+      <h4>Side-by-Side Claim Chart</h4>
+      <p>A table comparing your patent's claims to the infringing ones. Columns:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Column</th><th>What it shows</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Claim #</td><td>Sequential number.</td></tr>
+            <tr><td>Your Patent Claim / Product Claim / Reference Claim</td><td>The text of your claim (or product claim for product matches).</td></tr>
+            <tr><td>Similar Infringing Claim / Matched Claim</td><td>The corresponding text in the infringement, with a "View source →" link when available.</td></tr>
+            <tr><td>Similarity</td><td>A coloured percentage chip: red (high), orange (medium), green (low).</td></tr>
+            <tr><td>Justification</td><td>(Products only) the AI's reasoning for why this product claim infringes.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>At the bottom:</p>
+      <ul>
+        <li><strong>Close</strong> — close the modal.</li>
+        <li><strong>Export Report</strong> — placeholder button; no backend export endpoint exists yet.</li>
+      </ul>
+
+      <h3>Excluding a match</h3>
+      <p>If a match is irrelevant (e.g. your own patent on a different database, or a false positive), click <strong>Exclude</strong> on the match card. After confirming the prompt, the match is removed from the list and the case is updated on the backend.</p>
+    </section>
+
+    <!-- ──────── 11. Notifications ──────── -->
+    <section class="section" id="sec-11">
+      <div class="section-head">
+        <div class="eyebrow">Section 11</div>
+        <h2><em>Notifications</em></h2>
+      </div>
+      <p>The bell icon in the top bar shows a <strong>green counter badge</strong> when patents have been updated since your last visit (e.g. new infringements found by automated weekly scans).</p>
+      <p>Click the bell to open a dropdown listing each updated patent:</p>
+      <ul>
+        <li>A pulsing green dot indicates the update.</li>
+        <li>The patent <strong>title</strong> and <strong>patent number</strong> are shown.</li>
+        <li>An <strong>updatedAt</strong> timestamp.</li>
+        <li>A risk pill if the patent is high or medium risk.</li>
+      </ul>
+      <p>Click any row to jump straight to that patent's detail page. The badge clears once you visit the patent (the visit timestamp is persisted via the <code>update-patent</code> endpoint).</p>
+      <blockquote>
+        <p>The "updates since last visit" logic is driven by comparing each patent's <code>last_updated</code> with your local <code>last_viewed</code> timestamp; there is no dedicated notifications service or push channel on the backend. Updates therefore only appear after you refresh or reload the dashboard.</p>
+      </blockquote>
+    </section>
+
+    <!-- ──────── 12. Your Profile ──────── -->
+    <section class="section" id="sec-12">
+      <div class="section-head">
+        <div class="eyebrow">Section 12</div>
+        <h2>Your <em>Profile</em></h2>
+      </div>
+      <p>Open via the sidebar's <strong>Profile</strong> entry, the avatar block at the bottom of the sidebar, or the <strong>Profile</strong> link in the top navbar.</p>
+
+      <h3>Identity Card (left column)</h3>
+      <ul>
+        <li>Profile photo with a <strong>camera button</strong> to upload a new one (any image format).</li>
+        <li>Your name, role tag (job title), and company.</li>
+        <li>A <strong>Quick stats</strong> strip (Patents / Findings / Reports) — <em>placeholders for now.</em></li>
+      </ul>
+
+      <h3>Tabs</h3>
+      <p>There are two working tabs:</p>
+
+      <h4>Account tab</h4>
+      <p>Edit your personal and address information:</p>
+      <ul>
+        <li><strong>Personal</strong> — Title, Full Name, Work Email, Job Title, Company / Firm, Phone.</li>
+        <li><strong>Address</strong> <em>(optional)</em> — Address Line 1, Address Line 2, City, State / Province, Postal Code, Country.</li>
+      </ul>
+      <p>Click <strong>Save Changes</strong>. A green "Changes saved" pill confirms success.</p>
+
+      <h4>Security tab</h4>
+      <ul>
+        <li><strong>Change Password</strong>
+          <ul>
+            <li>Enter your <strong>Current Password</strong>, <strong>New Password</strong> (min 8 characters), and <strong>Confirm New Password</strong>. Use the eye icons to toggle visibility.</li>
+            <li>Click <strong>Update Password</strong>. A green "Password updated" pill confirms.</li>
+            <li>If the new passwords don't match or are too short, you'll see an inline red error.</li>
+          </ul>
+        </li>
+        <li><strong>Session &amp; Access</strong> — read-only info: Account Status (Active, green pill), Last Sign In, Access Level (your job title), Encryption (TLS 1.3), SOC 2 (Compliant).</li>
+        <li><strong>Danger Zone</strong> — a red-bordered <strong>Delete Account</strong> button. There is <strong>no backend endpoint</strong> to delete an account, and the button has no handler attached — clicking it currently does nothing.</li>
+      </ul>
+      <blockquote>
+        <p>The <strong>Notifications</strong> tab in the sidebar is not currently exposed — only the Account and Security tabs are active in this build. There is no backend storage for notification preferences either.</p>
+      </blockquote>
+    </section>
+
+    <!-- ──────── 13. Signing Out ──────── -->
+    <section class="section" id="sec-13">
+      <div class="section-head">
+        <div class="eyebrow">Section 13</div>
+        <h2>Signing <em>Out</em></h2>
+      </div>
+      <p>You can sign out from three places:</p>
+      <ul>
+        <li>The <strong>Log out</strong> button in the dashboard's top bar.</li>
+        <li>The <strong>Log out</strong> button in the patent detail page's top bar.</li>
+        <li>The <strong>Sign Out</strong> entry at the bottom of the Profile sidebar.</li>
+        <li>The <strong>Logout</strong> button in the main navbar (when signed in and viewing public pages).</li>
+      </ul>
+      <p>After signing out you're redirected to the <strong>Login</strong> page. All local session data is cleared, so you'll need to sign in again to access any protected page.</p>
+    </section>
+
+    <!-- ──────── 14. Reference ──────── -->
+    <section class="section" id="sec-14">
+      <div class="section-head">
+        <div class="eyebrow">Section 14</div>
+        <h2>Reference — Colours, Badges &amp; <em>Percentages</em></h2>
+      </div>
+
+      <h3>Overlap Score &amp; Risk Level</h3>
+      <p>The platform computes an <strong>Overlap Score</strong> for every infringement (and an averaged score for the whole patent). It's a percentage between 0 and 100. The backend's risk classifier (<code>get_risk_level</code>) uses these exact thresholds on the average similarity score (0.0 – 1.0):</p>
+
+      <div class="swatch-grid">
+        <div class="swatch">
+          <span class="risk-pill high">HIGH RISK · 92%</span>
+          <div class="swatch-label">≥ 90% · likely infringement</div>
+        </div>
+        <div class="swatch">
+          <span class="risk-pill medium">MED RISK · 78%</span>
+          <div class="swatch-label">70 – 89% · investigate</div>
+        </div>
+        <div class="swatch">
+          <span class="risk-pill low">LOW RISK · 42%</span>
+          <div class="swatch-label">0 – 70% · informational</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Overlap Score</th>
+              <th>Risk Level</th>
+              <th>Colour</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>&gt; 90 %</strong></td>
+              <td><strong>HIGH</strong></td>
+              <td>🔴 Red</td>
+              <td>Very strong overlap — likely infringement, prioritise attorney review.</td>
+            </tr>
+            <tr>
+              <td><strong>&gt; 70 %</strong> to ≤ 90 %</td>
+              <td><strong>MEDIUM</strong></td>
+              <td>🟠 Amber / Orange</td>
+              <td>Substantial overlap — worth investigating.</td>
+            </tr>
+            <tr>
+              <td><strong>0 – 70 %</strong></td>
+              <td><strong>LOW</strong></td>
+              <td>🟢 Green</td>
+              <td>Weak overlap — informational.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>This colour code applies to:</p>
+      <ul>
+        <li>The risk badge on every patent card and match card.</li>
+        <li>The progress bar inside each card.</li>
+        <li>The overlap percentage in the Infringement Detail modal.</li>
+        <li>The pill border on the Claims Chart.</li>
+        <li>The dashboard's red <strong>HIGH risk findings</strong> alert banner.</li>
+      </ul>
+
+      <h3>Patent Status Colours</h3>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <span class="status-pill patented">Patented</span>
+          <div class="swatch-label">Active &amp; monitored</div>
+        </div>
+        <div class="swatch">
+          <span class="status-pill expired">Expired</span>
+          <div class="swatch-label">Term has expired</div>
+        </div>
+        <div class="swatch">
+          <span class="status-pill abandoned">Abandoned</span>
+          <div class="swatch-label">Withdrawn / abandoned</div>
+        </div>
+        <div class="swatch">
+          <span class="status-pill processing">Processing</span>
+          <div class="swatch-label">Still being created</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Status</th><th>Badge colour</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Patented</strong></td><td>🟢 Green</td><td>Active, granted patent under monitoring.</td></tr>
+            <tr><td><strong>Expired</strong></td><td>🔴 Red</td><td>Patent term has expired.</td></tr>
+            <tr><td><strong>Abandoned</strong></td><td>⚪ Grey / amber</td><td>Patent prosecution was abandoned or withdrawn.</td></tr>
+            <tr><td><strong>Processing</strong></td><td>(no specific colour)</td><td>The patent is still being created / claims still being isolated.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Match Type Pills</h3>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <span class="type-pill patent">📄 Patent</span>
+          <div class="swatch-label">Another patent filing</div>
+        </div>
+        <div class="swatch">
+          <span class="type-pill product">🛒 Product</span>
+          <div class="swatch-label">Real-world product</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pill</th><th>Colour</th><th>What it represents</th></tr></thead>
+          <tbody>
+            <tr><td><strong>📄 Patent</strong></td><td>Green</td><td>The match is another patent filing.</td></tr>
+            <tr><td><strong>🛒 Product</strong></td><td>Amber</td><td>The match is a real-world product (e.g. Amazon listing).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Other Visual Cues</h3>
+      <ul>
+        <li><span class="updates-pill">Updates</span>&nbsp;&nbsp;<strong>Updates pill</strong> (green, pulsing) on a patent card — the patent has changed since you last viewed it.</li>
+        <li><span class="warn-icon">⚠</span>&nbsp;&nbsp;<strong>Analysis Status Icon</strong> (red ⚠) on a patent card — the infringement analysis is incomplete or was stopped.</li>
+        <li><strong>Bell counter badge</strong> (green) — unread updates exist; the number is the count of patents with updates.</li>
+        <li><strong>Live dot</strong> (small green pulsing circle) — used as a visual marker on section headers to indicate "live monitoring".</li>
+        <li><strong>High-risk alert banner</strong> (red, top of dashboard) — at least one patent has reached the HIGH risk threshold. Dismiss with <strong>×</strong>.</li>
+      </ul>
+
+      <h3>Password Strength Bars (Registration only)</h3>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <div class="pw-strength">
+            <span class="pw-bar on-1"></span><span class="pw-bar"></span><span class="pw-bar"></span><span class="pw-bar"></span><span class="pw-bar"></span>
+          </div>
+          <div class="pw-label l1">Very Weak</div>
+        </div>
+        <div class="swatch">
+          <div class="pw-strength">
+            <span class="pw-bar on-2"></span><span class="pw-bar on-2"></span><span class="pw-bar"></span><span class="pw-bar"></span><span class="pw-bar"></span>
+          </div>
+          <div class="pw-label l2">Weak</div>
+        </div>
+        <div class="swatch">
+          <div class="pw-strength">
+            <span class="pw-bar on-3"></span><span class="pw-bar on-3"></span><span class="pw-bar on-3"></span><span class="pw-bar"></span><span class="pw-bar"></span>
+          </div>
+          <div class="pw-label l3">Fair</div>
+        </div>
+        <div class="swatch">
+          <div class="pw-strength">
+            <span class="pw-bar on-4"></span><span class="pw-bar on-4"></span><span class="pw-bar on-4"></span><span class="pw-bar on-4"></span><span class="pw-bar"></span>
+          </div>
+          <div class="pw-label l4">Good</div>
+        </div>
+        <div class="swatch">
+          <div class="pw-strength">
+            <span class="pw-bar on-5"></span><span class="pw-bar on-5"></span><span class="pw-bar on-5"></span><span class="pw-bar on-5"></span><span class="pw-bar on-5"></span>
+          </div>
+          <div class="pw-label l5">Strong</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Bars filled</th><th>Label</th><th>Colour</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Very Weak</td><td>Red</td></tr>
+            <tr><td>2</td><td>Weak</td><td>Orange</td></tr>
+            <tr><td>3</td><td>Fair</td><td>Yellow</td></tr>
+            <tr><td>4</td><td>Good</td><td>Light green</td></tr>
+            <tr><td>5</td><td>Strong</td><td>Brand green</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>You need <strong>Fair</strong> or higher to advance.</p>
+    </section>
+
+    <!-- ──────── End ──────── -->
+    <section class="section">
+      <div class="section-head">
+        <div class="eyebrow">End</div>
+        <h2>That's <em>It</em></h2>
+      </div>
+      <p>That's the complete user flow for the features currently shipped in Patent Gap AI. Sections like <strong>Monitoring</strong>, <strong>Findings</strong>, <strong>Reports</strong>, <strong>History</strong>, and <strong>Settings</strong> show "Under development" tooltips and aren't covered in this manual yet — they'll be added once they go live.</p>
+      <p>If you hit any issue, use the <strong>Report Bug</strong> link in the sidebar — it opens a Google Form you can fill in directly.</p>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── FOOTER ──────────────────────────────────── -->
+<footer class="footer">
+  <div>
+    Patent Gap AI &middot; User Manual
+    <span class="footer-sep">·</span>
+    <a href="#top">Back to top</a>
+    <span class="footer-sep">·</span>
+    <a href="https://docs.google.com/forms/d/1uQ38IALRKOSoLBgeyzNASZnr7X9STgT1LjA--pQyIXo/" target="_blank" rel="noopener">Report Bug</a>
+  </div>
+  <div style="margin-top: 10px; font-family: 'Inconsolata', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.10em; opacity: 0.7;">
+    Beta · Selected Partners · Attorney-Reviewed
+  </div>
+</footer>
+
+<script>
+  // ── Reveal-on-scroll ─────────────────────────────────
+  (function () {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          e.target.classList.add('in');
+          obs.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.section').forEach(function (el) { obs.observe(el); });
+  })();
+
+  // ── Scroll-spy: highlight active TOC entry ───────────
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+    var sections = links
+      .map(function (a) { return document.querySelector(a.getAttribute('href')); })
+      .filter(Boolean);
+
+    if (!sections.length) return;
+
+    var setActive = function (id) {
+      links.forEach(function (a) {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+      });
+    };
+
+    var spy = new IntersectionObserver(function (entries) {
+      // Pick the entry closest to the top that's intersecting
+      var visible = entries
+        .filter(function (e) { return e.isIntersecting; })
+        .sort(function (a, b) { return a.target.offsetTop - b.target.offsetTop; });
+      if (visible.length) setActive(visible[0].target.id);
+    }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+
+    sections.forEach(function (s) { spy.observe(s); });
+    setActive(sections[0].id);
+  })();
+</script>
+
+</body>
+</html>
