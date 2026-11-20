@@ -10,9 +10,82 @@ from data_processor import *
 from models.alerts import *
 from models.cases import *
 from models.users import *
+from models.audit import add_audit_entry
 from file_controller import *
 from live_search.liveSearchController import *
-from llm_brain.gemini import Gemini
+from ai_workflow.orchestration import get_ai_client as _get_ai_client
+
+
+def _audit_safe(
+    *,
+    user_id: str,
+    case_id: str,
+    kind: str,
+    text: str = "",
+    payload=None,
+    status: str = "",
+    source: str = "",
+):
+    """Best-effort audit write; never raises into product flows."""
+    try:
+        if not user_id or not case_id:
+            return
+        add_audit_entry(
+            user_id=user_id,
+            case_id=case_id,
+            kind=kind,
+            text=text,
+            payload=payload or {},
+            status=status,
+            source=source,
+        )
+    except Exception as e:
+        print(f"LOG: audit write skipped ({type(e).__name__}: {e})")
+
+
+def _seed_search_limitations_before_create(case_data: dict) -> None:
+    """
+    After page isolation, before create_case: two-step seed via Gemini +
+    add_limitations (classify then companies/URLs). Best-effort; never blocks
+    patent import.
+    """
+    if not isinstance(case_data, dict):
+        return
+    try:
+        from structures.limitations_seed import seed_search_limitations_on_fetch
+
+        result = seed_search_limitations_on_fetch(case_data)
+        lim = result.get("search_limitations") or {}
+        print(
+            "LOG: search_limitations seed result: "
+            f"skipped={result.get('skipped')} "
+            f"classify_attempts={result.get('classify_attempts')} "
+            f"company_attempts={result.get('company_attempts')} "
+            f"companies={len(result.get('accepted_companies') or [])} "
+            f"urls={len(result.get('accepted_urls') or [])} "
+            f"errors={len(result.get('errors') or [])} "
+            f"layer={lim.get('commercial_layer')!r} "
+            f"sellable_unit={lim.get('sellable_unit')!r}",
+            flush=True,
+        )
+    except Exception as e:
+        print(
+            f"LOG: search_limitations seed failed ({type(e).__name__}: {e})",
+            flush=True,
+        )
+
+
+def _case_actor_user_id(case_id: str) -> str:
+    case = get_case_by_id(case_id) or {}
+    return (
+        (case.get("created_by") or case.get("owner") or case.get("assigned_to") or "")
+        if isinstance(case, dict)
+        else ""
+    )
+
+def Gemini():
+    """Factory compatible with legacy Gemini() call sites."""
+    return _get_ai_client()
 from models.live_search_results import (
     ProductRetailSearchParam,
     ProductRetailSearchParams,
@@ -569,10 +642,33 @@ def start_patent_analysis(
     core_claims: list[dict] = [], 
     pivotal_claims: list[dict] = []
     ):
+    """
+    Background patent live-search worker (Flask app context required).
+
+    Writes audit kind=analysis_start, flips infringement analysis flags/status
+    per claim bucket (asserted/generic, independent, core, pivotal), calls
+    searchPatentSources for each non-empty bucket, then marks completed/error.
+    Intended to run inside a threading.Thread from
+    POST /api/similarity-analysis-live/<case_id>.
+    """
     start_time = time.time()
     if search_type == 'bucketed':
         search_status_key = "asserted_claims_patent_analysis"
     with app.app_context():
+        actor_id = _case_actor_user_id(case_id)
+        _audit_safe(
+            user_id=actor_id,
+            case_id=case_id,
+            kind="analysis_start",
+            text="Patent infringement analysis started",
+            payload={
+                "category": "patent",
+                "search_type": search_type,
+                "started_at": dt.now().isoformat(),
+            },
+            status="started",
+            source="analysis",
+        )
         asserted_patentResults = None
         independent_patentResults = None
         core_patentResults = None
@@ -1051,8 +1147,31 @@ def start_product_analysis(
     market_pivotal_claims: list[dict] = [],
     search_type: str = 'generic'
     ):
+    """
+    Background product live-search worker (Flask app context required).
+
+    Audits analysis_start, runs __complete_product_search (discovery, isolation,
+    optional manuals enrichment), persists infringements, refresh_case_infringement_scores
+    (RAG shortlist when enabled), updates case.infringement_details and analysis flags.
+    Paired with start_patent_analysis from similarity-analysis-live.
+    """
     with app.app_context():
         start_time = time.time()
+        actor_id = _case_actor_user_id(case_id)
+        _audit_safe(
+            user_id=actor_id,
+            case_id=case_id,
+            kind="analysis_start",
+            text="Product infringement analysis started",
+            payload={
+                "category": "product",
+                "search_type": search_type,
+                "product_name": product_name,
+                "started_at": dt.now().isoformat(),
+            },
+            status="started",
+            source="analysis",
+        )
         asserted_product_details_list = None
         independent_product_details_list = None
         core_product_details_list = None
@@ -1141,6 +1260,7 @@ def fetchById(app, patent_id:str, user_id:str):
     free_patents_error = False
     error_message = ""
     fetch_succeeded = False
+    isolation_started_at = dt.now().isoformat()
     with app.app_context():
         try:
             try:
@@ -1149,10 +1269,24 @@ def fetchById(app, patent_id:str, user_id:str):
                     remove_patent_from_fetching_list(user_id, patent_id)
                     remove_patent_from_error_list(user_id, patent_id)
                     print(f"LOG {patent_id}: Similar Cases Found and merged into a single case: {json.dumps(similar, indent=4)}")
+                    case_id = similar['_id']
+                    _audit_safe(
+                        user_id=user_id,
+                        case_id=case_id,
+                        kind="patent_fetch",
+                        text=f"Patent fetch completed for {patent_id} (similar-case merge)",
+                        payload={
+                            "patent_id": patent_id,
+                            "started_at": isolation_started_at,
+                            "source": "similar_cases",
+                        },
+                        status="completed",
+                        source="fetch",
+                    )
                     returnVal = {
                         'success': True,
                         'message': 'Patent data imported successfully',
-                        'case_id': similar['_id'],
+                        'case_id': case_id,
                         'keywords': similar.get('keywords', []),
                         'case_data': similar,
                     }
@@ -1172,19 +1306,36 @@ def fetchById(app, patent_id:str, user_id:str):
                     uspto_data['_id'] = f"uspto_{user_id}_{patent_id}"
                     uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
                     print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
+                    _seed_search_limitations_before_create(uspto_data)
                     creationResult = create_case(uspto_data)
                     print(f"TEST 1.1: Creation Result: {json.dumps(creationResult, indent=4)}")
-                    descriptionResult = generate_patent_description(f"uspto_{user_id}_{patent_id}")
+                    if not creationResult.get('success'):
+                        raise Exception(creationResult.get('message') or "Document Creation Error")
+                    case_id = creationResult.get('case_id') or uspto_data['_id']
+                    descriptionResult = generate_patent_description(case_id)
                     print(f"TEST 1.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
-                    claimsResult = isolate_claims(f"uspto_{user_id}_{patent_id}")
+                    claimsResult = isolate_claims(case_id)
                     print(f"TEST 1.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
                     remove_patent_from_fetching_list(user_id, patent_id)
                     remove_patent_from_error_list(user_id, patent_id)
+                    _audit_safe(
+                        user_id=user_id,
+                        case_id=case_id,
+                        kind="patent_fetch",
+                        text=f"Patent fetch completed for {patent_id} (USPTO)",
+                        payload={
+                            "patent_id": patent_id,
+                            "started_at": isolation_started_at,
+                            "source": "uspto",
+                        },
+                        status="completed",
+                        source="fetch",
+                    )
                     fetch_succeeded = True
                     returnValue = {
                         'success': True,
                         'message': 'Patent data imported successfully',
-                        'case_id': f"uspto_{user_id}_{patent_id}",
+                        'case_id': case_id,
                         'keywords': uspto_data.get('keywords', []),
                         'case_data': uspto_data
                     }
@@ -1230,17 +1381,33 @@ def fetchById(app, patent_id:str, user_id:str):
                                 case_data['current_status'] = 'Granted'
                             case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
                             created_id = case_data.get('_id', '')
+                            _seed_search_limitations_before_create(case_data)
                             creationResult = create_case(case_data)
                             print(f"TEST 2.1: Creation Result: {json.dumps(creationResult, indent=4)}")
-                            created_id = case_data.get('_id', '')
-                            if 'DocumentCreationError' in created_id:
+                            if not creationResult.get('success'):
+                                raise Exception(creationResult.get('message') or "Document Creation Error")
+                            created_id = creationResult.get('case_id') or case_data.get('_id', '')
+                            if 'DocumentCreationError' in str(created_id):
                                 raise Exception("Document Creation Error")
-                            descriptionResult = generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
+                            descriptionResult = generate_patent_description(created_id)
                             print(f"TEST 2.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
-                            claimsResult = isolate_claims(f"googlepatents_{user_id}_{patent_id}")
+                            claimsResult = isolate_claims(created_id)
                             print(f"TEST 2.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
                             remove_patent_from_fetching_list(user_id, patent_id)
                             remove_patent_from_error_list(user_id, patent_id)
+                            _audit_safe(
+                                user_id=user_id,
+                                case_id=created_id,
+                                kind="patent_fetch",
+                                text=f"Patent fetch completed for {patent_id} (Google Patents)",
+                                payload={
+                                    "patent_id": patent_id,
+                                    "started_at": isolation_started_at,
+                                    "source": "google_patents",
+                                },
+                                status="completed",
+                                source="fetch",
+                            )
                             fetch_succeeded = True
                             returnValue = {
                                 'success': True,
@@ -1279,18 +1446,34 @@ def fetchById(app, patent_id:str, user_id:str):
                             if case_data.get('current_status', '') == '':
                                 case_data['current_status'] = 'Granted'
                             case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                            _seed_search_limitations_before_create(case_data)
                             creationResult = create_case(case_data)
                             print(f"TEST 3.1: Creation Result: {json.dumps(creationResult, indent=4)}")
-                            created_id = case_data.get('_id', '')
-                            if 'DocumentCreationError' in created_id:
+                            if not creationResult.get('success'):
+                                raise Exception(creationResult.get('message') or "Document Creation Error")
+                            created_id = creationResult.get('case_id') or case_data.get('_id', '')
+                            if 'DocumentCreationError' in str(created_id):
                                 returnValue = {'success': False, 'message': created_id}
                                 raise Exception("Document Creation Error")
-                            descriptionResult = generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
+                            descriptionResult = generate_patent_description(created_id)
                             print(f"TEST 3.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
-                            claimsResult = isolate_claims(f"freepatentsonline_{user_id}_{patent_id}")
+                            claimsResult = isolate_claims(created_id)
                             print(f"TEST 3.3: Claims Isolation Result: {json.dumps(claimsResult, indent=4)}")
                             remove_patent_from_error_list(user_id, patent_id)
                             remove_patent_from_fetching_list(user_id, patent_id)
+                            _audit_safe(
+                                user_id=user_id,
+                                case_id=created_id,
+                                kind="patent_fetch",
+                                text=f"Patent fetch completed for {patent_id} (Free Patents Online)",
+                                payload={
+                                    "patent_id": patent_id,
+                                    "started_at": isolation_started_at,
+                                    "source": "free_patents_online",
+                                },
+                                status="completed",
+                                source="fetch",
+                            )
                             fetch_succeeded = True
                             returnValue = {
                                 'success': True,

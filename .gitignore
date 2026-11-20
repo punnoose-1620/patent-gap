@@ -18,6 +18,7 @@ env
 # Logs
 *.log
 logs/
+Backend/logs/
 Backend/.env
 Backend/.env
 .cursor/settings.json

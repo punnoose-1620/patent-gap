@@ -57,6 +57,9 @@ fi
 echo "📁 Creating necessary directories..."
 mkdir -p Assets
 mkdir -p Backend/logs
+mkdir -p Backend/vector_store
+mkdir -p Backend/testers
+mkdir -p Backend/Assets
 mkdir -p Frontend/assets
 mkdir -p Frontend/css
 mkdir -p Frontend/js

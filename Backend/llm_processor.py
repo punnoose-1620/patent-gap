@@ -15,9 +15,9 @@ def getDefaultModelName():
     """
     gemini_api_key = getEnvKey('gemini')
     openai_api_key = getEnvKey('openai')
-    if gemini_api_key is not None:
+    if gemini_api_key:
         return 'gemini-2.5-flash'
-    elif openai_api_key is not None:
+    elif openai_api_key:
         return 'gpt-4o-mini'
     else:
         return None
@@ -32,13 +32,13 @@ def getModelClient(model_name='gemini-2.5-flash'):
     """
     if 'gemini' in model_name:
         api_key = getEnvKey('gemini')
-        if api_key is None:
+        if not api_key:
             print("GEMINI_API_KEY is not set in environment variables")
             return None
         client = genai.Client(api_key=api_key)
     elif 'gpt' in model_name:
         api_key = getEnvKey('openai')
-        if api_key is None:
+        if not api_key:
             print("OPENAI_API_KEY is not set in environment variables")
             return None
         openai.api_key = api_key

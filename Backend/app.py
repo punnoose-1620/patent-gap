@@ -1942,6 +1942,14 @@ def get_claims_for_patent(case_id):
 # NOTE: Current implementation. Need to be updated with new one later after testing.
 @app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
 def live_similarity_analysis(case_id):
+  """
+  Start live patent + product infringement analysis for a case (async).
+
+  Validates auth, case, keywords, claims, and owners; buckets documented vs
+  market-language claims; starts start_patent_analysis and start_product_analysis
+  threads; returns thread ids immediately. Progress via case flags / audit /
+  infringement APIs — not this response body.
+  """
   data = request.get_json()
   if data is None:
     return jsonify({
@@ -3454,5 +3462,20 @@ def delete_case_infringement(case_id, infringement_id):
 if __name__ == '__main__':
     port = app.config['PORT']
     debug = app.config['DEBUG']
+    # Local Chroma HTTP server (default). PersistentClient if CHROMA_MODE=persistent.
+    try:
+        from database.chroma_server import (
+            ensure_chroma_server,
+            should_manage_chroma_at_flask_startup,
+        )
+
+        if should_manage_chroma_at_flask_startup(debug=bool(debug)):
+            ensure_chroma_server()
+    except Exception as exc:
+        print(
+            f"WARNING: Chroma server startup skipped/failed "
+            f"({type(exc).__name__}: {exc})",
+            flush=True,
+        )
     print(f"Starting Flask app on port {port}")
     app.run(host='0.0.0.0', port=port, debug=debug)

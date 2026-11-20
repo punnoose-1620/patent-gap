@@ -233,6 +233,14 @@ ALERT_DATABASE_NAME_DEV=alerts
 ALERT_DATABASE_NAME_PROD=alerts
 DEMO_DATABASE_NAME_DEV=demo_requests
 USERS_DATABASE_NAME_DEV=users
+AUDIT_DATABASE_NAME_DEV=audit_dev
+AUDIT_DATABASE_NAME_PROD=audit
+AUDIT_DATABASE_NAME_TEST=audit_test
+
+# Product manual enrichment (instruction/repair manuals after listing isolation)
+# Requires a concrete product SKU; rejects product listings as "manuals".
+# Uses GCSE query strings + Gemini manuals-only search. Set 0/false to disable.
+PRODUCT_MANUAL_ENRICHMENT=1
 ```
 
 **Optional API Keys:**
