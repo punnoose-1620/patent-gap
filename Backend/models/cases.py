@@ -624,6 +624,52 @@ def delete_case(case_id):
         'message': 'Case not found'
     }
 
+def _user_cases_query(user_id):
+    return {
+        '$or': [
+            {'assigned_to': user_id},
+            {'accepted_by': user_id},
+            {'created_by': user_id},
+        ]
+    }
+
+
+def get_cases_by_query(query, include_fields=None, exclude_fields=None):
+    """
+    Lean Mongo find for cases. Prefer this over getAllData for filtered loads.
+    """
+    return getDataByQuery(
+        connect_to_database(),
+        getCaseDatabaseName(),
+        query or {},
+        include_fields=include_fields,
+        exclude_fields=exclude_fields,
+    )
+
+
+def get_unsorted_cases_for_user(user_id, include_fields=None):
+    """
+    Cases related to ``user_id`` with no folder membership
+    (missing / null / empty ``folders``).
+    """
+    if not user_id:
+        return []
+    query = {
+        '$and': [
+            _user_cases_query(user_id),
+            {
+                '$or': [
+                    {'folders': {'$exists': False}},
+                    {'folders': None},
+                    {'folders': {'$size': 0}},
+                ]
+            },
+        ]
+    }
+    fields = include_fields if include_fields is not None else ['_id']
+    return get_cases_by_query(query, include_fields=fields)
+
+
 def get_case_related_to_user(user_id, page=1, paginated=False):
     """
     Get cases related to a specific user (assigned to, accepted by, created by)
@@ -635,36 +681,16 @@ def get_case_related_to_user(user_id, page=1, paginated=False):
         list: List of user's cases
     """
     if not paginated:
-        user_cases = []
-        for case in getAllData(connect_to_database(), getCaseDatabaseName()):
-            keys = case.keys()
-            if ('assigned_to' in keys):
-                if (case['assigned_to'] == user_id):
-                    case = find_document_metadata(case)
-                    user_cases.append(apply_infringement_filters_to_case(case))
-                    continue
-            if ('accepted_by' in keys):
-                if (case['accepted_by'] == user_id):
-                    case = find_document_metadata(case)
-                    user_cases.append(apply_infringement_filters_to_case(case))
-                    continue
-            if ('created_by' in keys):
-                if (case['created_by'] == user_id):
-                    case = find_document_metadata(case)
-                    user_cases.append(apply_infringement_filters_to_case(case))
-                    continue
+        user_cases = get_cases_by_query(_user_cases_query(user_id))
+        for i, case in enumerate(user_cases):
+            case = find_document_metadata(case)
+            user_cases[i] = apply_infringement_filters_to_case(case)
         return user_cases
 
     paged = paginateDataByQuery(
         connect_to_database(),
         getCaseDatabaseName(),
-        query={
-            '$or': [
-                {'assigned_to': user_id},
-                {'accepted_by': user_id},
-                {'created_by': user_id}
-            ]
-        },
+        query=_user_cases_query(user_id),
         page=page
     )
     user_cases = paged.get('items', [])
