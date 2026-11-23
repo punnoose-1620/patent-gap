@@ -1,0 +1,10 @@
+---
+description: Pending follow-up — start report-building work when the user is ready
+alwaysApply: true
+---
+
+# Pending: report-building
+
+The user asked to be reminded later to **start working on report-building**.
+
+When they ask what's next, return from a meeting context, or look for the next feature after current reliability/demo work, remind them of this and ask if they want to begin.

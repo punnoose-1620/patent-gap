@@ -146,3 +146,17 @@ def getFolderDatabaseName():
         return os.environ.get('FOLDER_DATABASE_NAME_TEST')
     else:
         return os.environ.get('FOLDER_DATABASE_NAME_DEV')
+
+def getNotesDatabaseName():
+    # Load environment variables
+    load_dotenv()
+
+    environment = os.environ.get('ENVIRONMENT')
+    if environment == production:
+        return os.environ.get('NOTES_DATABASE_NAME_PROD')
+    elif environment == development:
+        return os.environ.get('NOTES_DATABASE_NAME_DEV')
+    elif environment == testing:
+        return os.environ.get('NOTES_DATABASE_NAME_TEST')
+    else:
+        return os.environ.get('NOTES_DATABASE_NAME_DEV')
