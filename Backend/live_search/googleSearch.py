@@ -251,10 +251,13 @@ def productGoogleSearch(
     focus_urls: list[str],
     owners: list[str] | None = None,
     max_results: int = 30,
+    skip_urls: set | None = None,
 ) -> list[InfringingProductDetail]:
     """
     Search Google Custom Search using claim-derived terms (no LLM before search),
     then fetch pages and extract product details with Gemini.
+
+    skip_urls: optional denylist (e.g. Gemini discovery error_results keys).
     """
     queries = build_cse_queries_from_claims(
         reference_claims,
@@ -271,6 +274,11 @@ def productGoogleSearch(
     product_details: list[InfringingProductDetail] = []
     seen_urls: set[str] = set()
     seen_result_urls: set[str] = set()
+    denylist = {
+        str(u).strip().lower()
+        for u in (skip_urls or set())
+        if str(u).strip()
+    }
     per_query_budget = max(1, max_results // len(queries))
 
     for query in queries:
@@ -285,14 +293,19 @@ def productGoogleSearch(
 
         for result in search_results:
             url = (result.url or "").strip()
-            if not url or url in seen_result_urls:
+            url_key = url.lower()
+            if not url or url_key in seen_result_urls:
+                continue
+            if url_key in denylist:
+                print(f"LOG: Skipping denylisted product URL: {url}")
+                seen_result_urls.add(url_key)
                 continue
             blocked = blocked_product_url_reason(url)
             if blocked:
                 print(f"LOG: Skipping blocked product URL: {url} — {blocked}")
-                seen_result_urls.add(url)
+                seen_result_urls.add(url_key)
                 continue
-            seen_result_urls.add(url)
+            seen_result_urls.add(url_key)
 
             content = __getSearchContent(url)
             if not content:

@@ -723,36 +723,34 @@ def update_infringement_analysis_flags(
     if case_data is None:
         return False
 
-    patent_time_taken = case_data.get('patent_analysis_time_taken', '')
-    product_time_taken = case_data.get('product_analysis_time_taken', '')
+    patent_time_taken = case_data.get('patent_analysis_time_taken', '') or ''
+    product_time_taken = case_data.get('product_analysis_time_taken', '') or ''
     last_updated = dt.now()
     next_status = 'Started'
     update_data = {
         'last_updated': last_updated,
         'infringement_analysis_status': next_status
     }
-    existing_status = case_data.get('infringement_analysis_status', '')
     if update_type.strip().lower() == 'completed':
-        if patent_time_taken != '' and product_time_taken != '':
-            next_status = 'Completed'
-            update_data['last_infringement_analysis_date'] = dt.now()
-        else:
-            if category == 'patent':
-                if time_taken != '':
-                    update_data[f'{category}_analysis_time_taken'] = time_taken
-                if 'product' in existing_status.strip().lower():
-                    next_status = 'Completed'
-                    update_data['last_infringement_analysis_date'] = dt.now()
-                else:
-                    next_status = 'Patent Sources Completed'
-            elif category == 'product':
-                if time_taken != '':
-                    update_data[f'{category}_analysis_time_taken'] = time_taken
-                if 'patent' in existing_status.strip().lower():
-                    next_status = 'Completed'
-                    update_data['last_infringement_analysis_date'] = dt.now()
-                else:
-                    next_status = 'Product Sources Completed'
+        # Write this side's time, then decide overall status from both times:
+        # - other side empty → Patent/Product Sources Completed
+        # - both set → Completed
+        if time_taken != '':
+            update_data[f'{category}_analysis_time_taken'] = time_taken
+        if category == 'patent':
+            patent_time_taken = time_taken or patent_time_taken
+            if not product_time_taken:
+                next_status = 'Patent Sources Completed'
+            else:
+                next_status = 'Completed'
+                update_data['last_infringement_analysis_date'] = dt.now()
+        elif category == 'product':
+            product_time_taken = time_taken or product_time_taken
+            if not patent_time_taken:
+                next_status = 'Product Sources Completed'
+            else:
+                next_status = 'Completed'
+                update_data['last_infringement_analysis_date'] = dt.now()
     elif update_type.strip().lower() == 'error':
         next_status = 'Error'
         if error_message != '':
@@ -822,8 +820,11 @@ def update_infringement_analysis_status(
         'last_updated': dt.now()
     }
     update_data_new[status_key] = old_status_flags
-    if status.strip().lower() == "started":
-        update_data_new['infringement_analysis_status'] = "Started"
+    # Bucket flag updates must not touch overall infringement_analysis_status.
+    # That field is owned by update_infringement_analysis_flags (patent/product
+    # thread start + finalize). Default status='started' on every bucket call
+    # previously wiped "Patent/Product Sources Completed" back to "Started",
+    # so dual-thread runs never reached "Completed".
     update_case(case_id, update_data_new)
     return True
 

@@ -3471,4 +3471,5 @@ if __name__ == '__main__':
             flush=True,
         )
     print(f"Starting Flask app on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    # use_reloader=False: file edits must not kill long-running analysis threads.
+    app.run(host='0.0.0.0', port=port, debug=debug, use_reloader=False)

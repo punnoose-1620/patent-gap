@@ -1,6 +1,7 @@
 import copy
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from google import genai
 from google.genai import types
 from env_controller import getEnvKey
@@ -14,6 +15,47 @@ from models.live_search_results import *
 _SCHEMA_STRIP_KEYS = {"examples", "default", "$defs"}
 MAX_ATTEMPTS = 5
 DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
+# Hang guard: successful Gemini generate_content calls are expected well under this.
+GEMINI_CALL_TIMEOUT_S = 15 * 60
+GEMINI_HANG_MAX_RETRIES = 3
+
+
+class GeminiCallTimeoutError(TimeoutError):
+    """Raised when generate_content exceeds GEMINI_CALL_TIMEOUT_S after hang retries."""
+
+
+def _generate_content_with_hang_guard(client, **kwargs):
+    """
+    Run client.models.generate_content with a wall-clock timeout.
+
+    On timeout, retry up to GEMINI_HANG_MAX_RETRIES, then raise
+    GeminiCallTimeoutError. Uses shutdown(wait=False) so a hung worker
+    thread is abandoned instead of blocking the caller forever.
+    """
+    last_err: Exception | None = None
+    for attempt in range(1, GEMINI_HANG_MAX_RETRIES + 1):
+        executor = ThreadPoolExecutor(max_workers=1)
+        try:
+            future = executor.submit(client.models.generate_content, **kwargs)
+            try:
+                return future.result(timeout=GEMINI_CALL_TIMEOUT_S)
+            except FuturesTimeoutError as e:
+                last_err = e
+                print(
+                    f"LOG: Gemini call timed out after "
+                    f"{GEMINI_CALL_TIMEOUT_S // 60}m; "
+                    f"retry {attempt}/{GEMINI_HANG_MAX_RETRIES}",
+                    flush=True,
+                )
+                if attempt >= GEMINI_HANG_MAX_RETRIES:
+                    break
+                time.sleep(DEFAULT_LLM_DELAY)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+    raise GeminiCallTimeoutError(
+        f"Gemini generate_content hung after {GEMINI_HANG_MAX_RETRIES} "
+        f"attempt(s) of {GEMINI_CALL_TIMEOUT_S}s"
+    ) from last_err
 
 def _strip_unsupported_schema_keys(obj):
     if isinstance(obj, dict):
@@ -69,6 +111,10 @@ class Gemini:
         self.apiKey = getEnvKey('gemini')
         self._client = genai.Client(api_key=self.apiKey)
 
+    def _generate_content(self, **kwargs):
+        """All generate_content calls go through the hang-timeout guard."""
+        return _generate_content_with_hang_guard(self._client, **kwargs)
+
     def extract_patent_metadata(
         self, 
         patent_content:str, 
@@ -91,7 +137,7 @@ class Gemini:
                 final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
                 final_prompt += "Do not repeat the same mistake and try again."
 
-            response = self._client.models.generate_content(
+            response = self._generate_content(
                 model=model_name,
                 contents=final_prompt,
                 config={
@@ -168,7 +214,7 @@ class Gemini:
             final_prompt += "Do not repeat the same mistake and try again."
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(IsolatedClaims.model_json_schema()))
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -211,7 +257,7 @@ class Gemini:
         schema = _strip_unsupported_schema_keys(
             _schema_without_defs(DocumentedClaims.model_json_schema())
         )
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -252,7 +298,7 @@ class Gemini:
             final_prompt += "Do not repeat the same mistake and try again."
 
         schema = _strip_unsupported_schema_keys(_schema_without_defs(InfringementAnalysis.model_json_schema()))
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -307,7 +353,7 @@ class Gemini:
             "<priority_target_sources_replacement>",
             "\n".join(priority_lines) if priority_lines else "(none specified)",
         )
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
         )
@@ -320,7 +366,8 @@ class Gemini:
         priority_target_sources: list | None = None,
         model_name:str = 'gemini-2.5-flash',
         count:int = 0,
-        error_message:str = ""
+        error_message:str = "",
+        previous_errors=None,
         ):
         if count >= MAX_ATTEMPTS:
             raise Exception(f"Google_Search_Error: Failed to perform Google search after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
@@ -333,7 +380,8 @@ class Gemini:
                     priority_lines.append(f"- {title}: {url}".strip())
             elif isinstance(entry, str) and entry.strip():
                 priority_lines.append(f"- {entry.strip()}")
-        final_prompt = PERFORM_GOOGLE_SEARCH_PROMPT.replace("<search_string_replacement>", search_string)
+        final_prompt = build_perform_google_search_prompt(previous_errors)
+        final_prompt = final_prompt.replace("<search_string_replacement>", search_string)
         final_prompt = final_prompt.replace("<max_results_replacement>", str(max_results))
         final_prompt = final_prompt.replace(
             "<priority_target_sources_replacement>",
@@ -343,7 +391,7 @@ class Gemini:
             final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
             final_prompt += "Do not repeat the same mistake and try again."
 
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -363,7 +411,8 @@ class Gemini:
                 priority_target_sources=priority_target_sources,
                 model_name=model_name,
                 count=count + 1,
-                error_message=error_message
+                error_message=error_message,
+                previous_errors=previous_errors,
             )
         return wrapper.results
 
@@ -377,7 +426,7 @@ class Gemini:
         model_name: str = 'gemini-2.5-flash',
         count: int = 0,
         error_message: str = "",
-        previous_errors: dict = {}
+        previous_errors=None,
     ):
         if count >= MAX_ATTEMPTS:
             raise Exception(
@@ -409,7 +458,8 @@ class Gemini:
                 f"- {url}" for url in websites if isinstance(url, str) and url.strip()
             ]
 
-        final_prompt = PERFORM_GOOGLE_SEARCH_FROM_CLAIMS_PROMPT.replace(
+        final_prompt = build_perform_google_search_from_claims_prompt(previous_errors)
+        final_prompt = final_prompt.replace(
             "<reference_claims_replacement>", claims_text
         )
         final_prompt = final_prompt.replace(
@@ -432,11 +482,6 @@ class Gemini:
             "\n".join(priority_lines) if priority_lines else "(none specified)",
         )
         final_prompt = final_prompt.replace("<max_results_replacement>", str(max_results))
-        if (previous_errors is not None) and (previous_errors != {}):
-            final_prompt += "\n\nSpecial Rules:"
-            final_prompt += "\n\tYour previous response failed validation with the following error messages for resultant URLs:"
-            final_prompt += f"\n\t{str(previous_errors)}\n"
-            final_prompt += "Do not repeat the same mistake and try again."
         if error_message != "":
             final_prompt += (
                 "\n\nYour previous response failed validation with the error message: "
@@ -445,7 +490,7 @@ class Gemini:
             )
             final_prompt += "Do not repeat the same mistake and try again."
 
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -470,6 +515,7 @@ class Gemini:
                 model_name=model_name,
                 count=count + 1,
                 error_message=error_message,
+                previous_errors=previous_errors,
             )
         return wrapper.results
 
@@ -512,7 +558,7 @@ class Gemini:
                 + "\nDo not repeat the same mistake and try again."
             )
 
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -610,7 +656,7 @@ class Gemini:
                 + "\nDo not repeat the same mistake and try again."
             )
 
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -633,6 +679,108 @@ class Gemini:
             )
         return wrapper
 
+    def regenerate_product_search_strategy(
+        self,
+        product_name: str,
+        reference_claims: list[str],
+        search_limitations: dict | None = None,
+        previous_errors=None,
+        success_urls: list[str] | None = None,
+        model_name: str = 'gemini-2.5-flash',
+        count: int = 0,
+        error_message: str = "",
+    ) -> ProductRetailSearchParam:
+        """
+        Rebuild one retail search strategy for the next discovery outer round.
+
+        Uses failed URL/reason feedback (and any successes) so the next outer
+        round searches with a different title/keywords/sites angle.
+        """
+        if count >= MAX_ATTEMPTS:
+            raise Exception(
+                f"Regenerate_Product_Search_Strategy_Error: Failed after "
+                f"{MAX_ATTEMPTS} attempts.\n\t{error_message}"
+            )
+
+        search_limitations = search_limitations or {}
+        claims_text = "\n".join(
+            claim.strip()
+            for claim in (reference_claims or [])
+            if isinstance(claim, str) and claim.strip()
+        ) or "(none)"
+        companies = search_limitations.get("companies") or []
+        if not isinstance(companies, list):
+            companies = [companies] if companies else []
+        companies_text = "\n".join(
+            str(company).strip() for company in companies if str(company).strip()
+        ) or "(none)"
+        websites = search_limitations.get("urls") or []
+        if not isinstance(websites, list):
+            websites = [websites] if websites else []
+        websites_text = "\n".join(
+            str(url).strip() for url in websites if str(url).strip()
+        ) or "(none)"
+        success_lines = "\n".join(
+            f"- {url.strip()}"
+            for url in (success_urls or [])
+            if isinstance(url, str) and url.strip()
+        ) or "(none)"
+
+        final_prompt = REGENERATE_PRODUCT_SEARCH_STRATEGY.replace(
+            "<product_name_replacement>",
+            (product_name or "").strip() or "(untitled)",
+        )
+        final_prompt = final_prompt.replace(
+            "<reference_claims_replacement>", claims_text
+        )
+        final_prompt = final_prompt.replace(
+            "<companies_replacement>", companies_text
+        )
+        final_prompt = final_prompt.replace(
+            "<websites_replacement>", websites_text
+        )
+        final_prompt = final_prompt.replace(
+            "<success_urls_replacement>", success_lines
+        )
+        final_prompt = final_prompt.replace(
+            "<failed_urls_replacement>",
+            format_previous_error_urls_for_prompt(previous_errors),
+        )
+        final_prompt = final_prompt.replace(
+            "<response_structure_replacement>",
+            ProductRetailSearchParam.get_description(),
+        )
+        if error_message:
+            final_prompt += (
+                "\n\nYour previous response failed validation with the error message: "
+                + error_message
+                + "\nDo not repeat the same mistake and try again."
+            )
+
+        response = self._generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": ProductRetailSearchParam.model_json_schema(),
+            },
+        )
+        param = ProductRetailSearchParam.model_validate_json(response.text)
+        validated, validation_error = param.validate_product_retail_search_param()
+        if not validated:
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.regenerate_product_search_strategy(
+                product_name=product_name,
+                reference_claims=reference_claims,
+                search_limitations=search_limitations,
+                previous_errors=previous_errors,
+                success_urls=success_urls,
+                model_name=model_name,
+                count=count + 1,
+                error_message=validation_error,
+            )
+        return param
+
     def get_product_details(
         self, 
         product_content: str, 
@@ -647,7 +795,7 @@ class Gemini:
             final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
             final_prompt += "Do not repeat the same mistake and try again."
 
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -683,7 +831,7 @@ class Gemini:
             final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
             final_prompt += "Do not repeat the same mistake and try again."
 
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={
@@ -738,7 +886,7 @@ class Gemini:
             final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
             final_prompt += "Do not repeat the same mistake and try again."
 
-        response = self._client.models.generate_content(
+        response = self._generate_content(
             model=model_name,
             contents=final_prompt,
             config={

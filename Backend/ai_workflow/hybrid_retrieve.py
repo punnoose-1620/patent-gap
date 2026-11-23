@@ -11,6 +11,22 @@ from ai_workflow.embeddings import embed_query
 from database import chroma
 
 _cross_encoder = None
+# Log dim-mismatch once per (user_id, case_id, collection_dim, query_dim).
+_dim_mismatch_logged: set = set()
+
+
+def _collection_embedding_dim(embeddings) -> Optional[int]:
+    """First non-empty stored embedding length, or None."""
+    for emb in embeddings or []:
+        if emb is None:
+            continue
+        try:
+            n = len(emb)
+        except TypeError:
+            continue
+        if n > 0:
+            return int(n)
+    return None
 
 
 def _get_cross_encoder():
@@ -117,14 +133,42 @@ def retrieve_similar_texts(
 
     dense_ranked: List[str] = []
     q_emb = embed_query(query_text)
+    collection_dim = _collection_embedding_dim(stored.get("embeddings"))
+    query_dim = len(q_emb) if q_emb is not None else None
+    skip_dense = False
+    if (
+        q_emb is not None
+        and collection_dim is not None
+        and query_dim is not None
+        and collection_dim != query_dim
+    ):
+        skip_dense = True
+        key = (user_id, case_id, collection_dim, query_dim)
+        if key not in _dim_mismatch_logged:
+            _dim_mismatch_logged.add(key)
+            print(
+                f"LOG: dense retrieve skipped — embedding dim mismatch "
+                f"(collection={collection_dim}, query={query_dim}); "
+                f"using BM25 only for case_id={case_id}",
+                flush=True,
+            )
     try:
-        if q_emb is not None:
+        if skip_dense:
+            pass
+        elif q_emb is not None:
             result = chroma.query_chunks(
                 user_id,
                 query_embeddings=[q_emb],
                 n_results=min(top_k, len(ids)),
                 where=where,
             )
+            # Drop hits outside the in-memory filtered id set (e.g. non-claim chunks).
+            allowed = set(ids)
+            dense_ranked = [
+                doc_id
+                for doc_id in ((result.get("ids") or [[]])[0] or [])
+                if doc_id in allowed
+            ]
         else:
             result = chroma.query_chunks(
                 user_id,
@@ -132,13 +176,12 @@ def retrieve_similar_texts(
                 n_results=min(top_k, len(ids)),
                 where=where,
             )
-        # Drop hits outside the in-memory filtered id set (e.g. non-claim chunks).
-        allowed = set(ids)
-        dense_ranked = [
-            doc_id
-            for doc_id in ((result.get("ids") or [[]])[0] or [])
-            if doc_id in allowed
-        ]
+            allowed = set(ids)
+            dense_ranked = [
+                doc_id
+                for doc_id in ((result.get("ids") or [[]])[0] or [])
+                if doc_id in allowed
+            ]
     except Exception as e:
         print(f"LOG: dense retrieve failed ({type(e).__name__}: {e})")
 

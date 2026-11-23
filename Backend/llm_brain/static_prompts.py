@@ -253,6 +253,44 @@ Rules:
 - Do not include any other text or comments.
 """
 
+REGENERATE_PRODUCT_SEARCH_STRATEGY = """
+Previous product discovery rounds under the current search strategy found too few usable product pages.
+Regenerate ONE improved retail search strategy for the next discovery round.
+
+Current product name / search framing:
+<product_name_replacement>
+
+Reference claims:
+<reference_claims_replacement>
+
+Current focus companies:
+<companies_replacement>
+
+Current focus websites:
+<websites_replacement>
+
+Successful product page hosts/URLs from earlier rounds (prefer similar working sources when relevant):
+<success_urls_replacement>
+
+Failed product URLs and reasons (do not reuse these exact URLs; avoid hosts/patterns that repeatedly 403/404/block when alternatives exist):
+<failed_urls_replacement>
+
+Return JSON matching this structure:
+<response_structure_replacement>
+
+Rules:
+- Return exactly one strategy object (not a list of classes).
+- Change the search angle meaningfully: new retail_title and/or retail_keywords and/or sites_to_search versus the failed strategy.
+- retail_title: short storefront-style product name (max ~8 words). No patent jargon.
+- retail_keywords: 2 to 8 short retail search phrases (each max 6 words).
+- sites_to_search: 1 to 8 absolute base URLs (https://...) — homepage or category-root only.
+  Prefer manufacturer/brand/specialty vendors that are more likely to allow fetching.
+  Avoid repeating hosts that dominate the failed list unless no alternative exists.
+  Do not invent deep product paths, SKUs, or example.com URLs.
+- Prefer sites/angles suggested by successful URLs when present.
+- Do not include any other text or comments.
+"""
+
 PERFORM_GOOGLE_SEARCH_PROMPT = """
 I am providing you with a search string.
 Perform a google search with the search string.
@@ -345,6 +383,77 @@ Rules:
 - Only include items directly related to the reference claims and the product name.
 - Avoid non-product pages like /music, /books, generic news articles, or forum threads.
 """
+
+# Cap denylist lines injected into Gemini Google-search Rules.
+_PREVIOUS_ERROR_URLS_RULE_MAX = 30
+_PERFORM_GOOGLE_SEARCH_STRING_MARKER = (
+    "Here's is the search string to perform the google search:"
+)
+_PREVIOUS_ERROR_URLS_RULE = """- Failed URLs to avoid:
+  Do not return any of these exact URLs again. Prefer different real product pages from search results; do not invent replacements that resemble these failed paths.
+  Failed URLs:
+{error_lines}
+"""
+
+
+def _format_previous_error_url_lines(previous_errors) -> str:
+    """Return labeled URL/reason lines, or '' when there is nothing to inject."""
+    if not previous_errors:
+        return ""
+    items = []
+    if isinstance(previous_errors, dict):
+        items = list(previous_errors.items())
+    elif isinstance(previous_errors, (list, tuple, set)):
+        for entry in previous_errors:
+            if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                items.append((entry[0], entry[1]))
+            elif isinstance(entry, str) and entry.strip():
+                items.append((entry.strip(), "previous failure"))
+    if not items:
+        return ""
+    lines = []
+    for url, reason in items[-_PREVIOUS_ERROR_URLS_RULE_MAX:]:
+        url_text = str(url or "").strip()
+        if not url_text:
+            continue
+        reason_text = str(reason or "").strip() or "previous failure"
+        lines.append(f"  - {url_text} — {reason_text}")
+    return "\n".join(lines)
+
+
+def _with_previous_error_urls_rule(base_prompt: str, previous_errors=None) -> str:
+    """
+    Return base_prompt unchanged when previous_errors is empty.
+    Otherwise insert one Failed-URLs rule into the existing Rules section.
+    """
+    error_lines = _format_previous_error_url_lines(previous_errors)
+    if not error_lines:
+        return base_prompt
+    rule = _PREVIOUS_ERROR_URLS_RULE.format(error_lines=error_lines).rstrip() + "\n"
+    marker = _PERFORM_GOOGLE_SEARCH_STRING_MARKER
+    if marker in base_prompt:
+        return base_prompt.replace(marker, rule + "\n" + marker, 1)
+    return base_prompt.rstrip() + "\n" + rule
+
+
+def build_perform_google_search_prompt(previous_errors=None) -> str:
+    """Base Google-search prompt, optionally with Failed URLs rule in Rules."""
+    return _with_previous_error_urls_rule(
+        PERFORM_GOOGLE_SEARCH_PROMPT, previous_errors
+    )
+
+
+def build_perform_google_search_from_claims_prompt(previous_errors=None) -> str:
+    """Claims Google-search prompt, optionally with Failed URLs rule in Rules."""
+    return _with_previous_error_urls_rule(
+        PERFORM_GOOGLE_SEARCH_FROM_CLAIMS_PROMPT, previous_errors
+    )
+
+
+def format_previous_error_urls_for_prompt(previous_errors=None) -> str:
+    """Public helper: labeled failed URL lines, or '(none)' when empty."""
+    lines = _format_previous_error_url_lines(previous_errors)
+    return lines if lines else "(none)"
 
 PRODUCT_DETAILS_EXTRACTOR = """
 I am providing you with the content of a product or solution page from a relevant source.

@@ -50,6 +50,12 @@ class GeminiWorkflow:
             return fn(*args, **kwargs)
         raise AttributeError("generate_product_retail_search_params not available on Gemini")
 
+    def regenerate_product_search_strategy(self, *args, **kwargs):
+        fn = getattr(self._gemini, "regenerate_product_search_strategy", None)
+        if callable(fn):
+            return fn(*args, **kwargs)
+        raise AttributeError("regenerate_product_search_strategy not available on Gemini")
+
     def index_claims_for_case(
         self,
         user_id: str,

@@ -23,6 +23,7 @@ from infringement_score_filters import (
     filter_similar_claims,
 )
 from models.live_search_results import (
+    ProductRetailSearchParams,
     ProductTargetSources,
     blocked_product_url_reason,
     is_dummy_product_value,
@@ -57,7 +58,9 @@ PRODUCT_CLAIMS_FOR_RELEVANCE_LIMIT = 12
 PRODUCT_CLAIM_CHARS_FOR_RELEVANCE = 250
 DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
 SEARCH_TIMEOUT = 10
-MAX_SEARCH_ATTEMPTS = 10
+MAX_SEARCH_ATTEMPTS = 5
+# Gemini search calls per outer discovery round (1st batch + bulk replacements).
+INNER_GEMINI_BULK_RETRIES = 5
 DEFAULT_PRODUCT_SEARCH_MAX_RESULTS = 30
 MIN_PRODUCT_SEARCH_MAX_RESULTS = 3
 MAX_PRODUCT_SEARCH_MAX_RESULTS = 100
@@ -823,6 +826,127 @@ def _focus_urls_from_search_limitations(search_limitations: dict) -> list[str]:
     return list(dict.fromkeys(urls))
 
 
+def _normalize_search_result_url(result) -> str:
+    raw = getattr(result, "url", None)
+    if raw is None and isinstance(result, dict):
+        raw = result.get("url")
+    return str(raw or "").strip().lower()
+
+
+def _process_product_search_results(
+    results,
+    *,
+    max_product_results: int,
+    error_results: dict,
+    extracted: list,
+    accepted_urls: set,
+    session: requests.Session,
+    desc: str = "Fetching Product Details",
+) -> int:
+    """
+    Process a full search-result batch (no early stop at 3).
+
+    Skips URLs already in error_results / accepted_urls. Records fetch,
+    guardrail, and get_product_details failures into error_results.
+    Returns how many new URLs were attempted this call.
+    """
+    attempted = 0
+    results_to_process = list(results or [])[: max(1, int(max_product_results))]
+    for result in _tqdm(results_to_process, desc=desc):
+        url = _normalize_search_result_url(result)
+        if not url:
+            continue
+        if url in error_results or url in accepted_urls:
+            continue
+        attempted += 1
+        if is_product_listing_url(url):
+            print(f"LOG: Skipping listing/category URL: {url}")
+            error_results[url] = "Category or listing page URL"
+            continue
+        blocked = blocked_product_url_reason(url)
+        if blocked:
+            print(f"LOG: Skipping blocked product URL: {url} — {blocked}")
+            error_results[url] = blocked
+            continue
+        try:
+            html_content = performSearch(url, session)
+        except (
+            ConnectionResetError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.HTTPError,
+        ) as e:
+            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+            error_results[url] = str(e)
+            continue
+        except Exception as e:
+            print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
+            error_results[url] = str(e)
+            continue
+        is_error_page, error_keyword = check_html_for_runtime_errors(html_content, url=url)
+        if is_error_page:
+            print(f"\nERROR: Blocked page content for URL: {url} — {error_keyword}")
+            error_results[url] = "Bot check blocked page content"
+            continue
+        try:
+            product_details = Gemini().get_product_details(html_content)
+        except Exception as e:
+            print(f"\nERROR: Product details extraction failed for {url}: {str(e)}")
+            error_results[url] = f"Product details extraction failed: {e}"
+            continue
+        if alreadyExistsInProductDetailsList(product_details, extracted):
+            accepted_urls.add(url)
+            product_url = str(getattr(product_details, "product_url", "") or "").strip().lower()
+            if product_url:
+                accepted_urls.add(product_url)
+            continue
+        extracted.append(product_details)
+        accepted_urls.add(url)
+        product_url = str(getattr(product_details, "product_url", "") or "").strip().lower()
+        if product_url:
+            accepted_urls.add(product_url)
+    return attempted
+
+
+def _success_urls_from_extracted(extracted: list) -> list[str]:
+    """Collect product URLs already extracted successfully (for strategy regen)."""
+    urls: list[str] = []
+    seen: set[str] = set()
+    for product in extracted or []:
+        for attr in ("product_url", "url"):
+            raw = str(getattr(product, attr, "") or "").strip()
+            if not raw:
+                continue
+            key = raw.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            urls.append(raw)
+    return urls
+
+
+def _apply_regenerated_search_strategy(
+    param,
+    search_limitations: dict,
+) -> tuple[str, dict]:
+    """Apply one ProductRetailSearchParam onto product_name + search_limitations."""
+    title = str(getattr(param, "retail_title", "") or "").strip()
+    keywords = [
+        keyword.strip()
+        for keyword in (getattr(param, "retail_keywords", None) or [])
+        if isinstance(keyword, str) and keyword.strip()
+    ]
+    # Fold a few keywords into the search framing so claims-search sees the new angle.
+    if title and keywords:
+        product_name = f"{title}: {'; '.join(keywords[:5])}"
+    else:
+        product_name = title
+    wrapper = ProductRetailSearchParams(params=[param])
+    updated_limitations = wrapper.apply_to_search_limitations(
+        param, search_limitations
+    )
+    return product_name, updated_limitations
+
+
 def _discover_products_via_gemini(
     product_name: str,
     reference_claims: list[str],
@@ -830,73 +954,125 @@ def _discover_products_via_gemini(
     search_limitations: dict,
     max_product_results: int,
 ):
+    """
+    Gemini product discovery with error carryover and outer strategy refresh.
+
+    Per outer round (≤ MAX_SEARCH_ATTEMPTS): up to INNER_GEMINI_BULK_RETRIES
+    Gemini searches, each processing the full result list. Pass previous_errors
+    so replacements avoid known-bad URLs. On outer ≥ 2, regenerate product_name /
+    site focus from accumulated failures before searching. Outer loop only
+    re-runs when extracted < MIN_PRODUCT_SEARCH_MAX_RESULTS.
+    Infringement analysis / persist happens after discovery returns.
+    """
     print(
         "LOG: Gemini product search (full bucket claims; no query-generation LLM)"
     )
-    error_results = {}
-    count = 0
-    extracted = []
-    while (count < MAX_SEARCH_ATTEMPTS) and (len(extracted) < MIN_PRODUCT_SEARCH_MAX_RESULTS):
-        count += 1
-        google_search_results = Gemini().perform_google_search_from_claims(
-            product_name=product_name,
-            reference_claims=reference_claims,
-            owners=owners,
-            search_limitations=search_limitations,
-            max_results=max_product_results,
-        )
-        print(f"LOG: Gemini returned {len(google_search_results)} search result(s)")
-        session = requests.Session()
-        session.headers.update(SESSION_HEADERS)
-        results_to_process = google_search_results[:max_product_results]
-        for result in _tqdm(
-            results_to_process,
-            desc="Fetching Product Details from Gemini Search Results",
-        ):
-            url = str(result.url).strip().lower()
-            if url in error_results:
-                continue
-            if is_product_listing_url(url):
-                print(f"LOG: Skipping listing/category URL: {url}")
-                error_results[url] = "Category or listing page URL"
-                continue
-            blocked = blocked_product_url_reason(url)
-            if blocked:
-                print(f"LOG: Skipping blocked product URL: {url} — {blocked}")
-                error_results[url] = blocked
-                continue
-            try:
-                html_content = performSearch(url, session)
-            except (
-                ConnectionResetError,
-                requests.exceptions.ConnectionError,
-                requests.exceptions.HTTPError,
-            ) as e:
-                print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
-                error_results[url] = str(e)
-                continue
-            except Exception as e:
-                print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
-                error_results[url] = str(e)
-                continue
-            is_error_page, error_keyword = check_html_for_runtime_errors(html_content, url=url)
-            if is_error_page:
-                print(
-                    f"\nERROR: Blocked page content for URL: {url} — {error_keyword}"
-                )
-                error_results[url] = "Bot check blocked page content"
-                continue
-            try:
-                product_details = Gemini().get_product_details(html_content)
-            except Exception as e:
-                print(f"\nERROR: Product details extraction failed for {url}: {str(e)}")
-                continue
-            if alreadyExistsInProductDetailsList(product_details, extracted):
-                continue
-            extracted.append(product_details)
+    error_results: dict = {}
+    extracted: list = []
+    accepted_urls: set = set()
+    outer = 0
+    # Mutable strategy for this discovery call (regen updates these in place).
+    active_product_name = product_name
+    active_limitations = dict(search_limitations or {})
+    gemini = Gemini()
+    session = requests.Session()
+    session.headers.update(SESSION_HEADERS)
 
-    print(f"LOG: Gemini discovery extracted {len(extracted)} product(s)")
-    return extracted
+    while (
+        outer < MAX_SEARCH_ATTEMPTS
+        and len(extracted) < MIN_PRODUCT_SEARCH_MAX_RESULTS
+    ):
+        outer += 1
+        print(
+            f"LOG: Gemini discovery outer round {outer}/{MAX_SEARCH_ATTEMPTS} "
+            f"(extracted={len(extracted)}, errors={len(error_results)})"
+        )
+        # Retry outers: rebuild search framing from failures before searching again.
+        if outer >= 2:
+            try:
+                print(
+                    "LOG: Regenerating product search strategy for outer "
+                    f"{outer} (errors={len(error_results)})"
+                )
+                strategy = gemini.regenerate_product_search_strategy(
+                    product_name=active_product_name,
+                    reference_claims=reference_claims,
+                    search_limitations=active_limitations,
+                    previous_errors=error_results,
+                    success_urls=_success_urls_from_extracted(extracted),
+                )
+                active_product_name, active_limitations = (
+                    _apply_regenerated_search_strategy(
+                        strategy, active_limitations
+                    )
+                )
+                print(
+                    "LOG: Regenerated search strategy: "
+                    f"title={active_product_name!r} "
+                    f"sites={active_limitations.get('urls')}"
+                )
+            except Exception as e:
+                print(
+                    "LOG: Strategy regen failed; keeping prior search params "
+                    f"({type(e).__name__}: {e})"
+                )
+
+        for inner in range(1, INNER_GEMINI_BULK_RETRIES + 1):
+            try:
+                google_search_results = gemini.perform_google_search_from_claims(
+                    product_name=active_product_name,
+                    reference_claims=reference_claims,
+                    owners=owners,
+                    search_limitations=active_limitations,
+                    max_results=max_product_results,
+                    previous_errors=error_results,
+                )
+            except Exception as e:
+                print(
+                    f"LOG: Gemini search failed outer={outer} inner={inner}: "
+                    f"{type(e).__name__}: {e}"
+                )
+                break
+            print(
+                f"LOG: Gemini returned {len(google_search_results)} search result(s) "
+                f"(outer={outer} inner={inner}/{INNER_GEMINI_BULK_RETRIES})"
+            )
+            attempted = _process_product_search_results(
+                google_search_results,
+                max_product_results=max_product_results,
+                error_results=error_results,
+                extracted=extracted,
+                accepted_urls=accepted_urls,
+                session=session,
+                desc=(
+                    f"Fetching products (outer {outer}, "
+                    f"inner {inner}/{INNER_GEMINI_BULK_RETRIES})"
+                ),
+            )
+            print(
+                f"LOG: Processed {attempted} new URL(s); "
+                f"extracted={len(extracted)} errors={len(error_results)}"
+            )
+            # Full batch done and we already meet the outer gate — no more replacements.
+            if len(extracted) >= MIN_PRODUCT_SEARCH_MAX_RESULTS:
+                break
+            # No new URLs to try → further Gemini calls would only reshuffle denylist.
+            if attempted == 0:
+                break
+            # Replacements only help if Gemini has failures to repair.
+            if not error_results:
+                break
+
+        print(
+            f"LOG: Outer round {outer} complete; "
+            f"extracted={len(extracted)} (min={MIN_PRODUCT_SEARCH_MAX_RESULTS})"
+        )
+
+    print(
+        f"LOG: Gemini discovery extracted {len(extracted)} product(s) "
+        f"after {outer} outer round(s); carried_errors={len(error_results)}"
+    )
+    return extracted, error_results
 
 
 def _persist_extracted_products(
@@ -1214,7 +1390,7 @@ def searchProductSources(
 
     focus_urls = _focus_urls_from_search_limitations(gemini_limitations)
 
-    extracted_products = _discover_products_via_gemini(
+    extracted_products, discovery_errors = _discover_products_via_gemini(
         product_name,
         ref_texts,
         owners,
@@ -1268,6 +1444,7 @@ def searchProductSources(
             focus_urls,
             owners=owners,
             max_results=max_product_results,
+            skip_urls=set(discovery_errors or {}),
         )
         _persist_extracted_products(
             extracted_products,
