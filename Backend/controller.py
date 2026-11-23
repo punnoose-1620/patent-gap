@@ -322,56 +322,76 @@ def is_blob_under_12mb(blob_or_size):
 
 def get_risk_level(infringement_percentage):
     """
-    Get the risk level for a given infringement percentage
+    Get the risk level for a given infringement percentage.
+    High: >= 0.8; medium: >= 0.7 and < 0.8; else low.
     """
-    if infringement_percentage > 0.9:
+    try:
+        score = float(infringement_percentage or 0)
+    except (TypeError, ValueError):
+        score = 0.0
+    if score >= 0.8:
         return 'high'
-    elif infringement_percentage > 0.7:
+    if score >= 0.7:
         return 'medium'
-    else:
-        return 'low'
+    return 'low'
+
+
+def _claim_pair_score(claim) -> float | None:
+    if not isinstance(claim, dict):
+        return None
+    raw = claim.get('calculated_similarity_score', claim.get('similarity_score'))
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _avg_score_for_hit(entry) -> float | None:
+    """Average similarity for one infringement hit (matrix rows or similar_claims)."""
+    if not isinstance(entry, dict):
+        return None
+    nested = entry.get('infringements')
+    rows = nested if isinstance(nested, list) else None
+    if not rows:
+        rows = entry.get('similar_claims') if isinstance(entry.get('similar_claims'), list) else []
+    scores = []
+    for row in rows or []:
+        score = _claim_pair_score(row)
+        if score is not None:
+            scores.append(score)
+    if not scores:
+        return None
+    return sum(scores) / len(scores)
+
 
 def calculate_average_infringement_percentage(case):
     """
-    Calculate the average infringement percentage for a list of cases
+    Case-level risk score: mean of per-hit averages.
+    Prefers nested embedding matrix rows; falls back to similar_claims.
     """
-    total_infringement_percentage = 0
-    infringements_count = 0
-    infringements = case.get('infringements', [])
-    similar_claims = case.get('similar_claims', [])
-    try:
-        for infringement in infringements:
-            claims = infringement.get('similar_claims', [])
-            sum_infringement = 0
-            for claim in claims:
-                sum_infringement += claim.get('similarity_score', 0)
-            if len(claims) != 0:
-                avg_infringement = sum_infringement / len(claims)
-                total_infringement_percentage += avg_infringement
-                infringements_count += 1
-    except Exception as e:
-        print(f'Error calculating average infringement percentage for infringements: {str(e)}')
-        return 0
-    
-    try:
-        for infringement in similar_claims:
-            claims = infringement.get('similar_claims', [])
-            sum_infringement = 0
-            for claim in claims:
-                if type(claim) == dict:
-                    if (claim.get('claim', '').strip() != ''):
-                        sum_infringement += claim.get('similarity_score', 0)
-            if len(claims) != 0:
-                avg_infringement = sum_infringement / len(claims)
-                total_infringement_percentage += avg_infringement
-                infringements_count += 1
-    except Exception as e:
-        print(f'Error calculating average infringement percentage for similar claims: {str(e)}')
-        return 0
+    hit_avgs = []
+    for entry in case.get('infringements') or []:
+        avg = _avg_score_for_hit(entry)
+        if avg is not None and avg > 0:
+            hit_avgs.append(avg)
 
-    if infringements_count == 0:
-        return 0
-    return total_infringement_percentage / infringements_count
+    # Legacy top-level similar_claims bucket (list of hits or claim rows)
+    for entry in case.get('similar_claims') or []:
+        if isinstance(entry, dict) and isinstance(entry.get('similar_claims'), list):
+            avg = _avg_score_for_hit(entry)
+        elif isinstance(entry, dict):
+            score = _claim_pair_score(entry)
+            avg = score
+        else:
+            avg = None
+        if avg is not None and avg > 0:
+            hit_avgs.append(avg)
+
+    if not hit_avgs:
+        return 0.0
+    return sum(hit_avgs) / len(hit_avgs)
 
 def get_case_infringement_chart(case_id):
     """
