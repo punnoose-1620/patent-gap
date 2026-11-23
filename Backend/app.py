@@ -446,7 +446,8 @@ def get_case_stats():
     print('TEST: My Cases - Not authenticated')
     return jsonify({'success': False, 'message': 'Not authenticated'}), 401
   try:
-    cases = get_case_related_to_user(user_id)
+    # User-scoped lean fetch — never getAllData(cases_*) for counting.
+    cases = get_cases_for_user_stats(user_id)
     for case in cases:
       analysis_status = case.get('infringement_analysis_status') or case.get('infringement_analysis_flag') or ''
 

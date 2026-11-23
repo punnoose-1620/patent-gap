@@ -625,47 +625,45 @@ def delete_case(case_id):
         'message': 'Case not found'
     }
 
+def _user_cases_query(user_id):
+    return {
+        '$or': [
+            {'assigned_to': user_id},
+            {'accepted_by': user_id},
+            {'created_by': user_id},
+        ]
+    }
+
+
 def get_case_related_to_user(user_id, page=1, paginated=False):
     """
     Get cases related to a specific user (assigned to, accepted by, created by)
+
+    Non-paginated path uses a Mongo ``$or`` filter (not a full-collection load).
     
     Args:
         user_id (str): User's unique identifier
     
     Returns:
-        list: List of user's cases
+        list: List of user's cases when ``paginated=False``;
+        dict page payload when ``paginated=True``.
     """
+    query = _user_cases_query(user_id)
     if not paginated:
-        user_cases = []
-        for case in getAllData(connect_to_database(), getCaseDatabaseName()):
-            keys = case.keys()
-            if ('assigned_to' in keys):
-                if (case['assigned_to'] == user_id):
-                    case = find_document_metadata(case)
-                    user_cases.append(apply_infringement_filters_to_case(case))
-                    continue
-            if ('accepted_by' in keys):
-                if (case['accepted_by'] == user_id):
-                    case = find_document_metadata(case)
-                    user_cases.append(apply_infringement_filters_to_case(case))
-                    continue
-            if ('created_by' in keys):
-                if (case['created_by'] == user_id):
-                    case = find_document_metadata(case)
-                    user_cases.append(apply_infringement_filters_to_case(case))
-                    continue
+        user_cases = getDataByQuery(
+            connect_to_database(),
+            getCaseDatabaseName(),
+            query,
+        )
+        for i, case in enumerate(user_cases):
+            case = find_document_metadata(case)
+            user_cases[i] = apply_infringement_filters_to_case(case)
         return user_cases
 
     paged = paginateDataByQuery(
         connect_to_database(),
         getCaseDatabaseName(),
-        query={
-            '$or': [
-                {'assigned_to': user_id},
-                {'accepted_by': user_id},
-                {'created_by': user_id}
-            ]
-        },
+        query=query,
         page=page
     )
     user_cases = paged.get('items', [])
@@ -674,6 +672,30 @@ def get_case_related_to_user(user_id, page=1, paginated=False):
         user_cases[i] = apply_infringement_filters_to_case(case)
     paged['items'] = user_cases
     return paged
+
+
+def get_cases_for_user_stats(user_id):
+    """
+    Lean user-case fetch for ``/api/stats``.
+
+    Loads only fields needed for status/risk counting via a user-scoped query.
+    Skips document-metadata hydration.
+    """
+    include_fields = (
+        'infringement_analysis_status',
+        'infringement_analysis_flag',
+        'status',
+        'current_status',
+        'infringements',
+        'similar_claims',
+    )
+    cases = getDataByQuery(
+        connect_to_database(),
+        getCaseDatabaseName(),
+        _user_cases_query(user_id),
+        include_fields=include_fields,
+    )
+    return [apply_infringement_filters_to_case(case) for case in cases]
 
 def get_documents_from_case(case_id):
     """
