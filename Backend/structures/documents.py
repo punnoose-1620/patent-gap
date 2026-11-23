@@ -59,28 +59,30 @@ def getDocumentById(document_id):
         'message': 'Failed to fetch document'
     }
 
-def getDocumentsByCaseId(case_id):
-    documents = getAllData(connect_to_database(), getDocumentDatabaseName(), {'case_id': case_id})
-    if documents is not None:
-        return {
-            'success': True,
-            'message': 'Documents fetched successfully',
-            'documents': documents
-        }
+def getDocumentsByCaseId(case_id, exclude_fields=None):
+    documents = getDataByKeyValue(
+        connect_to_database(),
+        getDocumentDatabaseName(),
+        'case_id',
+        case_id,
+        exclude_fields=exclude_fields,
+    )
     return {
-        'success': False,
-        'message': 'Failed to fetch documents'
+        'success': True,
+        'message': 'Documents fetched successfully',
+        'documents': documents or [],
     }
 
-def getDocumentsByUserId(user_id):
-    documents = getAllData(connect_to_database(), getDocumentDatabaseName(), {'created_by': user_id})
-    if documents is not None:
-        return {
-            'success': True,
-            'message': 'Documents fetched successfully',
-            'documents': documents
-        }
+def getDocumentsByUserId(user_id, exclude_fields=None):
+    documents = getDataByKeyValue(
+        connect_to_database(),
+        getDocumentDatabaseName(),
+        'created_by',
+        user_id,
+        exclude_fields=exclude_fields,
+    )
     return {
-        'success': False,
-        'message': 'Failed to fetch documents'
+        'success': True,
+        'message': 'Documents fetched successfully',
+        'documents': documents or [],
     }

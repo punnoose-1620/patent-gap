@@ -3,7 +3,7 @@ import re
 from urllib.parse import urlparse
 from database import *
 from datetime import datetime as dt
-from structures.documents import getDocumentById
+from structures.documents import getDocumentsByCaseId
 from difflib import SequenceMatcher
 from env_controller import getCaseDatabaseName
 from scorer import score_infringement_matrix_entry
@@ -414,17 +414,31 @@ def get_similar_cases(patent_id: str, user_id: str):
 
 def find_document_metadata(case_data):
     documents = case_data.get('documents', [])
-    for entry in documents:
-        if entry.get('source', '') == 'local':
-            url = entry.get('url', '')
-            document_id = url.split('/')[-1].split('.')[0]
-            document = getDocumentById(document_id)
-            if document.get('success', False):
-                entry['title'] = document['document'].get('file_name', '')
-                entry['size'] = document['document'].get('file_size', '')
-                entry['type'] = document['document'].get('file_type', '')
-                entry['created_at'] = document['document'].get('created_at', '')
-                entry['created_by'] = document['document'].get('created_by', '')
+    local_entries = [e for e in documents if isinstance(e, dict) and e.get('source', '') == 'local']
+    if not local_entries:
+        case_data['documents'] = documents
+        return case_data
+
+    case_id = case_data.get('_id') or case_data.get('id') or case_data.get('case_id')
+    docs_by_id = {}
+    if case_id:
+        fetched = getDocumentsByCaseId(case_id, exclude_fields=['file_content'])
+        for doc in fetched.get('documents') or []:
+            doc_id = str(doc.get('_id') or doc.get('id') or '')
+            if doc_id:
+                docs_by_id[doc_id] = doc
+
+    for entry in local_entries:
+        url = entry.get('url', '')
+        document_id = url.split('/')[-1].split('.')[0]
+        document = docs_by_id.get(document_id)
+        if not document:
+            continue
+        entry['title'] = document.get('file_name', '')
+        entry['size'] = document.get('file_size', '')
+        entry['type'] = document.get('file_type', '')
+        entry['created_at'] = document.get('created_at', '')
+        entry['created_by'] = document.get('created_by', '')
     case_data['documents'] = documents
     return case_data
 
