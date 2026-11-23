@@ -139,7 +139,10 @@ def deleteAllData(db, collectionName):
 
 def getDataById(db, collectionName, entryId):
     """
-    Fetches a specific entry by ID from a Firestore collection.
+    Fetches a specific entry by ID from a MongoDB collection.
+
+    Looks up ``_id`` first, then a targeted ``id`` field match.
+    Does not scan the full collection on miss.
     
     Args:
         db: MongoDB database instance (from connect_to_database())
@@ -152,12 +155,8 @@ def getDataById(db, collectionName, entryId):
     try:
         collection = db[collectionName]
         document = collection.find_one({'_id': entryId})
-        if document is None:
-            allDocs = collection.find({}, max_time_ms=120000)
-            for doc in allDocs:
-                if doc['_id'] == entryId or doc['id'] == entryId:
-                    document = doc
-                    break
+        if document is None and entryId is not None:
+            document = collection.find_one({'id': entryId})
         
         # Convert ObjectId to string if present
         if document and '_id' in document and hasattr(document['_id'], '__str__'):
@@ -180,10 +179,21 @@ def getDataContainingIdString(db, collectionName, idString):
         print(f"Error fetching data containing ID string from {collectionName}: {e}")
         return []
 
-def getDataByKeyValue(db, collectionName, key, value):
+def getDataByKeyValue(db, collectionName, key, value, exclude_fields=None):
+    """
+    Fetch documents matching ``{key: value}``.
+
+    Args:
+        exclude_fields: Optional iterable of field names to exclude from the
+            result via a MongoDB projection (e.g. ``['file_content']``).
+            ``None`` or an empty list keeps current full-document behavior.
+    """
     try:
         collection = db[collectionName]
-        documents = list(collection.find({key: value}, max_time_ms=120000))
+        projection = None
+        if exclude_fields:
+            projection = {field: 0 for field in exclude_fields}
+        documents = list(collection.find({key: value}, projection, max_time_ms=120000))
         for doc in documents:
             if '_id' in doc and hasattr(doc['_id'], '__str__'):
                 doc['_id'] = str(doc['_id'])
