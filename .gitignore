@@ -23,3 +23,8 @@ Backend/.env
 Backend/.env
 .cursor/settings.json
 /new-case-structure
+/Backend/tester_scripts
+/Backend/testers
+/Backend/vector_store
+mcp-rag-vector-prompt.md
+/tester_scripts

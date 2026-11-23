@@ -428,15 +428,35 @@ def find_document_metadata(case_data):
     case_data['documents'] = documents
     return case_data
 
-def get_case_by_id(case_id, apply_infringement_filters: bool = True):
-    case = getDataById(connect_to_database(), getCaseDatabaseName(), case_id)
-    if case is not None:
-        case = find_document_metadata(case)
-        if apply_infringement_filters:
-            return apply_infringement_filters_to_case(case)
-        else:
-            return case
-    return None
+def get_case_by_id(
+    case_id,
+    apply_infringement_filters: bool = True,
+    show_password: bool = False,
+):
+    """
+    Fetch one case by id via Mongo ``getDataById`` (direct ``_id`` lookup).
+
+    Falls back to ``id`` / ``case_id`` key lookups without loading the full
+    collection. Pass ``show_password=True`` to keep a ``password`` field if present.
+    """
+    db = connect_to_database()
+    coll = getCaseDatabaseName()
+    case = getDataById(db, coll, case_id)
+    if case is None and case_id:
+        for key in ('id', 'case_id'):
+            found = getDataByKeyValue(db, coll, key, case_id)
+            if found:
+                case = found[0] if isinstance(found, list) else found
+                break
+    if case is None:
+        return None
+
+    case = find_document_metadata(case)
+    if not show_password:
+        case.pop('password', None)
+    if apply_infringement_filters:
+        return apply_infringement_filters_to_case(case)
+    return case
 
 def get_all_cases(page=1, paginated=False):
     if not paginated:
@@ -590,25 +610,6 @@ def delete_case(case_id):
         'success': False,
         'message': 'Case not found'
     }
-
-def get_case_by_id(case_id, show_password=False):
-    """
-    Get detailed information about a specific case
-    
-    Args:
-        case_id (str): Case identifier
-    
-    Returns:
-        dict: Case details or None if not found
-    """
-    all_cases = getAllData(connect_to_database(), getCaseDatabaseName())
-    for case in all_cases:
-        if (case.get('_id') == case_id) or (case.get('id') == case_id) or (case.get('case_id') == case_id):
-            case = find_document_metadata(case)
-            if not show_password:
-                case.pop('password', None)
-            return apply_infringement_filters_to_case(case)
-    return None
 
 def get_case_related_to_user(user_id, page=1, paginated=False):
     """
@@ -831,6 +832,90 @@ def _chart_error(error_code: str):
     return [], [], [], error_code
 
 
+def _entry_has_scored_matrix_rows(entry) -> bool:
+    nested = entry.get('infringements') if isinstance(entry, dict) else None
+    return (
+        isinstance(nested, list)
+        and bool(nested)
+        and isinstance(nested[0], dict)
+        and 'calculated_similarity_score' in nested[0]
+    )
+
+
+def _can_serve_chart_from_stored_scores(infringements) -> bool:
+    """
+    New-structure cases already carry embedding matrix rows on each hit.
+    Serve those instead of rebuilding (avoids TF-IDF/embed + update_case).
+
+    Empty nested ``infringements`` (e.g. after score filtering) does not force a
+    rebuild. Only legacy shapes do: a Gemini dict, or a non-empty list without
+    ``calculated_similarity_score``.
+    """
+    saw_scored = False
+    for entry in infringements or []:
+        if not isinstance(entry, dict):
+            continue
+        nested = entry.get('infringements')
+        if isinstance(nested, list) and nested:
+            if isinstance(nested[0], dict) and 'calculated_similarity_score' in nested[0]:
+                saw_scored = True
+            else:
+                return False
+        elif isinstance(nested, dict):
+            return False
+    return saw_scored
+
+
+def _chart_rows_from_stored_entry(entry) -> list:
+    nested = entry.get('infringements') or []
+    if not isinstance(nested, list):
+        return []
+    entry_id = (
+        entry.get('product_id')
+        or entry.get('case_id')
+        or entry.get('entry_id')
+        or entry.get('_id')
+        or entry.get('product_name')
+        or entry.get('title')
+        or ''
+    )
+    rows = []
+    for row in nested:
+        if not isinstance(row, dict):
+            continue
+        if 'calculated_similarity_score' not in row:
+            continue
+        chart_row = dict(row)
+        if entry_id and not chart_row.get('entry_id'):
+            chart_row['entry_id'] = entry_id
+        rows.append(chart_row)
+    return rows
+
+
+def _build_chart_from_stored_scores(infringements):
+    chart_data = []
+    patent_chart_data = []
+    product_chart_data = []
+    for entry in infringements or []:
+        if not isinstance(entry, dict) or not _entry_has_scored_matrix_rows(entry):
+            continue
+        rows = _chart_rows_from_stored_entry(entry)
+        if not rows:
+            continue
+        chart_data.extend(rows)
+        if entry.get('product_id'):
+            product_chart_data.extend(rows)
+        else:
+            patent_chart_data.extend(rows)
+
+    chart_data = filter_chart_rows(chart_data)
+    patent_chart_data = filter_chart_rows(patent_chart_data)
+    product_chart_data = filter_chart_rows(product_chart_data)
+    if not chart_data:
+        return [], [], [], 'NO_MATCHES_ABOVE_THRESHOLD'
+    return chart_data, patent_chart_data, product_chart_data, None
+
+
 def get_infringement_chart(case_id=None, case_data=None, persist=True):
     """
     Build chart-ready infringement rows for a case.
@@ -841,6 +926,9 @@ def get_infringement_chart(case_id=None, case_data=None, persist=True):
     - ``([], [], [], 'NO_MATCHES_ABOVE_THRESHOLD')`` when scoring ran but no pair
       met the threshold (rows may still be persisted).
     - ``([], [], [], <ERROR_CODE>)`` for CASE_NOT_FOUND, NO_PARENT_CLAIMS, etc.
+
+    When infringements already carry ``calculated_similarity_score`` matrix rows
+    (new structure), returns those without rebuilding or persisting.
 
     Pass ``case_data`` to score an in-memory case (e.g. before insert).
     Set ``persist=False`` to mutate ``case_data['infringements']`` without writing to DB.
@@ -885,6 +973,13 @@ def get_infringement_chart(case_id=None, case_data=None, persist=True):
     infringements = caseData.get('infringements', [])
     if len(infringements) == 0:
         return _chart_error('NO_INFRINGEMENTS')
+
+    if _can_serve_chart_from_stored_scores(infringements):
+        print(
+            f"LOG: Serving infringement chart from stored scores "
+            f"(skip rebuild) case_id={case_id or caseData.get('_id')}"
+        )
+        return _build_chart_from_stored_scores(infringements)
 
     chart_data = []
     patent_chart_data = []
