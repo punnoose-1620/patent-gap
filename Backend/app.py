@@ -383,6 +383,54 @@ def logout():
         'redirect': '/'
     })
 
+def _normalize_analysis_status(status) -> str:
+  return str(status or '').strip().lower()
+
+
+def _is_active_scan_status(status) -> bool:
+  """Analysis still in progress (started or one side finished)."""
+  s = _normalize_analysis_status(status)
+  if s in (
+    'started',
+    'pending',
+    'processing',
+    'running',
+    'in_progress',
+    'patent sources completed',
+    'product sources completed',
+  ):
+    return True
+  if s.startswith('failed') or s.startswith('error'):
+    return False
+  if 'sources completed' in s and s != 'completed':
+    return True
+  return False
+
+
+def _is_analyzed_status(status) -> bool:
+  return _normalize_analysis_status(status) == 'completed'
+
+
+def _legal_status_shorthand(status) -> str:
+  status = str(status or '')
+  if 'Expired' in status:
+    return 'expired'
+  if 'Abandoned' in status:
+    return 'abandoned'
+  if 'Patented' in status:
+    return 'patented'
+  if '-' in status:
+    return status.split('-', 1)[0].lower()
+  if '_' in status:
+    return status.split('_', 1)[0].lower()
+  return status.strip().lower()
+
+
+def _is_cleared_patent_status(status) -> bool:
+  """Cleared card: expired / abandoned legal status (matches dashboard UI)."""
+  return _legal_status_shorthand(status) in ('expired', 'abandoned')
+
+
 @app.route('/api/stats')
 def get_case_stats():
   user_id = get_user_id()
@@ -400,7 +448,9 @@ def get_case_stats():
   try:
     cases = get_case_related_to_user(user_id)
     for case in cases:
-      # Calculate Risk Counts
+      analysis_status = case.get('infringement_analysis_status') or case.get('infringement_analysis_flag') or ''
+
+      # Risk counts (high threshold >= 0.8)
       infringement_percentage = calculate_average_infringement_percentage(case)
       risk_level = get_risk_level(infringement_percentage)
       if risk_level == 'high':
@@ -409,17 +459,17 @@ def get_case_stats():
         returnStats['mediumRiskMatches'] += 1
       else:
         returnStats['lowRiskMatches'] += 1
-      # Calculate Active Count
-      if case.get('current_status', '').strip().lower() == 'processing':
+
+      # Active: analysis in progress (Started / one-side Sources Completed / legacy running)
+      if _is_active_scan_status(analysis_status):
         returnStats['activeScans'] += 1
-      # Calculate Analyzed Count
-      similar_claims = case.get('similar_claims', [])
-      infringement_analysis_flag = case.get('infringement_analysis_flag', '').strip().lower()
-      infringements = case.get('infringements', [])
-      if ('complete' in infringement_analysis_flag and len(similar_claims) > 0) or (len(infringements) > 0):
+
+      # Analyzed: overall analysis Completed
+      if _is_analyzed_status(analysis_status):
         returnStats['patentsAnalyzed'] += 1
-      # Calculate Cleared Count
-      if (len(infringements) == 0) or ((len(similar_claims) == 0) and ('complete' not in infringement_analysis_flag)):
+
+      # Cleared: expired / abandoned patent legal status
+      if _is_cleared_patent_status(case.get('status') or case.get('current_status') or ''):
         returnStats['clearedPatents'] += 1
     return returnStats
   except Exception as e:
