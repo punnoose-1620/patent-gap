@@ -27,3 +27,4 @@ Backend/.env
 /Backend/vector_store
 mcp-rag-vector-prompt.md
 /tester_scripts
+/.cursor
