@@ -333,7 +333,7 @@ def get_risk_level(infringement_percentage):
         return 'high'
     if score >= 0.7:
         return 'medium'
-    return 'low'
+        return 'low'
 
 
 def _claim_pair_score(claim) -> float | None:
@@ -1181,18 +1181,18 @@ def fetchById(app, patent_id:str, user_id:str):
                 print(f"WARNING {patent_id}: No similar cases found, falling through to USPTO → Google → FPO")
             except Exception as e:
                 print(f"ERROR: Error getting similar cases: {str(e)}")
-            try:
-                uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
-                uspto_data = uspto_instance.get_complete_patent_info(patent_id)
+    try:
+        uspto_instance = USPTOPatentAPI(api_key=getEnvKey('uspto'))
+        uspto_data = uspto_instance.get_complete_patent_info(patent_id)
                 if uspto_data is None:
                     uspto_error = True
                     raise Exception("No Data found through USPTO")
                 else:
-                    uspto_data['created_by'] = user_id
+        uspto_data['created_by'] = user_id
                     uspto_data['_id'] = f"uspto_{user_id}_{patent_id}"
-                    uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
-                    print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
-                    creationResult = create_case(uspto_data)
+        uspto_data['keywords'] = getKeywordsFromPatent(uspto_data['documents'])
+        print(f'\nUSPTO Data: {json.dumps(uspto_data, indent=4)}')
+        creationResult = create_case(uspto_data)
                     print(f"TEST 1.1: Creation Result: {json.dumps(creationResult, indent=4)}")
                     descriptionResult = generate_patent_description(f"uspto_{user_id}_{patent_id}")
                     print(f"TEST 1.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
@@ -1201,25 +1201,25 @@ def fetchById(app, patent_id:str, user_id:str):
                     remove_patent_from_fetching_list(user_id, patent_id)
                     remove_patent_from_error_list(user_id, patent_id)
                     fetch_succeeded = True
-                    returnValue = {
-                        'success': True,
-                        'message': 'Patent data imported successfully',
-                        'case_id': f"uspto_{user_id}_{patent_id}",
-                        'keywords': uspto_data.get('keywords', []),
-                        'case_data': uspto_data
-                    }
-                    return returnValue, 200
-            except Exception as e:
-                print(f'\nError getting patent data from USPTO: {str(e)}')
+        returnValue = {
+            'success': True, 
+            'message': 'Patent data imported successfully', 
+            'case_id': f"uspto_{user_id}_{patent_id}",
+            'keywords': uspto_data.get('keywords', []),
+            'case_data': uspto_data
+        }
+        return returnValue, 200
+    except Exception as e:
+        print(f'\nError getting patent data from USPTO: {str(e)}')
                 uspto_error = True
                 error_message = str(e)
-            # Try searching patent id using Google Patents
+    # Try searching patent id using Google Patents
             if uspto_error:
                 time.sleep(5)
-                try:
-                    google_patents = GooglePatents()
-                    google_patents_details = google_patents.search_by_id(patent_id)
-                    if google_patents_details is not None:
+    try:
+        google_patents = GooglePatents()
+        google_patents_details = google_patents.search_by_id(patent_id)
+        if google_patents_details is not None:
                         if isinstance(google_patents_details, dict):
                             extracted = passToGeminiForMetadata(
                                 google_patents_details.get('metadata_content', ''),
@@ -1236,24 +1236,24 @@ def fetchById(app, patent_id:str, user_id:str):
                                 "Failed to extract patent metadata from Google Patents content"
                             )
                         case_data = extracted.model_dump()
-                        if case_data is not None:
+            if case_data is not None:
                             patent_page_url = google_patents.get_patent_page_url(patent_id)
                             if patent_page_url:
                                 case_data['document_urls'] = [patent_page_url]
                                 case_data['documents'] = [
                                     {'url': patent_page_url, 'source': 'google_patents'}
                                 ]
-                            case_data['source'] = 'google_patents'
-                            case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
-                            case_data['created_by'] = user_id
-                            if case_data.get('current_status', '') == '':
-                                case_data['current_status'] = 'Granted'
-                            case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
-                            created_id = case_data.get('_id', '')
-                            creationResult = create_case(case_data)
+                case_data['source'] = 'google_patents'
+                case_data['_id'] = f"googlepatents_{user_id}_{patent_id}"
+                case_data['created_by'] = user_id
+                if case_data.get('current_status', '') == '':
+                    case_data['current_status'] = 'Granted'
+                case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                created_id = case_data.get('_id', '')
+                creationResult = create_case(case_data)
                             print(f"TEST 2.1: Creation Result: {json.dumps(creationResult, indent=4)}")
-                            created_id = case_data.get('_id', '')
-                            if 'DocumentCreationError' in created_id:
+                created_id = case_data.get('_id', '')
+                if 'DocumentCreationError' in created_id:
                                 raise Exception("Document Creation Error")
                             descriptionResult = generate_patent_description(f"googlepatents_{user_id}_{patent_id}")
                             print(f"TEST 2.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
@@ -1262,27 +1262,27 @@ def fetchById(app, patent_id:str, user_id:str):
                             remove_patent_from_fetching_list(user_id, patent_id)
                             remove_patent_from_error_list(user_id, patent_id)
                             fetch_succeeded = True
-                            returnValue = {
-                                'success': True,
-                                'message': 'Patent data imported successfully',
-                                'case_id': created_id,
-                                'keywords': case_data.get('keywords', []),
-                                'case_data': case_data
-                            }
-                            return returnValue, 200
+                returnValue = {
+                    'success': True, 
+                    'message': 'Patent data imported successfully', 
+                    'case_id': created_id,
+                    'keywords': case_data.get('keywords', []),
+                    'case_data': case_data
+                }
+                return returnValue, 200
                     else:
                         raise Exception("No Data found through Google Patents")
-                except Exception as e:
-                    print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
+    except Exception as e:
+        print(f"ERROR: Error getting patent details from Google Patents: {str(e)}")
                     error_message = str(e)
                     google_error = True
-            # Patent not found using Google Patents, try using Free Patents Online
+    # Patent not found using Google Patents, try using Free Patents Online
             if google_error and uspto_error:
                 time.sleep(5)
-                try:
-                    free_patents = FreePatentsOnline()
-                    free_patents_details = free_patents.search_by_id(patent_id)
-                    if free_patents_details is not None:
+    try:
+        free_patents = FreePatentsOnline()
+        free_patents_details = free_patents.search_by_id(patent_id)
+        if free_patents_details is not None:
                         extracted = passToGeminiForMetadata(
                             str(free_patents_details),
                             default_source='free_patents_online',
@@ -1292,18 +1292,18 @@ def fetchById(app, patent_id:str, user_id:str):
                                 "Failed to extract patent metadata from Free Patents Online content"
                             )
                         case_data = extracted.model_dump()
-                        if case_data is not None:
-                            case_data['source'] = 'free_patents_online'
-                            case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
-                            case_data['created_by'] = user_id
-                            if case_data.get('current_status', '') == '':
-                                case_data['current_status'] = 'Granted'
-                            case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
-                            creationResult = create_case(case_data)
+            if case_data is not None:
+                case_data['source'] = 'free_patents_online'
+                case_data['_id'] = f"freepatentsonline_{user_id}_{patent_id}"
+                case_data['created_by'] = user_id
+                if case_data.get('current_status', '') == '':
+                    case_data['current_status'] = 'Granted'
+                case_data['created_date'] = dt.now().strftime('%Y-%m-%d')
+                creationResult = create_case(case_data)
                             print(f"TEST 3.1: Creation Result: {json.dumps(creationResult, indent=4)}")
-                            created_id = case_data.get('_id', '')
-                            if 'DocumentCreationError' in created_id:
-                                returnValue = {'success': False, 'message': created_id}
+                created_id = case_data.get('_id', '')
+                if 'DocumentCreationError' in created_id:
+                    returnValue = {'success': False, 'message': created_id}
                                 raise Exception("Document Creation Error")
                             descriptionResult = generate_patent_description(f"freepatentsonline_{user_id}_{patent_id}")
                             print(f"TEST 3.2: Description Generation Result: {json.dumps(descriptionResult, indent=4)}")
@@ -1312,27 +1312,27 @@ def fetchById(app, patent_id:str, user_id:str):
                             remove_patent_from_error_list(user_id, patent_id)
                             remove_patent_from_fetching_list(user_id, patent_id)
                             fetch_succeeded = True
-                            returnValue = {
-                                'success': True,
-                                'message': 'Patent data imported successfully',
-                                'case_id': created_id,
-                                'keywords': case_data.get('keywords', []),
-                                'case_data': case_data
-                            }
-                            return returnValue, 200
+                returnValue = {
+                    'success': True, 
+                    'message': 'Patent data imported successfully', 
+                    'case_id': created_id,
+                    'keywords': case_data.get('keywords', []),
+                    'case_data': case_data
+                }
+                return returnValue, 200
                     else:
                         raise Exception("No Data found through Free Patents Online")
-                except Exception as e:
-                    print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
+    except Exception as e:
+        print(f"ERROR: Error getting patent details from Free Patents Online: {str(e)}")
                     error_message = str(e)
                     free_patents_error = True
-
-            errorReturn = {
-                'success': False,
+    
+    errorReturn = {
+        'success': False, 
                 'message': f"Failed to find patent with ID {patent_id}",
                 'error_message': error_message
-            }
-            return errorReturn, 500
+        }
+    return errorReturn, 500
         finally:
             if not fetch_succeeded:
                 try:

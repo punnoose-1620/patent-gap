@@ -11,6 +11,8 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Dict, List, Optional, Sequence
 
+from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     BaseDocTemplate,
@@ -37,17 +39,50 @@ from reports.data_processors import (
 )
 
 
-def _p(text: str, style_name: str, styles: dict) -> Paragraph:
-    """Escape-ish paragraph helper. ReportLab uses a tiny HTML subset."""
-    safe = (
+def _escape_xml(text: str) -> str:
+    """Escape user content for ReportLab Paragraph XML/HTML subset."""
+    return (
         (text or '')
         .replace('&', '&amp;')
         .replace('<', '&lt;')
         .replace('>', '&gt;')
     )
-    # Preserve line breaks
-    safe = safe.replace('\n', '<br/>')
+
+
+def _p(text: str, style_name: str, styles: dict) -> Paragraph:
+    """Plain-text paragraph: escapes markup, preserves newlines as <br/>."""
+    safe = _escape_xml(text).replace('\n', '<br/>')
     return Paragraph(safe, styles[style_name])
+
+
+def _p_markup(html: str, style_name: str, styles: dict) -> Paragraph:
+    """
+    Paragraph with intentional ReportLab markup already applied.
+    Caller must escape any untrusted text fragments before embedding.
+    """
+    return Paragraph((html or '').replace('\n', '<br/>'), styles[style_name])
+
+
+def _claim_label_paragraph(
+    claim_index: int,
+    claim_text: str,
+    styles: dict,
+    *,
+    style_name: str = 'table_cell_left',
+    compact: bool = False,
+) -> Paragraph:
+    """Bold claim label + full escaped claim body (no literal tags in output)."""
+    body = _escape_xml(claim_text or '—').replace('\n', '<br/>')
+    html = f'<b>Claim {claim_index + 1}</b><br/>{body}'
+    if compact:
+        compact_style = ParagraphStyle(
+            'PGMatrixClaim',
+            parent=styles[style_name],
+            fontSize=6.5,
+            leading=8,
+        )
+        return Paragraph(html, compact_style)
+    return _p_markup(html, style_name, styles)
 
 
 def _dash(value) -> str:
@@ -68,6 +103,27 @@ def _tick_cross(matched: bool, score: Optional[float]) -> str:
     if score is None:
         return mark
     return f'{mark} {_pct(score)}'
+
+
+def _page_orientation(pagesize) -> str:
+    w, h = pagesize
+    return 'landscape' if w > h else 'portrait'
+
+
+def _current_pagesize(canvas, doc):
+    """Prefer the active page template size (portrait vs landscape)."""
+    try:
+        tpl = getattr(doc, 'pageTemplate', None)
+        if tpl is not None and getattr(tpl, 'pagesize', None):
+            return tpl.pagesize
+    except Exception:
+        pass
+    try:
+        if getattr(canvas, '_pagesize', None):
+            return canvas._pagesize
+    except Exception:
+        pass
+    return doc.pagesize
 
 
 # ---------------------------------------------------------------------------
@@ -119,26 +175,46 @@ class SetHeaderTitle(Flowable):
         self.state.header_title = self.title
 
 
-def _draw_header_footer(canvas, doc, state: ReportState):
+def draw_header(canvas, doc, state: ReportState, orientation: Optional[str] = None):
+    """
+    Draw report header for the current page.
+    ``orientation`` is ``'portrait'`` or ``'landscape'`` (auto-detected if omitted).
+    """
+    width, height = _current_pagesize(canvas, doc)
+    orientation = orientation or _page_orientation((width, height))
+    # Same layout rules; geometry follows the active pagesize (landscape is wider).
+    del orientation  # available for future orientation-specific tweaks
+
+    if not state.show_header:
+        return
+
     canvas.saveState()
-    width, height = doc.pagesize
-    styles = state.styles
+    canvas.setStrokeColor(S.DEEP)
+    canvas.setLineWidth(0.6)
+    y = height - S.MARGIN_TOP + 4 * mm
+    canvas.line(S.MARGIN_LEFT, y, width - S.MARGIN_RIGHT, y)
 
-    if state.show_header:
-        # Top rule
-        canvas.setStrokeColor(S.DEEP)
-        canvas.setLineWidth(0.6)
-        y = height - S.MARGIN_TOP + 4 * mm
-        canvas.line(S.MARGIN_LEFT, y, width - S.MARGIN_RIGHT, y)
+    canvas.setFont(S.FONTS['body'], 7.5)
+    canvas.setFillColor(S.INK2)
+    # Allow a longer title on landscape pages
+    max_title = 160 if width > height else 110
+    left = (state.header_title or '')[:max_title]
+    right = state.header_date or ''
+    canvas.drawString(S.MARGIN_LEFT, y + 2 * mm, left)
+    canvas.drawRightString(width - S.MARGIN_RIGHT, y + 2 * mm, right)
+    canvas.restoreState()
 
-        canvas.setFont(S.FONTS['body'], 7.5)
-        canvas.setFillColor(S.INK2)
-        left = (state.header_title or '')[:110]
-        right = state.header_date or ''
-        canvas.drawString(S.MARGIN_LEFT, y + 2 * mm, left)
-        canvas.drawRightString(width - S.MARGIN_RIGHT, y + 2 * mm, right)
 
-    # Footer band
+def draw_footer(canvas, doc, state: ReportState, orientation: Optional[str] = None):
+    """
+    Draw report footer (page number + watermark) for the current page.
+    ``orientation`` is ``'portrait'`` or ``'landscape'`` (auto-detected if omitted).
+    """
+    width, height = _current_pagesize(canvas, doc)
+    orientation = orientation or _page_orientation((width, height))
+    del orientation
+
+    canvas.saveState()
     fy = S.MARGIN_BOTTOM - 6 * mm
     canvas.setStrokeColor(S.DEEP)
     canvas.setLineWidth(0.5)
@@ -156,10 +232,16 @@ def _draw_header_footer(canvas, doc, state: ReportState):
     canvas.restoreState()
 
 
+def _draw_header_footer(canvas, doc, state: ReportState):
+    orientation = _page_orientation(_current_pagesize(canvas, doc))
+    draw_header(canvas, doc, state, orientation=orientation)
+    draw_footer(canvas, doc, state, orientation=orientation)
+
+
 def _draw_cover_chrome(canvas, doc, state: ReportState):
     """Cover: watermark only — no header, no page number."""
     canvas.saveState()
-    width, height = doc.pagesize
+    width, height = _current_pagesize(canvas, doc)
     fy = S.MARGIN_BOTTOM - 6 * mm
     canvas.setFillColor(S.INK3)
     canvas.setFont(S.FONTS['body_oblique'], 7.5)
@@ -195,12 +277,18 @@ def make_doc_template(
         )
 
     def on_portrait(canvas, doc_):
-        _draw_header_footer(canvas, doc_, state)
+        canvas.setPageSize(S.PAGE_PORTRAIT)
+        draw_header(canvas, doc_, state, orientation='portrait')
+        draw_footer(canvas, doc_, state, orientation='portrait')
 
     def on_landscape(canvas, doc_):
-        _draw_header_footer(canvas, doc_, state)
+        # Force landscape page box so header/footer span the wide edge
+        canvas.setPageSize(S.PAGE_LANDSCAPE)
+        draw_header(canvas, doc_, state, orientation='landscape')
+        draw_footer(canvas, doc_, state, orientation='landscape')
 
     def on_cover(canvas, doc_):
+        canvas.setPageSize(S.PAGE_PORTRAIT)
         _draw_cover_chrome(canvas, doc_, state)
 
     portrait = PageTemplate(
@@ -269,19 +357,23 @@ def patent_info_section(patent: PatentInfo, styles: dict) -> List:
     story.append(_p('Reference Patent Information', 'section_title', styles))
 
     owners = ', '.join(patent.assignees) if patent.assignees else '—'
-    inventors = ', '.join(patent.inventors) if patent.inventors else '—'
     story.extend(meta_row('Owners / Assignees', owners, styles))
-    if patent.notes.get('inventors'):
-        # owners notes preferred under owners; inventors note still shown
-        pass
-    # Prefer inventors note under inventors line
-    story.extend(meta_row('Inventors', inventors, styles))
-    if patent.notes.get('inventors'):
+
+    # Omit inventors / granted date entirely when empty (no placeholder row)
+    if patent.inventors:
+        inventors = ', '.join(patent.inventors)
+        story.extend(meta_row('Inventors', inventors, styles))
+        if patent.notes.get('inventors'):
+            story.append(note_line(patent.notes['inventors'], styles))
+            story.append(Spacer(1, 2 * mm))
+    elif patent.notes.get('inventors'):
         story.append(note_line(patent.notes['inventors'], styles))
         story.append(Spacer(1, 2 * mm))
 
-    story.extend(meta_row('Filing Date', patent.filing_date, styles))
-    story.extend(meta_row('Granted / Patented Date', patent.grant_date, styles))
+    if patent.filing_date:
+        story.extend(meta_row('Filing Date', patent.filing_date, styles))
+    if patent.grant_date:
+        story.extend(meta_row('Granted / Patented Date', patent.grant_date, styles))
 
     story.append(_p('Description', 'meta_label', styles))
     story.append(_p(_dash(patent.description), 'body_center', styles))
@@ -289,20 +381,14 @@ def patent_info_section(patent: PatentInfo, styles: dict) -> List:
         story.append(note_line(patent.notes['description'], styles))
     story.append(Spacer(1, 3 * mm))
 
-    if patent.keywords:
-        story.extend(meta_row('Keywords', ', '.join(patent.keywords), styles))
-        if patent.notes.get('keywords'):
-            story.append(note_line(patent.notes['keywords'], styles))
+    # Keywords and search limitations are intentionally omitted from reports
+    # (may be shared outside the client; must not expose search strategy).
+
     if patent.context:
         story.append(_p('Context', 'meta_label', styles))
         story.append(_p(patent.context, 'body_center', styles))
         if patent.notes.get('context'):
             story.append(note_line(patent.notes['context'], styles))
-    if patent.search_limitations:
-        story.append(_p('Search Limitations', 'meta_label', styles))
-        story.append(_p(patent.search_limitations, 'body_center', styles))
-        if patent.notes.get('search_limitations'):
-            story.append(note_line(patent.notes['search_limitations'], styles))
 
     return story
 
@@ -336,10 +422,13 @@ def claims_section(
 
 
 def hit_info_section(hit: InfringementHit, styles: dict) -> List:
+    """Infringement opener: title as hero header; id only once in the details block."""
     kind_label = 'Infringing Product' if hit.kind == 'product' else 'Infringing Patent'
-    story: List = []
-    story.extend(hero_block(hit.entry_id, hit.title, styles))
-    story.append(_p(f'{kind_label} Details', 'section_title', styles))
+    story: List = [
+        Spacer(1, 6 * mm),
+        _p(_dash(hit.title), 'hero_id', styles),
+        _p(f'{kind_label} Details', 'section_title', styles),
+    ]
     story.extend(meta_row('ID', hit.entry_id, styles))
     story.extend(meta_row('Source', hit.source, styles))
     story.extend(meta_row('URL / Listing', hit.url, styles))
@@ -395,50 +484,80 @@ def claim_matrix_section(
     """
     Full or single-hit claim matrix as a bordered table.
     Empty cells remain visible (bordered) with ✗ / —.
+
+    Left column shows full reference claim text (Claim N + body).
+    Wide hit sets are chunked so headers stay readable on the page.
     """
     story: List = [_p('Claim Matrix', 'section_title', styles)]
     if not matrix.ref_claims or not matrix.hits:
         story.append(_p('No matrix data.', 'body_center', styles))
         return story
 
-    header = [_p('Reference Claim', 'table_header', styles)]
-    for h in matrix.hits:
-        header.append(_p(_dash(h.entry_id), 'table_header', styles))
-    if matrix.include_notes_column:
-        header.append(_p('Attorney Notes', 'table_header', styles))
+    # Fewer hit columns when embedding full claim text so rows fit landscape height
+    max_hits_per_table = 4 if not matrix.include_notes_column else 1
+    hit_chunks = [
+        matrix.hits[i:i + max_hits_per_table]
+        for i in range(0, len(matrix.hits), max_hits_per_table)
+    ]
+    multi = not matrix.include_notes_column and len(matrix.hits) > 1
 
-    data = [header]
-    for claim in matrix.ref_claims:
-        # Left cell: claim number + full claim text (left aligned, no ellipsis)
-        left = _p(f'<b>Claim {claim.index + 1}</b><br/>{claim.text or "—"}', 'table_cell_left', styles)
-        row = [left]
-        note_for_row = ''
-        for h in matrix.hits:
-            cell = matrix.cells.get((claim.index, h.entry_id))
-            if cell is None:
-                row.append(_p('✗', 'table_cell', styles))
-            else:
-                row.append(_p(_tick_cross(cell.matched, cell.score), 'table_cell', styles))
-                if matrix.include_notes_column and cell.note:
-                    note_for_row = cell.note
+    for chunk_i, hits_chunk in enumerate(hit_chunks):
+        if chunk_i > 0:
+            story.append(Spacer(1, 4 * mm))
+            story.append(_p(
+                f'Claim Matrix (continued {chunk_i + 1}/{len(hit_chunks)})',
+                'section_title',
+                styles,
+            ))
+
+        header = [_p('Reference Claim', 'table_header', styles)]
+        for h in hits_chunk:
+            header.append(_p(_dash(h.entry_id), 'table_header', styles))
         if matrix.include_notes_column:
-            row.append(_p(note_for_row or '', 'table_cell_left', styles))
-        data.append(row)
+            header.append(_p('Attorney Notes', 'table_header', styles))
 
-    n_cols = len(header)
-    claim_w = available_width * 0.42
-    rest = available_width - claim_w
-    if matrix.include_notes_column:
-        hit_w = rest * 0.35
-        note_w = rest * 0.65
-        col_widths = [claim_w, hit_w, note_w]
-    else:
-        hit_w = rest / max(len(matrix.hits), 1)
-        col_widths = [claim_w] + [hit_w] * len(matrix.hits)
+        data = [header]
+        for claim in matrix.ref_claims:
+            left = _claim_label_paragraph(
+                claim.index,
+                claim.text or '—',
+                styles,
+                compact=multi,
+            )
+            row = [left]
+            note_for_row = ''
+            for h in hits_chunk:
+                cell = matrix.cells.get((claim.index, h.entry_id))
+                if cell is None:
+                    row.append(_p('✗', 'table_cell', styles))
+                else:
+                    row.append(_p(_tick_cross(cell.matched, cell.score), 'table_cell', styles))
+                    if matrix.include_notes_column and cell.note:
+                        note_for_row = cell.note
+            if matrix.include_notes_column:
+                row.append(_p(note_for_row or '', 'table_cell_left', styles))
+            data.append(row)
 
-    table = Table(data, colWidths=col_widths, repeatRows=1)
-    table.setStyle(_matrix_table_style(n_cols))
-    story.append(table)
+        # Single-hit matrix (one product/patent): 70% claim / 30% product(+notes)
+        # Multi-hit chunks: give claim column enough room, share the rest across hits
+        if len(matrix.hits) == 1:
+            claim_w = available_width * 0.70
+            rest = available_width - claim_w
+            if matrix.include_notes_column:
+                hit_w = rest * 0.40
+                note_w = rest * 0.60
+                col_widths = [claim_w, hit_w, note_w]
+            else:
+                col_widths = [claim_w, rest]
+        else:
+            claim_w = available_width * 0.30
+            rest = available_width - claim_w
+            hit_w = rest / max(len(hits_chunk), 1)
+            col_widths = [claim_w] + [hit_w] * len(hits_chunk)
+
+        table = Table(data, colWidths=col_widths, repeatRows=1)
+        table.setStyle(_matrix_table_style(len(header)))
+        story.append(table)
     return story
 
 
@@ -448,29 +567,48 @@ def claim_chart_section(chart: ChartTable, styles: dict, *, available_width: flo
         story.append(_p('No claim chart rows for this infringement.', 'body_center', styles))
         return story
 
-    header = [
-        _p('Reference Claim', 'table_header', styles),
-        _p('Infringing Claim', 'table_header', styles),
-        _p('Similarity', 'table_header', styles),
-        _p('Justification', 'table_header', styles),
-    ]
+    # Hide Justification column when every row has empty justification
+    include_justification = any((row.justification or '').strip() for row in chart.rows)
+
+    if include_justification:
+        header = [
+            _p('Reference Claim', 'table_header', styles),
+            _p('Infringing Claim', 'table_header', styles),
+            _p('Similarity', 'table_header', styles),
+            _p('Justification', 'table_header', styles),
+        ]
+        col_widths = [
+            available_width * 0.28,
+            available_width * 0.28,
+            available_width * 0.12,
+            available_width * 0.32,
+        ]
+    else:
+        header = [
+            _p('Reference Claim', 'table_header', styles),
+            _p('Infringing Claim', 'table_header', styles),
+            _p('Similarity', 'table_header', styles),
+        ]
+        col_widths = [
+            available_width * 0.42,
+            available_width * 0.42,
+            available_width * 0.16,
+        ]
+
     data = [header]
     for row in chart.rows:
-        data.append([
-            _p(row.ref_claim or '—', 'table_cell_left', styles),
+        ref_idx = row.ref_claim_index if row.ref_claim_index is not None else 0
+        ref_cell = _claim_label_paragraph(ref_idx, row.ref_claim or '—', styles)
+        cells = [
+            ref_cell,
             _p(row.inf_claim or '—', 'table_cell_left', styles),
             _p(_pct(row.similarity), 'table_cell', styles),
-            _p(row.justification or '—', 'justification', styles),
-        ])
+        ]
+        if include_justification:
+            cells.append(_p(row.justification or '—', 'justification', styles))
+        data.append(cells)
 
-    col_widths = [
-        available_width * 0.28,
-        available_width * 0.28,
-        available_width * 0.12,
-        available_width * 0.32,
-    ]
-    table = Table(data, colWidths=col_widths, repeatRows=1)
-    table.setStyle(TableStyle([
+    chart_style_cmds = [
         ('BACKGROUND', (0, 0), (-1, 0), S.DEEP),
         ('TEXTCOLOR', (0, 0), (-1, 0), S.WHITE),
         ('FONTNAME', (0, 0), (-1, 0), S.FONTS['body_bold']),
@@ -482,24 +620,38 @@ def claim_chart_section(chart: ChartTable, styles: dict, *, available_width: flo
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('BACKGROUND', (0, 1), (-1, -1), S.BG),
-    ]))
-    story.append(table)
+    ]
+    chart_style = TableStyle(chart_style_cmds)
+
+    header_row = data[0]
+    for row_cells in data[1:]:
+        table = Table([header_row, row_cells], colWidths=col_widths, repeatRows=1)
+        table.setStyle(chart_style)
+        story.append(KeepTogether([table, Spacer(1, 3 * mm)]))
+
     story.extend(attorney_notes_section(chart.attorney_notes, styles))
     return story
 
 
-def documents_section(hit: InfringementHit, styles: dict) -> List:
+def documents_section(
+    hit: InfringementHit,
+    styles: dict,
+    *,
+    appendix_notes: Optional[Sequence[str]] = None,
+) -> List:
     """
-    Appendix listing for infringing product/patent documents and listing URLs.
+    Documents section header + short inventory.
 
-    HTML→PDF page append for live listings is intentionally stubbed here:
-    we always emit a complete link/title inventory so the report is printable
-    without depending on external fetches. Callers can later merge real PDF
-    bytes after this section.
+    Actual PDF/HTML listing pages are appended after the ReportLab body via
+    ``collect_infringement_document_pdfs`` (merged by the builder).
     """
     story: List = [_p('Documents / Listing Pages', 'section_title', styles)]
     if not hit.documents and not hit.url:
-        story.append(_p('No documents or listing URLs recorded for this infringement.', 'body_center', styles))
+        story.append(_p(
+            'No documents or listing URLs recorded for this infringement.',
+            'body_center',
+            styles,
+        ))
         return story
 
     if hit.url:
@@ -518,13 +670,41 @@ def documents_section(hit: InfringementHit, styles: dict) -> List:
         ]
         story.append(KeepTogether(block))
 
-    story.append(Spacer(1, 2 * mm))
-    story.append(_p(
-        'Note: Full HTML listing pages are referenced by URL in this framework build. '
-        'A later pass can fetch and append rendered PDF pages after this section.',
-        'attorney_note',
-        styles,
-    ))
+    if appendix_notes:
+        story.append(Spacer(1, 2 * mm))
+        manual = [n for n in appendix_notes if 'MANUAL ACCESS REQUIRED' in (n or '')]
+        other = [n for n in appendix_notes if 'MANUAL ACCESS REQUIRED' not in (n or '')]
+        if manual:
+            story.append(_p(
+                '<b>Manual access required</b> — automated page fetching was disabled '
+                'by host firewalls/WAFs for the URL(s) below. Open them manually in a browser.',
+                'body',
+                styles,
+            ))
+            story.append(Spacer(1, 1 * mm))
+            for note in manual:
+                # Keep the full note (includes the URL) but bold the lead-in
+                safe = (note or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                if safe.startswith('MANUAL ACCESS REQUIRED'):
+                    rest = safe[len('MANUAL ACCESS REQUIRED'):].lstrip(' —-')
+                    story.append(_p_markup(
+                        f'<b>MANUAL ACCESS REQUIRED</b> — {rest}',
+                        'attorney_note',
+                        styles,
+                    ))
+                else:
+                    story.append(_p(note, 'attorney_note', styles))
+            if other:
+                story.append(Spacer(1, 2 * mm))
+        for note in other:
+            story.append(_p(note, 'attorney_note', styles))
+    else:
+        story.append(Spacer(1, 2 * mm))
+        story.append(_p(
+            'Source document and listing pages follow this section when available.',
+            'attorney_note',
+            styles,
+        ))
     return story
 
 
@@ -562,7 +742,12 @@ def index_section(
     styles: dict,
     *,
     title: str = 'Index',
+    available_width: Optional[float] = None,
 ) -> List:
+    """
+    Full-width 3-column index table (transparent borders):
+      id (center) | title / subtitle (left) | page (right)
+    """
     story: List = [
         _p(title, 'section_title', styles),
         Spacer(1, 4 * mm),
@@ -571,18 +756,68 @@ def index_section(
         story.append(_p('No sections to index.', 'body_center', styles))
         return story
 
+    width = available_width if available_width is not None else available_content_width()
+    col_widths = [width * 0.28, width * 0.60, width * 0.12]
+
+    id_style = ParagraphStyle(
+        'PGIndexId',
+        parent=styles['index_entry'],
+        alignment=1,  # TA_CENTER
+    )
+    title_style = styles['index_entry']
+    title_sub_style = styles['index_sub']
+    page_style = ParagraphStyle(
+        'PGIndexPage',
+        parent=styles['index_entry'],
+        alignment=2,  # TA_RIGHT
+    )
+
+    def _cell(text: str, style) -> Paragraph:
+        safe = (
+            (text or '')
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('\n', '<br/>')
+        )
+        return Paragraph(safe, style)
+
+    data = []
     for e in entries:
         page = page_map.get(e.marker, '')
         page_str = str(page) if page != '' else ''
-        # Dot leaders via simple spacing — full titles, no ellipsis
-        label = e.label
-        line = f'{label}  {page_str}'.strip()
-        style = 'index_sub' if e.level else 'index_entry'
-        story.append(_p(line, style, styles))
-        story.append(Spacer(1, 1.5 * mm))
+        id_text = e.entry_id or ''
+        title_text = e.title or ''
+        t_style = title_sub_style if e.level else title_style
+        data.append([
+            _cell(id_text, id_style),
+            _cell(title_text, t_style),
+            _cell(page_str, page_style),
+        ])
+
+    table = Table(data, colWidths=col_widths, repeatRows=0)
+    table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        # Transparent / no borders — alignment only
+        ('BOX', (0, 0), (-1, -1), 0, colors.Color(0, 0, 0, alpha=0)),
+        ('INNERGRID', (0, 0), (-1, -1), 0, colors.Color(0, 0, 0, alpha=0)),
+    ]))
+    story.append(table)
     return story
 
 
 def available_content_width(pagesize=S.PAGE_PORTRAIT) -> float:
     w, _ = pagesize
     return w - S.MARGIN_LEFT - S.MARGIN_RIGHT
+
+
+def patent_cover_section(patent: PatentInfo, styles: dict) -> List:
+    """Cover-style opening with reference patent identity and details (no keywords/search limits)."""
+    return patent_info_section(patent, styles)

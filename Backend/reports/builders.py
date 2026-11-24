@@ -38,6 +38,7 @@ from reports.data_processors import (
     PortfolioChapterPlan,
     build_claim_chart,
     build_matrix,
+    collect_infringement_document_pdfs,
     extract_claims,
     extract_hit,
     filter_hits_by_kind,
@@ -51,6 +52,32 @@ from reports.data_processors import (
     plan_whats_new_chapters,
 )
 from reportlab.platypus import NextPageTemplate, PageBreak
+
+
+# ---------------------------------------------------------------------------
+# Document appendix helpers (collect once — never twice on two-pass TOC builds)
+# ---------------------------------------------------------------------------
+
+def _collect_appendices_for_hits(
+    hits: Sequence[InfringementHit],
+    *,
+    include_html_listings: bool = True,
+) -> Tuple[List[bytes], Dict[str, List[str]]]:
+    """
+    Load PDF / Chromium listing pages for each hit once.
+
+    Returns ``(pdf_parts_in_hit_order, notes_by_entry_id)``.
+    """
+    parts: List[bytes] = []
+    notes_by_id: Dict[str, List[str]] = {}
+    for hit in hits:
+        hit_parts, hit_notes = collect_infringement_document_pdfs(
+            hit,
+            include_html_listings=include_html_listings,
+        )
+        parts.extend(hit_parts)
+        notes_by_id[hit.entry_id] = hit_notes
+    return parts, notes_by_id
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +111,7 @@ def _story_single_hit_body(
     hit_marker: str,
     chart_marker: str,
     include_matrix: bool = True,
+    appendix_notes: Optional[Sequence[str]] = None,
 ) -> Tuple[List, InfringementHit]:
     hit = extract_hit(entry, notes_map=notes_map)
     story: List = [Marker(hit_marker, state)]
@@ -113,7 +141,7 @@ def _story_single_hit_body(
     story.append(Marker(chart_marker, state))
     chart = build_claim_chart(case, entry, notes_map)
     story.extend(claim_chart_section(chart, styles, available_width=width))
-    story.extend(documents_section(hit, styles))
+    story.extend(documents_section(hit, styles, appendix_notes=appendix_notes))
     return story, hit
 
 
@@ -129,6 +157,7 @@ def _story_full_matrix(
     matrix = build_matrix(case, entries, notes_map, single_hit_notes_column=False)
     use_landscape = len(matrix.hits) > S.LANDSCAPE_HIT_THRESHOLD
     story: List = []
+    notes_flowables = attorney_notes_section(matrix.attorney_notes, styles)
 
     if use_landscape:
         story.append(NextPageTemplate('landscape'))
@@ -136,15 +165,18 @@ def _story_full_matrix(
         story.append(Marker(matrix_marker, state))
         width = available_content_width(S.PAGE_LANDSCAPE)
         story.extend(claim_matrix_section(matrix, styles, available_width=width))
-        # Notes on following portrait page
+        # Switch back to portrait for following content. Only force a page break
+        # when there are attorney notes to show — otherwise the next chapter's
+        # PageBreak would leave a blank portrait page after the matrix.
         story.append(NextPageTemplate('portrait'))
-        story.append(PageBreak())
-        story.extend(attorney_notes_section(matrix.attorney_notes, styles))
+        if notes_flowables:
+            story.append(PageBreak())
+            story.extend(notes_flowables)
     else:
         story.append(Marker(matrix_marker, state))
         width = available_content_width(S.PAGE_PORTRAIT)
         story.extend(claim_matrix_section(matrix, styles, available_width=width))
-        story.extend(attorney_notes_section(matrix.attorney_notes, styles))
+        story.extend(notes_flowables)
     return story
 
 
@@ -158,24 +190,49 @@ def _story_multi_hit_report(
     index_entries: List[IndexEntry],
     marker_prefix: str = '',
     header_title: Optional[str] = None,
+    patent_info_in_content: bool = True,
+    appendix_notes_by_id: Optional[Dict[str, List[str]]] = None,
 ) -> List:
+    """
+    Multi-hit body.
+
+    When ``patent_info_in_content`` is False (Products/Patents report), the
+    reference patent block is omitted here — callers put it on an unnumbered
+    cover, then Index, then this story starting at reference claims.
+    """
     styles = state.styles
+    appendix_notes_by_id = appendix_notes_by_id or {}
     story: List = []
     if header_title:
         story.append(SetHeaderTitle(state, header_title))
 
-    ref_marker = f'{marker_prefix}ref'
-    index_entries.append(IndexEntry(
-        label=f'{patent.patent_id}: {patent.title}',
-        level=0,
-        marker=ref_marker,
-    ))
-    story.extend(_story_patent_block(patent, styles, state, ref_marker))
-    story.extend(_story_ref_claims(patent, case, styles))
+    claims_marker = f'{marker_prefix}claims'
+    if patent_info_in_content:
+        ref_marker = f'{marker_prefix}ref'
+        index_entries.append(IndexEntry(
+            entry_id=patent.patent_id,
+            title=patent.title,
+            level=0,
+            marker=ref_marker,
+        ))
+        story.extend(_story_patent_block(patent, styles, state, ref_marker))
+        story.append(Marker(claims_marker, state))
+        story.extend(_story_ref_claims(patent, case, styles))
+    else:
+        # Cover already showed patent info; index points patent id/title at claims.
+        index_entries.append(IndexEntry(
+            entry_id=patent.patent_id,
+            title=patent.title,
+            level=0,
+            marker=claims_marker,
+        ))
+        story.append(Marker(claims_marker, state))
+        story.extend(_story_ref_claims(patent, case, styles))
 
     matrix_marker = f'{marker_prefix}matrix'
     index_entries.append(IndexEntry(
-        label='Full Claim Matrix',
+        entry_id='',  # no patent id on the Full Claim Matrix index row
+        title='Full Claim Matrix',
         level=0,
         marker=matrix_marker,
     ))
@@ -188,12 +245,14 @@ def _story_multi_hit_report(
         hit_marker = f'{marker_prefix}hit:{hit.entry_id}:{i}'
         chart_marker = f'{marker_prefix}chart:{hit.entry_id}:{i}'
         index_entries.append(IndexEntry(
-            label=f'{hit.entry_id}: {hit.title}',
+            entry_id=hit.entry_id,
+            title=hit.title,
             level=0,
             marker=hit_marker,
         ))
         index_entries.append(IndexEntry(
-            label='Claim Chart',
+            entry_id='',
+            title='Claim Chart',
             level=1,
             marker=chart_marker,
         ))
@@ -203,6 +262,7 @@ def _story_multi_hit_report(
             hit_marker=hit_marker,
             chart_marker=chart_marker,
             include_matrix=False,  # full matrix already above
+            appendix_notes=appendix_notes_by_id.get(hit.entry_id),
         )
         story.extend(body)
 
@@ -220,15 +280,18 @@ def _story_single_hit_report(
     marker_prefix: str = '',
     include_in_index: bool = False,
     header_title: Optional[str] = None,
+    appendix_notes_by_id: Optional[Dict[str, List[str]]] = None,
 ) -> List:
     styles = state.styles
+    appendix_notes_by_id = appendix_notes_by_id or {}
     story: List = []
     if header_title:
         story.append(SetHeaderTitle(state, header_title))
     ref_marker = f'{marker_prefix}ref'
     if include_in_index and index_entries is not None:
         index_entries.append(IndexEntry(
-            label=f'{patent.patent_id}: {patent.title}',
+            entry_id=patent.patent_id,
+            title=patent.title,
             level=0,
             marker=ref_marker,
         ))
@@ -240,12 +303,14 @@ def _story_single_hit_report(
     chart_marker = f'{marker_prefix}chart:{hit.entry_id}'
     if include_in_index and index_entries is not None:
         index_entries.append(IndexEntry(
-            label=f'{hit.entry_id}: {hit.title}',
+            entry_id=hit.entry_id,
+            title=hit.title,
             level=0,
             marker=hit_marker,
         ))
         index_entries.append(IndexEntry(
-            label='Claim Chart',
+            entry_id='',
+            title='Claim Chart',
             level=1,
             marker=chart_marker,
         ))
@@ -256,6 +321,7 @@ def _story_single_hit_report(
         hit_marker=hit_marker,
         chart_marker=chart_marker,
         include_matrix=True,
+        appendix_notes=appendix_notes_by_id.get(hit.entry_id),
     )
     story.extend(body)
     return story
@@ -298,19 +364,30 @@ def _build_index_pdf(
     occupy pages 1..N; content starts at N+1).
     """
     shifted = {k: v + page_shift for k, v in page_map.items()}
-    # First estimate without shift correction for index length: build once,
-    # then rebuild with correct shift if needed by caller.
     index_state = ReportState()
     index_state.header_title = state.header_title
     index_state.header_date = state.header_date
     index_state.show_header = True
     index_state.show_page_number = True
     index_state.page_offset = 0
-    story = index_section(entries, shifted, index_state.styles)
-    story.append(PageBreak())  # ensure trailing content doesn't collide; builders trim empty?
-    # Remove trailing page break by not adding one — index can end naturally
-    story = index_section(entries, shifted, index_state.styles)
+    story = index_section(
+        entries,
+        shifted,
+        index_state.styles,
+        available_width=available_content_width(S.PAGE_PORTRAIT),
+    )
     return build_pdf(story, index_state, first_template='portrait')
+
+
+def _build_patent_info_cover_pdf(patent, header_title: str, header_date: str) -> bytes:
+    """Unnumbered cover with reference patent information."""
+    state = ReportState()
+    state.header_title = header_title
+    state.header_date = header_date
+    state.show_header = False
+    state.show_page_number = False
+    story = list(patent_info_section(patent, state.styles))
+    return build_pdf(story, state, first_template='cover')
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +412,8 @@ def build_patent_vs_infringement_report(
         raise ValueError(f'Infringement not found on case {case_id}: {infringement_id}')
 
     hit = extract_hit(entry, notes_map=notes_map)
+    appendix_parts, appendix_notes_by_id = _collect_appendices_for_hits([hit])
+
     state = ReportState()
     state.header_title = header_title_patent_vs(patent.patent_id, hit.entry_id)
     state.header_date = format_header_date()
@@ -342,8 +421,14 @@ def build_patent_vs_infringement_report(
     state.show_page_number = True
     state.page_offset = 0
 
-    story = _story_single_hit_report(case, patent, entry, notes_map, state)
-    return build_pdf(story, state)
+    story = _story_single_hit_report(
+        case, patent, entry, notes_map, state,
+        appendix_notes_by_id=appendix_notes_by_id,
+    )
+    body_pdf = build_pdf(story, state)
+    if not appendix_parts:
+        return body_pdf
+    return _merge_pdfs([body_pdf, *appendix_parts])
 
 
 def build_products_patents_infringements_report(
@@ -392,28 +477,36 @@ def build_products_patents_infringements_report(
     if hit_kind in ('mixed', 'all'):
         kind_for_header = 'mixed'
 
+    # Collect document/listing PDFs once (shared across both TOC passes)
+    appendix_parts, appendix_notes_by_id = _collect_appendices_for_hits(hits)
+
     state = ReportState()
     state.header_title = header_title_hit_kind(patent.patent_id, kind_for_header)
     state.header_date = format_header_date()
 
+    # Cover (unnumbered): reference patent information
+    cover_pdf = _build_patent_info_cover_pdf(
+        patent, state.header_title, state.header_date,
+    )
+
+    # Content starts at reference claims (patent info already on cover)
     index_entries: List[IndexEntry] = []
     content_story = _story_multi_hit_report(
         case, patent, entries, notes_map, state,
         index_entries=index_entries,
         header_title=state.header_title,
+        patent_info_in_content=False,
+        appendix_notes_by_id=appendix_notes_by_id,
     )
 
     # Pass 1 — content, collect page map
-    content_pdf = build_pdf(content_story, state)
+    build_pdf(content_story, state)
     page_map = dict(state.page_map)
 
-    # Pass 2 — index with correct page shift (= index page count)
-    # Build a draft index with shift 0 to measure length, then rebuild.
     draft_index = _build_index_pdf(index_entries, page_map, state, page_shift=0)
     index_len = _pdf_page_count(draft_index) or 1
-    final_index = _build_index_pdf(index_entries, page_map, state, page_shift=index_len)
 
-    # Rebuild content so displayed page numbers continue after the index
+    # Pass 2 — content page numbers continue after the index
     state2 = ReportState()
     state2.header_title = state.header_title
     state2.header_date = state.header_date
@@ -423,14 +516,14 @@ def build_products_patents_infringements_report(
         case, patent, entries, notes_map, state2,
         index_entries=index_entries_2,
         header_title=state2.header_title,
+        patent_info_in_content=False,
+        appendix_notes_by_id=appendix_notes_by_id,
     )
     content_pdf_2 = build_pdf(content_story_2, state2)
-
-    # Refresh index with page numbers from second pass (already include offset in markers)
-    # Markers recorded display pages directly when page_offset is applied in Marker.draw
     final_index = _build_index_pdf(index_entries_2, state2.page_map, state2, page_shift=0)
 
-    return _merge_pdfs([final_index, content_pdf_2])
+    # Cover (unnumbered) → Index (page 1…) → claims / matrix / hits → document pages
+    return _merge_pdfs([cover_pdf, final_index, content_pdf_2, *appendix_parts])
 
 
 def build_whats_new_report(
@@ -471,6 +564,12 @@ def build_whats_new_report(
         )
         return _merge_pdfs([cover_pdf, notice_pdf])
 
+    # Collect all chapter document/listing PDFs once (shared across both TOC passes)
+    all_hits: List[InfringementHit] = []
+    for chapter in chapters:
+        all_hits.extend(chapter.hits)
+    appendix_parts, appendix_notes_by_id = _collect_appendices_for_hits(all_hits)
+
     # Assemble all chapter content into one story with index entries
     content_state = ReportState()
     content_state.header_title = f'What is new in {portfolio_name}'
@@ -501,6 +600,7 @@ def build_whats_new_report(
                 marker_prefix=prefix,
                 include_in_index=True,
                 header_title=header_title_patent_vs(patent.patent_id, hit.entry_id),
+                appendix_notes_by_id=appendix_notes_by_id,
             ))
         else:
             hits = [extract_hit(e, notes_map=notes_map) for e in entries]
@@ -509,10 +609,11 @@ def build_whats_new_report(
                 index_entries=index_entries,
                 marker_prefix=prefix,
                 header_title=header_title_hit_kind(patent.patent_id, mixed_kind_label(hits)),
+                appendix_notes_by_id=appendix_notes_by_id,
             ))
 
     # Pass 1 content
-    content_pdf = build_pdf(content_story, content_state)
+    build_pdf(content_story, content_state)
     page_map = dict(content_state.page_map)
 
     draft_index = _build_index_pdf(index_entries, page_map, content_state, page_shift=0)
@@ -546,6 +647,7 @@ def build_whats_new_report(
                 marker_prefix=prefix,
                 include_in_index=True,
                 header_title=header_title_patent_vs(patent.patent_id, hit.entry_id),
+                appendix_notes_by_id=appendix_notes_by_id,
             ))
         else:
             hits = [extract_hit(e, notes_map=notes_map) for e in entries]
@@ -554,13 +656,14 @@ def build_whats_new_report(
                 index_entries=index_entries2,
                 marker_prefix=prefix,
                 header_title=header_title_hit_kind(patent.patent_id, mixed_kind_label(hits)),
+                appendix_notes_by_id=appendix_notes_by_id,
             ))
 
     content_pdf2 = build_pdf(content_story2, content_state2)
     final_index = _build_index_pdf(index_entries2, content_state2.page_map, content_state2, page_shift=0)
     cover_pdf = _build_cover_pdf(portfolio_name)
 
-    return _merge_pdfs([cover_pdf, final_index, content_pdf2])
+    return _merge_pdfs([cover_pdf, final_index, content_pdf2, *appendix_parts])
 
 
 def _build_cover_pdf(portfolio_name: str) -> bytes:

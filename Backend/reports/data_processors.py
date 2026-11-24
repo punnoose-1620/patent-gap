@@ -7,6 +7,7 @@ components can render without knowing Mongo shape details.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -113,8 +114,10 @@ class ChartTable:
 
 @dataclass
 class IndexEntry:
-    label: str
-    level: int = 0  # 0 = primary, 1 = indented (e.g. Claim Chart)
+    """One index row: id | title/subtitle | page (page filled via marker → page_map)."""
+    entry_id: str = ''
+    title: str = ''
+    level: int = 0  # 0 = primary, 1 = subtitle row (e.g. Claim Chart)
     marker: str = ''  # bookmark / page-map key
 
 
@@ -199,12 +202,32 @@ def extract_patent_id(case: dict) -> str:
     return case_id or '—'
 
 
-def claim_documented_text(claim_obj) -> str:
+def strip_claim_number_prefix(text: str) -> str:
+    """Remove leading ``N.`` / ``N)`` numbering when the report already labels Claim N."""
+    if not text:
+        return ''
+    return re.sub(r'^\s*\d+\s*[\.\)\:\-]\s*', '', text.strip()).strip()
+
+
+def claim_documented_text(claim_obj, *, flag: Optional[str] = None) -> str:
+    """
+    Resolve claim text from string or object form.
+
+    ``flag='market'`` prefers market_language_claim (UI parity with
+    ``getReferenceClaimText``); otherwise documented first.
+    """
     if claim_obj is None:
         return ''
     if isinstance(claim_obj, str):
         return claim_obj.strip()
     if isinstance(claim_obj, dict):
+        if (flag or '').strip().lower() == 'market':
+            return _clean_text(
+                claim_obj.get('market_language_claim')
+                or claim_obj.get('documented_claim')
+                or claim_obj.get('claim')
+                or claim_obj.get('text')
+            )
         return _clean_text(
             claim_obj.get('documented_claim')
             or claim_obj.get('market_language_claim')
@@ -214,20 +237,103 @@ def claim_documented_text(claim_obj) -> str:
     return _clean_text(claim_obj)
 
 
-def extract_claims(case_or_entry: dict, *, prefer_documented: bool = True) -> List[ClaimItem]:
-    raw = case_or_entry.get('claims') or []
-    if not isinstance(raw, list):
+def _claims_raw_as_ordered_pairs(raw) -> List[Tuple[int, Any]]:
+    """
+    Normalize case/hit ``claims`` into ``(index, claim_obj)`` pairs.
+
+    Supports:
+    - list of strings / objects
+    - dict keyed by index (int or str) → claim object  (common demo shape)
+    """
+    if raw is None:
         return []
+    if isinstance(raw, list):
+        return [(i, c) for i, c in enumerate(raw)]
+    if isinstance(raw, dict):
+        def _sort_key(k):
+            try:
+                return (0, int(k))
+            except (TypeError, ValueError):
+                return (1, str(k))
+
+        pairs: List[Tuple[int, Any]] = []
+        for k in sorted(raw.keys(), key=_sort_key):
+            try:
+                idx = int(k)
+            except (TypeError, ValueError):
+                idx = len(pairs)
+            pairs.append((idx, raw[k]))
+        return pairs
+    return []
+
+
+def get_reference_claim_text(
+    claims_data,
+    ref_claim_index,
+    ref_claim_flag: Optional[str] = None,
+) -> str:
+    """
+    UI-parity resolver for a chart/matrix row's reference claim text.
+    Does not mutate stored case data.
+    """
+    if claims_data is None or ref_claim_index is None:
+        return ''
+    try:
+        idx = int(ref_claim_index)
+    except (TypeError, ValueError):
+        return ''
+
+    claim_obj = None
+    if isinstance(claims_data, list):
+        if 0 <= idx < len(claims_data):
+            claim_obj = claims_data[idx]
+    elif isinstance(claims_data, dict):
+        claim_obj = claims_data.get(idx)
+        if claim_obj is None:
+            claim_obj = claims_data.get(str(idx))
+
+    if claim_obj is None:
+        return ''
+
+    text = claim_documented_text(claim_obj, flag=ref_claim_flag)
+    return strip_claim_number_prefix(text)
+
+
+def extract_claims(case_or_entry: dict, *, prefer_documented: bool = True) -> List[ClaimItem]:
+    """
+    Build renderable claim rows from list- or dict-shaped ``claims``.
+    Strips leading claim numbers from body text (label is added in components).
+    """
+    raw = (case_or_entry or {}).get('claims')
     items: List[ClaimItem] = []
-    for i, c in enumerate(raw):
-        text = claim_documented_text(c) if prefer_documented else _clean_text(c)
+    flag = None if prefer_documented else 'market'
+    for idx, c in _claims_raw_as_ordered_pairs(raw):
+        text = claim_documented_text(c, flag=flag)
         if not text and isinstance(c, dict):
-            text = _clean_text(c.get('market_language_claim'))
+            text = _clean_text(c.get('market_language_claim') or c.get('documented_claim'))
+        text = strip_claim_number_prefix(text)
         ctype = None
         if isinstance(c, dict):
             ctype = _clean_text(c.get('claim_type') or c.get('type')) or None
-        items.append(ClaimItem(index=i, text=text or '—', claim_type=ctype))
+        items.append(ClaimItem(index=idx, text=text or '—', claim_type=ctype))
     return items
+
+
+def _person_name(value) -> str:
+    """Flatten inventor/assignee entries that may be strings or dicts."""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        return _clean_text(
+            value.get('inventorNameText')
+            or value.get('name')
+            or value.get('inventor')
+            or value.get('assignee')
+            or value.get('text')
+        )
+    return _clean_text(value)
 
 
 def classify_hit(entry: dict) -> str:
@@ -362,22 +468,47 @@ def extract_patent_info(case: dict, notes_map: Optional[Dict[str, dict]] = None)
             if text:
                 claim_notes[idx] = text
 
-    assignees = _as_list(case.get('current_assignee') or case.get('assignees') or case.get('assignee'))
-    inventors = _as_list(case.get('inventors') or case.get('inventor'))
+    assignees_raw = _as_list(
+        case.get('current_assignee')
+        or case.get('assignees')
+        or case.get('assignee')
+        or case.get('assigneeBag')
+    )
+    inventors_raw = _as_list(
+        case.get('inventors')
+        or case.get('inventor')
+        or case.get('inventorBag')
+    )
+    inventors = [_person_name(x) for x in inventors_raw if _person_name(x)]
+    assignees = [_person_name(x) for x in assignees_raw if _person_name(x)]
+
+    filing_date = _clean_text(
+        case.get('filingDate')
+        or case.get('filing_date')
+        or case.get('filedAt')
+        or case.get('applicationDate')
+    )
+    grant_date = _clean_text(
+        case.get('grantDate')
+        or case.get('grant_date')
+        or case.get('granted_date')
+        or case.get('grantedDate')
+        or case.get('issueDate')
+        or case.get('issue_date')
+        or case.get('publicationDate')
+        or case.get('publication_date')
+        or case.get('currentStatusDate')
+        or case.get('current_status_date')
+    )
 
     return PatentInfo(
         case_id=case_id,
         patent_id=extract_patent_id(case),
         title=_clean_text(case.get('title')) or 'Untitled Patent',
-        inventors=[_clean_text(x) for x in inventors if _clean_text(x)],
-        assignees=[_clean_text(x) for x in assignees if _clean_text(x)],
-        filing_date=_clean_text(case.get('filingDate') or case.get('filing_date')),
-        grant_date=_clean_text(
-            case.get('grantDate')
-            or case.get('granted_date')
-            or case.get('currentStatusDate')
-            or case.get('publication_date')
-        ),
+        inventors=inventors,
+        assignees=assignees,
+        filing_date=filing_date,
+        grant_date=grant_date,
         description=_clean_text(case.get('description') or case.get('abstract')),
         keywords=[_clean_text(k) for k in _as_list(case.get('keywords')) if _clean_text(k)],
         context=_clean_text(case.get('context')),
@@ -415,16 +546,10 @@ def extract_hit(
             if text:
                 claim_notes[idx] = text
 
-    claims_raw = entry.get('claims') or []
-    claims: List[ClaimItem] = []
-    if isinstance(claims_raw, list):
-        for i, c in enumerate(claims_raw):
-            text = claim_documented_text(c) if not isinstance(c, str) else c.strip()
-            claims.append(ClaimItem(
-                index=i,
-                text=text or '—',
-                note=claim_notes.get(i),
-            ))
+    claims = extract_claims(entry)
+    for c in claims:
+        if c.index in claim_notes:
+            c.note = claim_notes[c.index]
 
     docs = []
     for d in _as_list(entry.get('documents')):
@@ -610,9 +735,23 @@ def build_claim_chart(
 ) -> ChartTable:
     notes_map = notes_map or {}
     hit = extract_hit(entry, notes_map=notes_map)
-    ref_claims = extract_claims(case)
+    claims_data = (case or {}).get('claims')
     rows: List[ChartRow] = []
     attorney_notes: List[str] = []
+
+    def _resolve_ref(row: dict, fallback_index: int) -> Tuple[Optional[int], str]:
+        idx = row.get('ref_claim_index')
+        if idx is None:
+            idx = fallback_index
+        try:
+            idx_i = int(idx)
+        except Exception:
+            idx_i = fallback_index
+        flag = row.get('ref_claim_flag') or row.get('ref_claim_type')
+        ref_text = get_reference_claim_text(claims_data, idx_i, flag)
+        if not ref_text:
+            ref_text = strip_claim_number_prefix(_clean_text(row.get('ref_claim')))
+        return idx_i, ref_text
 
     # Prefer similar_claims (product-style with justification)
     similar = entry.get('similar_claims')
@@ -620,20 +759,13 @@ def build_claim_chart(
         for i, row in enumerate(similar):
             if not isinstance(row, dict):
                 continue
-            idx = row.get('ref_claim_index')
-            if idx is None:
-                idx = i
-            try:
-                idx_i = int(idx)
-            except Exception:
-                idx_i = i
-            ref_text = ''
-            if 0 <= idx_i < len(ref_claims):
-                ref_text = ref_claims[idx_i].text
-            else:
-                ref_text = _clean_text(row.get('ref_claim'))
-            inf_text = claim_documented_text(row.get('claim') or row.get('infringing_claim') or '')
+            idx_i, ref_text = _resolve_ref(row, i)
+            inf_text = strip_claim_number_prefix(
+                claim_documented_text(row.get('claim') or row.get('infringing_claim') or '')
+            )
             sim = row.get('similarity_score')
+            if not isinstance(sim, (int, float)):
+                sim = row.get('calculated_similarity_score')
             sim_f = float(sim) if isinstance(sim, (int, float)) else None
             note = _note_text(notes_map, f'claim_chart:{hit.entry_id}:{idx_i}')
             if note:
@@ -652,18 +784,13 @@ def build_claim_chart(
             for i, row in enumerate(nested):
                 if not isinstance(row, dict):
                     continue
-                idx = row.get('ref_claim_index')
-                if idx is None:
-                    idx = i
-                try:
-                    idx_i = int(idx)
-                except Exception:
-                    idx_i = i
-                ref_text = _clean_text(row.get('ref_claim'))
-                if not ref_text and 0 <= idx_i < len(ref_claims):
-                    ref_text = ref_claims[idx_i].text
-                inf_text = claim_documented_text(row.get('claim') or '')
+                idx_i, ref_text = _resolve_ref(row, i)
+                inf_text = strip_claim_number_prefix(
+                    claim_documented_text(row.get('claim') or row.get('infringing_claim') or '')
+                )
                 sim = row.get('calculated_similarity_score')
+                if not isinstance(sim, (int, float)):
+                    sim = row.get('similarity_score')
                 sim_f = float(sim) if isinstance(sim, (int, float)) else None
                 note = (
                     _note_text(notes_map, f'claim_chart:{hit.entry_id}:{idx_i}')
@@ -676,7 +803,7 @@ def build_claim_chart(
                     ref_claim=ref_text or '—',
                     inf_claim=inf_text or '—',
                     similarity=sim_f,
-                    justification='',
+                    justification=_clean_text(row.get('justification')),
                     note=note,
                 ))
 
@@ -768,3 +895,419 @@ def plan_whats_new_chapters(
             mode=mode,
         ))
     return portfolio_name, chapters
+
+
+# ---------------------------------------------------------------------------
+# Document / listing page loaders (report-time only; no case DB writes)
+# ---------------------------------------------------------------------------
+
+def _coerce_pdf_bytes(raw) -> Optional[bytes]:
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        return raw
+    if isinstance(raw, bytearray):
+        return bytes(raw)
+    # Mongo Binary / memoryview
+    try:
+        return bytes(raw)
+    except Exception:
+        return None
+
+
+def load_pdf_document_pages(pdf_bytes: bytes) -> bytes:
+    """
+    Load a PDF document and return PDF bytes suitable for appending.
+
+    Validates the payload is a readable PDF. Returns the original bytes when
+    valid; raises ValueError if empty or unreadable.
+    """
+    data = _coerce_pdf_bytes(pdf_bytes)
+    if not data:
+        raise ValueError('Empty PDF payload')
+    try:
+        from PyPDF2 import PdfReader
+        reader = PdfReader(__import__('io').BytesIO(data))
+        if len(reader.pages) < 1:
+            raise ValueError('PDF has no pages')
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f'Unreadable PDF: {e}') from e
+    return data
+
+
+class ListingFetchBlockedError(Exception):
+    """Raised when Chromium cannot return usable listing content (GET fallback off)."""
+
+    def __init__(
+        self,
+        url: str,
+        *,
+        chromium_reason: str = '',
+        get_reason: str = '',
+    ):
+        self.url = url
+        self.chromium_reason = chromium_reason
+        self.get_reason = get_reason
+        detail = '; '.join(
+            p for p in (
+                f'Chromium: {chromium_reason}' if chromium_reason else '',
+                f'GET: {get_reason}' if get_reason else '',
+            ) if p
+        )
+        super().__init__(f'Listing fetch blocked for {url}' + (f' ({detail})' if detail else ''))
+
+
+_BLOCKED_PAGE_MARKERS = (
+    'access denied',
+    "don't have permission to access",
+    'you don\'t have permission',
+    'errors.edgesuite.net',
+    'pardon our interruption',
+    'cf-browser-verification',
+    'checking your browser before accessing',
+    'attention required! | cloudflare',
+    'enable javascript and cookies to continue',
+    'request blocked',
+    '403 forbidden',
+    'http error 403',
+)
+
+_BROWSER_UA = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/122.0.0.0 Safari/537.36'
+)
+
+
+def _text_looks_blocked(text: str) -> bool:
+    low = (text or '').lower()
+    if not low.strip():
+        return False
+    return any(m in low for m in _BLOCKED_PAGE_MARKERS)
+
+
+def _text_looks_blank(text: str, *, min_chars: int = 80) -> bool:
+    compact = re.sub(r'\s+', ' ', (text or '')).strip()
+    return len(compact) < min_chars
+
+
+def _page_text_sample(page) -> str:
+    try:
+        title = page.title() or ''
+    except Exception:
+        title = ''
+    try:
+        body = page.evaluate(
+            """() => {
+              const t = (document.body && document.body.innerText) || '';
+              return t.replace(/\\s+/g, ' ').trim();
+            }"""
+        ) or ''
+    except Exception:
+        body = ''
+    return f'{title}\n{body}'.strip()
+
+
+def _pdf_text_sample(pdf_bytes: bytes, *, max_pages: int = 2) -> str:
+    try:
+        from PyPDF2 import PdfReader
+        reader = PdfReader(__import__('io').BytesIO(pdf_bytes))
+        chunks = []
+        for page in reader.pages[:max_pages]:
+            chunks.append(page.extract_text() or '')
+        return '\n'.join(chunks).strip()
+    except Exception:
+        return ''
+
+
+def _chromium_pdf_options() -> dict:
+    return {
+        'format': 'A4',
+        'print_background': True,
+        'margin': {'top': '12mm', 'bottom': '12mm', 'left': '10mm', 'right': '10mm'},
+    }
+
+
+def _http_get_listing(
+    url: str,
+    *,
+    timeout_s: float = 30.0,
+) -> Tuple[int, str, str]:
+    """
+    Plain HTTP GET fallback for listing pages.
+
+    Returns ``(status_code, content_type, body_text_or_html)``.
+    """
+    import requests
+
+    headers = {
+        'User-Agent': _BROWSER_UA,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
+    resp = requests.get(url, headers=headers, timeout=timeout_s, allow_redirects=True)
+    ctype = (resp.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+    # Decode as text for inspection / HTML reprint
+    try:
+        text = resp.text or ''
+    except Exception:
+        text = ''
+    return int(resp.status_code), ctype, text
+
+
+def _html_response_usable(status: int, content_type: str, body: str) -> Tuple[bool, str]:
+    if status >= 400:
+        return False, f'HTTP {status}'
+    if _text_looks_blocked(body):
+        return False, 'blocked/WAF page in GET body'
+    # Prefer HTML-ish responses; allow empty content-type
+    if content_type and ('html' not in content_type) and ('text/' not in content_type) and ('xml' not in content_type):
+        return False, f'non-HTML content-type {content_type!r}'
+    # Strip tags for blank check
+    plain = re.sub(r'<script[\s\S]*?</script>', ' ', body, flags=re.I)
+    plain = re.sub(r'<style[\s\S]*?</style>', ' ', plain, flags=re.I)
+    plain = re.sub(r'<[^>]+>', ' ', plain)
+    if _text_looks_blank(plain):
+        return False, 'empty/near-empty GET body'
+    return True, ''
+
+
+def _render_html_string_as_pdf(
+    html: str,
+    *,
+    base_url: str,
+    timeout_ms: int = 45000,
+) -> bytes:
+    """Print fetched HTML via Chromium ``set_content`` (no live navigation)."""
+    from playwright.sync_api import sync_playwright
+
+    # Help relative assets resolve when possible
+    injected = html
+    if base_url and '<base ' not in html.lower():
+        injected = re.sub(
+            r'(<head[^>]*>)',
+            rf'\1<base href="{base_url}">',
+            html,
+            count=1,
+            flags=re.I,
+        )
+        if injected == html:
+            injected = '<base href="' + base_url + '">' + html
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(user_agent=_BROWSER_UA)
+            page.set_content(injected, wait_until='load', timeout=timeout_ms)
+            page.wait_for_timeout(800)
+            sample = _page_text_sample(page)
+            if _text_looks_blocked(sample) or _text_looks_blank(sample):
+                raise ValueError('GET HTML rendered blank or blocked in Chromium')
+            pdf_bytes = page.pdf(**_chromium_pdf_options())
+        finally:
+            browser.close()
+    if not pdf_bytes:
+        raise ValueError('Chromium returned empty PDF for GET HTML')
+    return pdf_bytes
+
+
+def load_html_listing_as_pdf_pages(
+    url: str,
+    *,
+    timeout_ms: int = 45000,
+    wait_until: str = 'load',
+) -> bytes:
+    """
+    Open a product listing URL and return PDF pages.
+
+    1. Headless Chromium navigation (preferred for JS-rendered pages).
+    2. If the result is blank / Access Denied / WAF interstitial, raise
+       ``ListingFetchBlockedError`` so callers can list the URL for manual
+       access instead of appending empty pages.
+
+    Note: plain HTTP GET fallback is disabled for now — it produced poor
+    layouts vs rendered pages. Helpers remain below if we re-enable later.
+    """
+    target = _clean_text(url)
+    if not target:
+        raise ValueError('Listing URL is empty')
+    if not target.startswith(('http://', 'https://')):
+        raise ValueError(f'Unsupported listing URL scheme: {target}')
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as e:
+        raise RuntimeError(
+            'playwright is required for HTML listing → PDF. '
+            'Install with: pip install playwright && playwright install chromium'
+        ) from e
+
+    chromium_reason = ''
+    pdf_bytes: Optional[bytes] = None
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(user_agent=_BROWSER_UA)
+            http_status = None
+            try:
+                resp = page.goto(target, wait_until=wait_until, timeout=timeout_ms)
+                http_status = resp.status if resp else None
+            except Exception:
+                # Fallback: accept partial load rather than failing immediately
+                try:
+                    resp = page.goto(target, wait_until='domcontentloaded', timeout=timeout_ms)
+                    http_status = resp.status if resp else None
+                except Exception as e:
+                    chromium_reason = f'navigation failed: {e}'
+                    resp = None
+
+            if chromium_reason:
+                pass
+            else:
+                page.wait_for_timeout(1500)
+                sample = _page_text_sample(page)
+                if http_status and http_status >= 400:
+                    chromium_reason = f'HTTP {http_status}'
+                if _text_looks_blocked(sample):
+                    chromium_reason = chromium_reason or 'Access Denied / WAF page'
+                elif _text_looks_blank(sample):
+                    chromium_reason = chromium_reason or 'blank/near-empty page'
+                else:
+                    pdf_bytes = page.pdf(**_chromium_pdf_options())
+                    # Double-check printed text (some SPAs paint empty PDFs)
+                    printed = _pdf_text_sample(pdf_bytes)
+                    if _text_looks_blocked(printed) or _text_looks_blank(printed):
+                        chromium_reason = 'printed PDF blank or blocked'
+                        pdf_bytes = None
+        finally:
+            browser.close()
+
+    if pdf_bytes:
+        return pdf_bytes
+
+    # --- HTTP GET fallback (disabled: nasty / incomplete layouts) ---
+    # get_reason = ''
+    # try:
+    #     status, ctype, body = _http_get_listing(target, timeout_s=max(10.0, timeout_ms / 1000.0))
+    #     ok, get_reason = _html_response_usable(status, ctype, body)
+    #     if ok:
+    #         return _render_html_string_as_pdf(body, base_url=target, timeout_ms=timeout_ms)
+    #     if not get_reason:
+    #         get_reason = 'unusable GET response'
+    # except ListingFetchBlockedError:
+    #     raise
+    # except Exception as e:
+    #     get_reason = f'GET failed: {e}'
+
+    raise ListingFetchBlockedError(
+        target,
+        chromium_reason=chromium_reason or 'unusable Chromium result',
+        get_reason='HTTP GET fallback disabled',
+    )
+
+
+def _stored_document_pdf_bytes(doc: dict) -> Optional[bytes]:
+    """Resolve PDF bytes from an infringement document dict or documents collection."""
+    # Inline / embedded content on the hit
+    for key in ('file_content', 'pdf_bytes', 'content', 'data'):
+        raw = doc.get(key)
+        data = _coerce_pdf_bytes(raw)
+        if data and data[:4] == b'%PDF':
+            return data
+
+    # Lookup in documents collection
+    doc_id = doc.get('_id') or doc.get('document_id') or doc.get('id')
+    if doc_id:
+        try:
+            from models.documents import getDocumentById
+            result = getDocumentById(str(doc_id))
+            if result.get('success'):
+                stored = result.get('document') or {}
+                data = _coerce_pdf_bytes(stored.get('file_content'))
+                if data and data[:4] == b'%PDF':
+                    return data
+                # Some stores wrap content
+                data = _coerce_pdf_bytes((stored.get('file') or {}).get('content') if isinstance(stored.get('file'), dict) else None)
+                if data and data[:4] == b'%PDF':
+                    return data
+        except Exception:
+            pass
+    return None
+
+
+def _manual_access_note(url: str, *, label: str = '') -> str:
+    prefix = f'{label}: ' if label else ''
+    return (
+        f'MANUAL ACCESS REQUIRED — {prefix}{url}. '
+        'Automated page fetching (headless Chromium) was blocked or returned '
+        'empty/Access Denied content by the host firewall/WAF. '
+        'Open this URL manually in a browser.'
+    )
+
+
+def collect_infringement_document_pdfs(
+    hit: InfringementHit,
+    *,
+    include_html_listings: bool = True,
+    html_timeout_ms: int = 45000,
+) -> Tuple[List[bytes], List[str]]:
+    """
+    Build appendable PDF parts for one infringement hit.
+
+    Returns ``(pdf_parts, notes)`` where notes describe successes/skips for the
+    documents section. Failures never raise — they become notes so the main
+    report still downloads. Blocked listings are listed for manual access and
+    are not appended as blank/Access Denied pages.
+    """
+    parts: List[bytes] = []
+    notes: List[str] = []
+    seen_urls = set()
+
+    def _append_listing(url: str, *, label: str) -> None:
+        try:
+            parts.append(load_html_listing_as_pdf_pages(url, timeout_ms=html_timeout_ms))
+            notes.append(f'Appended listing pages for: {label or url}')
+            seen_urls.add(url)
+        except ListingFetchBlockedError:
+            notes.append(_manual_access_note(url, label=label))
+            seen_urls.add(url)
+        except Exception as e:
+            notes.append(f'Skipped listing {url}: {e}')
+            seen_urls.add(url)
+
+    for i, doc in enumerate(hit.documents or [], start=1):
+        if not isinstance(doc, dict):
+            continue
+        title = _clean_text(doc.get('title') or doc.get('file_name') or doc.get('name') or f'Document {i}')
+        file_type = _clean_text(doc.get('file_type') or doc.get('mime_type') or '').lower()
+        url = _clean_text(doc.get('url') or doc.get('source_url') or '')
+
+        # Prefer stored PDF bytes
+        try:
+            pdf_raw = _stored_document_pdf_bytes(doc)
+            if pdf_raw:
+                parts.append(load_pdf_document_pages(pdf_raw))
+                notes.append(f'Appended PDF pages for: {title}')
+                if url:
+                    seen_urls.add(url)
+                continue
+        except Exception as e:
+            notes.append(f'Skipped stored PDF for {title}: {e}')
+
+        # HTML / listing URL via Chromium (+ GET fallback)
+        if include_html_listings and url and url not in seen_urls:
+            if file_type.startswith('application/pdf'):
+                notes.append(f'Skipped PDF URL without stored bytes: {title or url}')
+            elif url.startswith(('http://', 'https://')):
+                _append_listing(url, label=title or url)
+
+    # Primary hit URL (product listing) if not already covered
+    if include_html_listings and hit.url and hit.url not in seen_urls:
+        _append_listing(hit.url, label='Primary listing')
+
+    if not parts and not notes:
+        notes.append('No appendable document or listing pages were available.')
+    return parts, notes
