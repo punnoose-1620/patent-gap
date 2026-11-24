@@ -3746,6 +3746,250 @@ def api_notes_for_section(case_id):
     return jsonify(result), 400
   return jsonify(result), 200
 
+# ---------------------------------------------------------------------------
+# PDF reports
+# ---------------------------------------------------------------------------
+
+def _report_pdf_filename(title: str) -> str:
+  """Turn a report header title into a safe download filename."""
+  raw = (title or 'Patent_Gap_Report').strip()
+  cleaned = []
+  for ch in raw:
+    if ch.isalnum() or ch in ('-', '_'):
+      cleaned.append(ch)
+    elif ch.isspace() or ch in ('/', '\\', ':', '|'):
+      cleaned.append('_')
+  name = ''.join(cleaned).strip('_') or 'Patent_Gap_Report'
+  while '__' in name:
+    name = name.replace('__', '_')
+  return f'{name[:180]}.pdf'
+
+
+def _pdf_download_response(pdf_bytes: bytes, filename: str):
+  return Response(
+    stream_with_context(chunk_generator(pdf_bytes)),
+    mimetype='application/pdf',
+    headers={
+      'Content-Disposition': f'attachment; filename="{filename}"',
+      'Content-Length': str(len(pdf_bytes)),
+    },
+  ), 200
+
+
+def _normalize_report_kind(kind: str):
+  """
+  Accept product/patent (and plural forms). Returns 'product' | 'patent' or None.
+  """
+  value = (kind or '').strip().lower()
+  if value in ('product', 'products'):
+    return 'product'
+  if value in ('patent', 'patents'):
+    return 'patent'
+  return None
+
+
+def _user_can_access_case(user_id: str, case: dict) -> bool:
+  if not case or not user_id:
+    return False
+  if user_id == case.get('created_by') or user_id == case.get('owner'):
+    return True
+  editors = case.get('assigned_editors') or []
+  return user_id in editors
+
+
+def _user_can_access_folder(user_id: str, folder: dict) -> bool:
+  if not folder or not user_id:
+    return False
+  allowed = {
+    folder.get('created_by'),
+    folder.get('owner'),
+    *(folder.get('editors') or []),
+    *(folder.get('viewers') or []),
+  }
+  return user_id in allowed
+
+
+@app.route('/api/report/single-infringement/<case_id>/<infringement_id>', methods=['GET'])
+def api_report_single_infringement(case_id, infringement_id):
+  """
+  Download Patent vs Infringement PDF for one product/patent hit.
+
+  Query:
+    kind = product | patent  (required)
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  kind = _normalize_report_kind(request.args.get('kind'))
+  if not kind:
+    return jsonify({
+      'success': False,
+      'message': 'Query param kind is required (product or patent)',
+    }), 400
+
+  case_id = (case_id or '').strip()
+  infringement_id = (infringement_id or '').strip()
+  if not case_id or not infringement_id:
+    return jsonify({
+      'success': False,
+      'message': 'case_id and infringement_id are required',
+    }), 400
+
+  case = get_case_by_id(case_id)
+  if case is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+  if not _user_can_access_case(user_id, case):
+    return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+  from reports.data_processors import (
+    classify_hit,
+    extract_hit,
+    extract_patent_id,
+    find_infringement_entry,
+    header_title_patent_vs,
+  )
+  from reports import build_patent_vs_infringement_report
+
+  entry = find_infringement_entry(case, infringement_id)
+  if entry is None:
+    return jsonify({
+      'success': False,
+      'message': f'Infringement not found on case: {infringement_id}',
+    }), 404
+
+  entry_kind = classify_hit(entry)
+  if entry_kind != kind:
+    return jsonify({
+      'success': False,
+      'message': (
+        f'Infringement kind mismatch: expected {kind}, '
+        f'found {entry_kind} for id {infringement_id}'
+      ),
+    }), 400
+
+  try:
+    pdf_bytes = build_patent_vs_infringement_report(case_id, infringement_id, user_id=user_id)
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+  except Exception as e:
+    print(f'ERROR: single-infringement report failed: {e}')
+    return jsonify({
+      'success': False,
+      'message': f'Failed to build report: {str(e)}',
+    }), 500
+
+  hit = extract_hit(entry)
+  title = header_title_patent_vs(extract_patent_id(case), hit.entry_id)
+  return _pdf_download_response(pdf_bytes, _report_pdf_filename(title))
+
+
+@app.route('/api/report/all-infringements/<case_id>', methods=['GET'])
+def api_report_all_infringements(case_id):
+  """
+  Download Products or Patents Infringements PDF for a case.
+
+  Query:
+    kind = product | patent  (required)
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  kind = _normalize_report_kind(request.args.get('kind'))
+  if not kind:
+    return jsonify({
+      'success': False,
+      'message': 'Query param kind is required (product or patent)',
+    }), 400
+
+  case_id = (case_id or '').strip()
+  if not case_id:
+    return jsonify({'success': False, 'message': 'case_id is required'}), 400
+
+  case = get_case_by_id(case_id)
+  if case is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+  if not _user_can_access_case(user_id, case):
+    return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+  from reports.data_processors import (
+    extract_patent_id,
+    filter_hits_by_kind,
+    header_title_hit_kind,
+  )
+  from reports import build_products_patents_infringements_report
+
+  hit_kind = 'products' if kind == 'product' else 'patents'
+  entries = filter_hits_by_kind(case.get('infringements') or [], hit_kind)
+  if not entries:
+    return jsonify({
+      'success': False,
+      'message': f'No {kind} infringements found on this case',
+    }), 404
+
+  try:
+    pdf_bytes = build_products_patents_infringements_report(
+      case_id,
+      hit_kind=hit_kind,
+      user_id=user_id,
+    )
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+  except Exception as e:
+    print(f'ERROR: all-infringements report failed: {e}')
+    return jsonify({
+      'success': False,
+      'message': f'Failed to build report: {str(e)}',
+    }), 500
+
+  title = header_title_hit_kind(extract_patent_id(case), hit_kind)
+  return _pdf_download_response(pdf_bytes, _report_pdf_filename(title))
+
+
+@app.route('/api/report/latest-updates/<folder_id>', methods=['GET'])
+def api_report_latest_updates(folder_id):
+  """
+  Download What's New portfolio PDF.
+
+  Path:
+    folder_id — real folder id, or ``unsorted``
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  folder_key = (folder_id or '').strip()
+  if not folder_key:
+    return jsonify({'success': False, 'message': 'folder_id is required'}), 400
+
+  portfolio_name = folder_key
+  if folder_key.lower() == 'unsorted':
+    portfolio_name = 'unsorted'
+  else:
+    folder = model_get_folder(folder_key)
+    if not folder:
+      return jsonify({'success': False, 'message': 'Folder not found'}), 404
+    if not _user_can_access_folder(user_id, folder):
+      return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    portfolio_name = (folder.get('name') or folder_key).strip() or folder_key
+
+  from reports import build_whats_new_report
+
+  try:
+    pdf_bytes = build_whats_new_report(user_id, folder_id=folder_key)
+  except ValueError as e:
+    return jsonify({'success': False, 'message': str(e)}), 400
+  except Exception as e:
+    print(f'ERROR: latest-updates report failed: {e}')
+    return jsonify({
+      'success': False,
+      'message': f'Failed to build report: {str(e)}',
+    }), 500
+
+  filename = _report_pdf_filename(f'What_is_new_in_{portfolio_name}_patents')
+  return _pdf_download_response(pdf_bytes, filename)
+
 if __name__ == '__main__':
     port = app.config['PORT']
     debug = app.config['DEBUG']
