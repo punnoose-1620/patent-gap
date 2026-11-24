@@ -1,0 +1,23 @@
+---
+description: Follow-up — report PDF framework exists; next is API wiring and polish
+alwaysApply: true
+---
+
+# Reports: framework started
+
+`Backend/reports/` now exposes three builders:
+
+- `build_patent_vs_infringement_report(case_id, infringement_id)`
+- `build_products_patents_infringements_report(case_id, hit_kind=...)`
+- `build_whats_new_report(user_id, folder_id=...)`
+
+Flask download routes are wired:
+
+- `GET /api/report/single-infringement/<case_id>/<infringement_id>?kind=product|patent`
+- `GET /api/report/all-infringements/<case_id>?kind=product|patent`
+- `GET /api/report/latest-updates/<folder_id>` (`unsorted` allowed)
+
+Still pending when the user asks what's next on reports:
+
+- Live verification against real case data (broader than the laser-diode smoke previews)
+- Optional: stamp `created_at` on infringement writes for reliable “what's new”

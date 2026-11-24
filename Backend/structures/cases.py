@@ -675,6 +675,49 @@ def get_case_related_to_user(user_id, page=1, paginated=False):
     paged['items'] = user_cases
     return paged
 
+def _user_cases_query(user_id):
+    return {
+        '$or': [
+            {'assigned_to': user_id},
+            {'accepted_by': user_id},
+            {'created_by': user_id},
+        ]
+    }
+
+def get_cases_by_query(query, include_fields=None, exclude_fields=None):
+    """
+    Lean Mongo find for cases. Prefer this over getAllData for filtered loads.
+    """
+    return getDataByQuery(
+        connect_to_database(),
+        getCaseDatabaseName(),
+        query or {},
+        include_fields=include_fields,
+        exclude_fields=exclude_fields,
+    )
+
+def get_unsorted_cases_for_user(user_id, include_fields=None):
+    """
+    Cases related to ``user_id`` with no folder membership
+    (missing / null / empty ``folders``).
+    """
+    if not user_id:
+        return []
+    query = {
+        '$and': [
+            _user_cases_query(user_id),
+            {
+                '$or': [
+                    {'folders': {'$exists': False}},
+                    {'folders': None},
+                    {'folders': {'$size': 0}},
+                ]
+            },
+        ]
+    }
+    fields = include_fields if include_fields is not None else ['_id']
+    return get_cases_by_query(query, include_fields=fields)
+
 def get_documents_from_case(case_id):
     """
     Retrieve the list of documents associated with a specific case, given its case_id.

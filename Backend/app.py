@@ -1998,86 +1998,52 @@ def get_claims_for_patent(case_id):
       'message': f'Error getting claims for patent: {str(e)}'
       }), 500
 
-# NOTE: Current implementation. Need to be updated with new one later after testing.
-@app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
-def live_similarity_analysis(case_id):
+def start_live_similarity_analysis_for_case(case_id, user_id=None, request_data=None):
   """
-  Start live patent + product infringement analysis for a case (async).
+  Shared starter for single-case and portfolio analysis.
 
-  Validates auth, case, keywords, claims, and owners; buckets documented vs
-  market-language claims; starts start_patent_analysis and start_product_analysis
-  threads; returns thread ids immediately. Progress via case flags / audit /
-  infringement APIs — not this response body.
+  Returns ``(result_dict, http_status)``. Spawns the same patent/product
+  background threads as ``POST /api/similarity-analysis-live/<case_id>``.
   """
-  data = request.get_json()
-  if data is None:
-    return jsonify({
-      'success': False, 
-      'message': 'No data provided'
-      }), 400
-  user_id = get_user_id()
-  if not user_id:
-    print('\nERROR: LiveSearch: User ID is not in session')
-    return jsonify({
-      'success': False, 
-      'message': 'User ID is not in session'
-      }), 400
-  
-  if case_id is None:
-    print(f'\nERROR: LiveSearch: Case ID is required for user: {user_id}')
-    return jsonify({
-      'success': False, 
-      'message': 'Case ID is required'
-      }), 400
+  if not case_id:
+    return {'success': False, 'message': 'Case ID is required'}, 400
+
   case_data = get_case_by_id(case_id)
   if case_data is None:
     print(f'\nERROR: LiveSearch: Case not found for user: {user_id}')
-    return jsonify({
-      'success': False, 
-      'message': 'Case not found'
-      }), 404
-  
-  ref_claims = case_data['claims']
-  if 'claims' in case_data:
-    temp_claims = case_data['claims']
-    ref_claims = temp_claims
-  owners = case_data.get('owners', [])
-  country = case_data.get('country', '')
-  keywords = case_data.get('keywords', [])
+    return {'success': False, 'message': 'Case not found'}, 404
+
+  # Optional body overrides (same fields the UI may send); fall back to case.
+  data = request_data if isinstance(request_data, dict) else {}
+  ref_claims = data.get('claims') if data.get('claims') not in (None, [], {}) else case_data.get('claims')
+  if ref_claims is None:
+    ref_claims = case_data.get('claims')
+  owners = data.get('owners') if data.get('owners') else case_data.get('owners', [])
+  country = data.get('country') if data.get('country') not in (None, '') else case_data.get('country', '')
+  keywords = data.get('keywords') if data.get('keywords') else case_data.get('keywords', [])
   ref_case_title = case_data.get('title', '')
   ids_to_avoid = case_data.get('excluded_case_ids', [])
-  ref_case_id = case_data.get('_id', '').split('_')[-1]
+  ref_case_id = str(case_data.get('_id', '')).split('_')[-1]
   titles_to_avoid = case_data.get('excluded_case_titles', [])
   search_limitations = case_data.get('search_limitations', {})
+  if data.get('context') not in (None, ''):
+    # context is consumed by product search via case updates elsewhere; keep on case path
+    pass
 
   if (keywords is None) or (len(keywords) == 0):
     print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
-    return jsonify({
-      'success': False, 
-      'message': 'Keywords are required'
-      }), 400
+    return {'success': False, 'message': 'Keywords are required', 'case_id': case_id}, 400
   if (ref_claims is None) or (ref_claims == []) or (ref_claims == {}):
     print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-    return jsonify({
-      'success': False, 
-      'message': 'Claims are required'
-      }), 400
+    return {'success': False, 'message': 'Claims are required', 'case_id': case_id}, 400
 
-  if (len(keywords) == 0) or (keywords is None):
-    print(f'\nERROR: LiveSearch: Keywords are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Keywords are required'}), 400
   if isinstance(ref_claims, list):
     if (len(ref_claims) == 0) or (ref_claims is None):
-      print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-      return jsonify({'success': False, 'message': 'Claims are required'}), 400
+      return {'success': False, 'message': 'Claims are required', 'case_id': case_id}, 400
   else:
-    if ref_claims is None:
-      print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-      return jsonify({'success': False, 'message': 'Claims are required'}), 400
-    if isinstance(ref_claims, dict):
-      if (len(ref_claims.keys()) == 0) or (ref_claims is None):
-        print(f'\nERROR: LiveSearch: Claims are required for user: {user_id}')
-        return jsonify({'success': False, 'message': 'Claims are required'}), 400
+    if isinstance(ref_claims, dict) and len(ref_claims.keys()) == 0:
+      return {'success': False, 'message': 'Claims are required', 'case_id': case_id}, 400
+
   if (len(owners) == 0) or (owners is None):
     owners = list(case_data.get('current_assignee') or [])
     if case_data.get('applicant'):
@@ -2086,15 +2052,12 @@ def live_similarity_analysis(case_id):
     owners = [o.strip() for o in owners if isinstance(o, str) and o.strip()]
   if (len(owners) == 0) or (owners is None):
     print(f'\nERROR: LiveSearch: Owners are required for user: {user_id}')
-    return jsonify({'success': False, 'message': 'Owners are required'}), 400
+    return {'success': False, 'message': 'Owners are required', 'case_id': case_id}, 400
 
-  # Filter original claims into buckets
   original_lang_asserted_claims = []
   original_lang_independent_claims = []
   original_lang_core_claims = []
   original_lang_pivotal_claims = []
-
-  # Filter market language claims into buckets
   market_lang_asserted_claims = []
   market_lang_independent_claims = []
   market_lang_core_claims = []
@@ -2140,46 +2103,44 @@ def live_similarity_analysis(case_id):
         if market:
           market_lang_pivotal_claims.append({'ref_claim_index': claim_index, 'text': market})
 
-  # Start Live Patent Search in background thread
   update_case(case_id, {
     'product_analysis_time_taken': '',
     'patent_analysis_time_taken': '',
-    })
+  })
   patent_thread = threading.Thread(
     target=start_patent_analysis,
     name=f'patent_analysis_{case_id}',
     args=(
-      app, 
-      case_id, 
-      keywords, 
-      country, 
-      ref_case_title, 
-      ref_case_id, 
-      titles_to_avoid, 
-      ids_to_avoid, 
+      app,
+      case_id,
+      keywords,
+      country,
+      ref_case_title,
+      ref_case_id,
+      titles_to_avoid,
+      ids_to_avoid,
       search_type,
-      original_lang_asserted_claims, 
-      original_lang_independent_claims, 
-      original_lang_core_claims, 
+      original_lang_asserted_claims,
+      original_lang_independent_claims,
+      original_lang_core_claims,
       original_lang_pivotal_claims),
     daemon=False,
   )
   patent_thread.start()
 
-  # Start Live Patent Search in background thread
   product_thread = threading.Thread(
     target=start_product_analysis,
     name=f'product_analysis_{case_id}',
     args=(
-      app, 
-      case_id, 
+      app,
+      case_id,
       ref_case_title,
-      keywords, 
-      owners, 
-      search_limitations, 
-      original_lang_asserted_claims, 
-      original_lang_independent_claims, 
-      original_lang_core_claims, 
+      keywords,
+      owners,
+      search_limitations,
+      original_lang_asserted_claims,
+      original_lang_independent_claims,
+      original_lang_core_claims,
       original_lang_pivotal_claims,
       market_lang_asserted_claims,
       market_lang_independent_claims,
@@ -2190,12 +2151,122 @@ def live_similarity_analysis(case_id):
   )
   product_thread.start()
 
-  return jsonify({
-    'success': True, 
+  return {
+    'success': True,
     'message': 'Product analysis started successfully',
+    'case_id': case_id,
     'patent_thread_id': patent_thread.ident,
     'product_thread_id': product_thread.ident,
-    }), 200
+  }, 200
+
+
+# NOTE: Current implementation. Need to be updated with new one later after testing.
+@app.route('/api/similarity-analysis-live/<case_id>', methods=['POST'])
+def live_similarity_analysis(case_id):
+  data = request.get_json(silent=True)
+  if data is None:
+    # Allow empty body; case fields are used as defaults.
+    data = {}
+  user_id = get_user_id()
+  if not user_id:
+    print('\nERROR: LiveSearch: User ID is not in session')
+    return jsonify({
+      'success': False,
+      'message': 'User ID is not in session'
+      }), 400
+
+  result, status = start_live_similarity_analysis_for_case(case_id, user_id=user_id, request_data=data)
+  return jsonify(result), status
+
+
+@app.route('/api/portfolio-analysis/<folder_id>', methods=['POST'])
+def api_portfolio_analysis(folder_id):
+  """
+  Start live similarity analysis for every case in a folder portfolio.
+
+  Use ``folder_id=unsorted`` for cases with no folder membership.
+  Reuses ``start_live_similarity_analysis_for_case`` (same as single-case).
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  request_data = request.get_json(silent=True) or {}
+  folder_key = (folder_id or '').strip()
+  if not folder_key:
+    return jsonify({'success': False, 'message': 'folder_id is required'}), 400
+
+  case_ids = []
+  portfolio_label = folder_key
+
+  if folder_key.lower() == 'unsorted':
+    portfolio_label = 'unsorted'
+    unsorted = get_unsorted_cases_for_user(user_id, include_fields=['_id'])
+    case_ids = [str(c.get('_id')) for c in unsorted if c.get('_id')]
+  else:
+    folder = model_get_folder(folder_key)
+    if not folder:
+      return jsonify({'success': False, 'message': 'Folder not found'}), 404
+    # Allow creator / owner / editors / viewers
+    allowed = {
+      folder.get('created_by'),
+      folder.get('owner'),
+      *(folder.get('editors') or []),
+      *(folder.get('viewers') or []),
+    }
+    if user_id not in allowed:
+      return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    portfolio_label = folder.get('name') or folder_key
+    case_ids = [str(cid) for cid in (folder.get('cases') or []) if cid]
+
+  # De-dupe while preserving order
+  seen = set()
+  ordered_ids = []
+  for cid in case_ids:
+    if cid not in seen:
+      seen.add(cid)
+      ordered_ids.append(cid)
+
+  started = []
+  skipped = []
+  errors = []
+
+  for cid in ordered_ids:
+    try:
+      result, status = start_live_similarity_analysis_for_case(
+        cid,
+        user_id=user_id,
+        request_data=request_data,
+      )
+      if result.get('success'):
+        started.append({
+          'case_id': cid,
+          'patent_thread_id': result.get('patent_thread_id'),
+          'product_thread_id': result.get('product_thread_id'),
+        })
+      else:
+        skipped.append({
+          'case_id': cid,
+          'message': result.get('message'),
+          'status': status,
+        })
+    except Exception as e:
+      print(f'ERROR: portfolio analysis failed for {cid}: {e}')
+      errors.append({'case_id': cid, 'message': str(e)})
+
+  return jsonify({
+    'success': True,
+    'message': f'Portfolio analysis kickoff complete for {portfolio_label}',
+    'folder_id': folder_key,
+    'portfolio': portfolio_label,
+    'total': len(ordered_ids),
+    'started_count': len(started),
+    'skipped_count': len(skipped),
+    'error_count': len(errors),
+    'started': started,
+    'skipped': skipped,
+    'errors': errors,
+  }), 200
 
 @app.route('/api/document/<document_id>', methods=['GET'])
 def get_document(document_id):

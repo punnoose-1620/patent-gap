@@ -202,6 +202,31 @@ def getDataByKeyValue(db, collectionName, key, value, exclude_fields=None):
         print(f"Error fetching data by key and value from {collectionName}: {e}")
         return []
 
+def getDataByQuery(db, collectionName, query, exclude_fields=None, include_fields=None):
+    """
+    Fetch documents matching an arbitrary Mongo ``query``.
+
+    Args:
+        exclude_fields: Optional field names to omit (``{field: 0}``).
+        include_fields: Optional field names to keep (``{field: 1}``).
+            If both are set, inclusion wins.
+    """
+    try:
+        collection = db[collectionName]
+        projection = None
+        if include_fields:
+            projection = {field: 1 for field in include_fields}
+        elif exclude_fields:
+            projection = {field: 0 for field in exclude_fields}
+        documents = list(collection.find(query or {}, projection, max_time_ms=120000))
+        for doc in documents:
+            if '_id' in doc and hasattr(doc['_id'], '__str__'):
+                doc['_id'] = str(doc['_id'])
+        return documents
+    except Exception as e:
+        print(f"Error fetching data by query from {collectionName}: {e}")
+        return []
+
 def getDataByKeyValueRegex(db, collectionName, key, value):
     try:
         collection = db[collectionName]
