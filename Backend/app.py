@@ -28,6 +28,15 @@ from models.folders import (
 from models.documents import *
 from models.infringements import *
 from models.search_history import *
+from models.notes import (
+    create_note as model_create_note,
+    update_note as model_update_note,
+    delete_note as model_delete_note,
+    get_note_by_id as model_get_note_by_id,
+    get_notes_for_case as model_get_notes_for_case,
+    get_notes_for_major_section as model_get_notes_for_major_section,
+    validate_note_content as model_validate_note_content,
+)
 from models.infringements import (
     get_infringement_by_id as _model_get_infringement_by_id,
     get_infringements_by_ids as _model_get_infringements_by_ids,
@@ -3508,6 +3517,163 @@ def delete_case_infringement(case_id, infringement_id):
   result = _model_delete_infringement_by_id(infringement_id, parent_case_id=case_id)
   status = 200 if result.get('success') else 404
   return jsonify(result), status
+
+# ── Notes ──────────────────────────────────────────────────────────────
+
+@app.route('/api/add-note', methods=['POST'])
+def api_add_note():
+  """
+  Create a note pinned to a case section.
+  Body: case_id, section, note. user_id from auth header/session.
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  data = request.get_json(silent=True) or {}
+  case_id = data.get('case_id')
+  section = data.get('section')
+  note = data.get('note')
+
+  if not case_id:
+    return jsonify({'success': False, 'message': 'case_id is required'}), 400
+  if section is None:
+    return jsonify({'success': False, 'message': 'section is required'}), 400
+
+  ok, note_or_err = model_validate_note_content(note)
+  if not ok:
+    return jsonify({'success': False, 'message': note_or_err}), 400
+
+  case = get_case_by_id(case_id, apply_infringement_filters=False)
+  if case is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+  result = model_create_note(case_id, user_id, section, note_or_err)
+  if not result.get('success'):
+    status = 409 if 'already exists' in (result.get('message') or '').lower() else 400
+    return jsonify(result), status
+  return jsonify(result), 201
+
+
+@app.route('/api/update-note/<note_id>', methods=['POST'])
+def api_update_note(note_id):
+  """
+  Update note content. Body: { note }.
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  existing = model_get_note_by_id(note_id)
+  if not existing.get('success'):
+    return jsonify({'success': False, 'message': 'Note not found'}), 404
+
+  data = request.get_json(silent=True) or {}
+  note = data.get('note')
+  ok, note_or_err = model_validate_note_content(note)
+  if not ok:
+    return jsonify({'success': False, 'message': note_or_err}), 400
+
+  result = model_update_note(note_id, user_id, {'note': note_or_err})
+  if not result.get('success'):
+    return jsonify(result), 400
+  return jsonify(result), 200
+
+
+@app.route('/api/delete-note/<note_id>', methods=['DELETE'])
+def api_delete_note(note_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  existing = model_get_note_by_id(note_id)
+  if not existing.get('success'):
+    return jsonify({'success': False, 'message': 'Note not found'}), 404
+
+  result = model_delete_note(note_id, user_id)
+  if not result.get('success'):
+    return jsonify(result), 400
+  return jsonify(result), 200
+
+
+@app.route('/api/note/<note_id>', methods=['GET'])
+def api_get_note(note_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  result = model_get_note_by_id(note_id)
+  if not result.get('success'):
+    return jsonify({'success': False, 'message': 'Note not found'}), 404
+  return jsonify(result), 200
+
+
+@app.route('/api/notes-for-case/<case_id>', methods=['GET'])
+def api_notes_for_case(case_id):
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  case = get_case_by_id(case_id, apply_infringement_filters=False)
+  if case is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+  result = model_get_notes_for_case(case_id)
+  return jsonify(result), 200
+
+
+@app.route('/api/notes-for-section/<case_id>', methods=['GET', 'POST'])
+def api_notes_for_section(case_id):
+  """
+  List notes under a major UI section.
+
+  Pass section as JSON body (POST) or query JSON:
+    { "type": "claim" }
+    { "type": "product", "entry_id": "..." }
+    { "type": "description" }
+  """
+  user_id = get_user_id()
+  if not user_id:
+    return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+
+  case = get_case_by_id(case_id, apply_infringement_filters=False)
+  if case is None:
+    return jsonify({'success': False, 'message': 'Case not found'}), 404
+
+  section = None
+  if request.method == 'POST':
+    data = request.get_json(silent=True) or {}
+    section = data.get('section', data)
+  else:
+    # GET: accept nested query keys or a JSON ``section`` string
+    section_type = request.args.get('type')
+    entry_id = request.args.get('entry_id')
+    if section_type:
+      section = {'type': section_type}
+      if entry_id:
+        section['entry_id'] = entry_id
+    else:
+      raw = request.args.get('section')
+      if raw:
+        try:
+          import json as _json
+          section = _json.loads(raw)
+        except Exception:
+          return jsonify({
+            'success': False,
+            'message': 'Invalid section query; use type= / entry_id= or JSON section=',
+          }), 400
+
+  if not section:
+    return jsonify({
+      'success': False,
+      'message': 'section is required (type, and entry_id for product)',
+    }), 400
+
+  result = model_get_notes_for_major_section(case_id, section)
+  if not result.get('success'):
+    return jsonify(result), 400
+  return jsonify(result), 200
 
 if __name__ == '__main__':
     port = app.config['PORT']
