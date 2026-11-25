@@ -1,8 +1,11 @@
 import copy
 import json
+import random
+import threading
 import time
 from google import genai
 from google.genai import types
+from google.genai import errors as genai_errors
 from env_controller import getEnvKey
 
 from llm_brain.static_prompts import *
@@ -14,6 +17,10 @@ from models.live_search_results import *
 _SCHEMA_STRIP_KEYS = {"examples", "default", "$defs"}
 MAX_ATTEMPTS = 5
 DEFAULT_LLM_DELAY = 3       # Delay between processing 2 consecutive LLM calls (in seconds)
+# Cap concurrent product-detail Gemini calls across threads (quota protection).
+_PRODUCT_EXTRACT_CONCURRENCY = 2
+_product_extract_semaphore = threading.Semaphore(_PRODUCT_EXTRACT_CONCURRENCY)
+_PRODUCT_CONTENT_MAX_CHARS = 120_000
 
 def _strip_unsupported_schema_keys(obj):
     if isinstance(obj, dict):
@@ -67,7 +74,12 @@ class Gemini:
 
     def __init__(self):
         self.apiKey = getEnvKey('gemini')
-        self._client = genai.Client(api_key=self.apiKey)
+        # JSON mode (response_mime_type=application/json) requires v1beta.
+        # google-genai>=3 defaults Developer API to v1, which rejects JSON mode.
+        self._client = genai.Client(
+            api_key=self.apiKey,
+            http_options=types.HttpOptions(api_version='v1beta'),
+        )
 
     def extract_patent_metadata(
         self, 
@@ -638,34 +650,91 @@ class Gemini:
         product_content: str, 
         model_name:str = 'gemini-2.5-flash',
         count:int = 0,
-        error_message:str = ""
+        error_message:str = "",
+        count_429:int = 0,
         ):
         if count >= MAX_ATTEMPTS:
             raise Exception(f"Product_Details_Extraction_Error: Failed to extract product details after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
-        final_prompt = PRODUCT_DETAILS_EXTRACTOR + "\nHere's the content : \n" + product_content
+
+        content = product_content if isinstance(product_content, str) else str(product_content or "")
+        if len(content) > _PRODUCT_CONTENT_MAX_CHARS:
+            content = content[:_PRODUCT_CONTENT_MAX_CHARS]
+
+        final_prompt = PRODUCT_DETAILS_EXTRACTOR + "\nHere's the content : \n" + content
         if error_message != "":
             final_prompt += "\n\nYour previous response failed validation with the error message: " + error_message + "\n"
             final_prompt += "Do not repeat the same mistake and try again."
 
-        response = self._client.models.generate_content(
-            model=model_name,
-            contents=final_prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": InfringingProductDetail.model_json_schema(),
-            },
-        )
-        wrapper = InfringingProductDetail.model_validate_json(response.text)
-        validated, error_message = wrapper.validate_infringing_product_detail()
-        if not validated:
-            if count >= MAX_ATTEMPTS:
-                raise Exception(f"Product_Details_Extraction_Error: Failed to extract product details after {MAX_ATTEMPTS} attempts.\n\t{error_message}")
+        def _retry_quota(msg: str):
+            nonlocal count_429
+            if count_429 >= MAX_ATTEMPTS:
+                raise Exception(
+                    f"Product_Details_Extraction_Error: Gemini quota exhausted after "
+                    f"{MAX_ATTEMPTS} backoff attempts.\n\t{msg}"
+                )
+            count_429 += 1
+            # Exponential backoff with jitter: ~6s, 12s, 24s, ...
+            delay = DEFAULT_LLM_DELAY * (2 ** count_429) + random.uniform(0, 2)
+            print(
+                f"LOG: Gemini product-extract quota/capacity ({msg[:120]}); "
+                f"backoff {delay:.1f}s (attempt {count_429}/{MAX_ATTEMPTS})",
+                flush=True,
+            )
+            time.sleep(delay)
+            return self.get_product_details(
+                product_content=product_content,
+                model_name=model_name,
+                count=count,
+                error_message=error_message,
+                count_429=count_429,
+            )
+
+        with _product_extract_semaphore:
+            try:
+                response = self._client.models.generate_content(
+                    model=model_name,
+                    contents=final_prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_json_schema": InfringingProductDetail.model_json_schema(),
+                    },
+                )
+            except genai_errors.APIError as api_err:
+                code = getattr(api_err, "code", None)
+                status = (getattr(api_err, "status", None) or "")
+                if code in (429, 503) or "RESOURCE_EXHAUSTED" in str(api_err) or "UNAVAILABLE" in str(status):
+                    return _retry_quota(str(api_err))
+                raise
+            except Exception as e:
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "UNAVAILABLE" in str(e):
+                    return _retry_quota(str(e))
+                raise
+
+        response_text = getattr(response, "text", None) or ""
+        if "429 RESOURCE_EXHAUSTED" in response_text or "RESOURCE_EXHAUSTED" in response_text:
+            return _retry_quota(response_text[:240])
+
+        try:
+            wrapper = InfringingProductDetail.model_validate_json(response_text)
+        except Exception as parse_err:
             time.sleep(DEFAULT_LLM_DELAY)
             return self.get_product_details(
                 product_content=product_content,
                 model_name=model_name,
                 count=count + 1,
-                error_message=error_message
+                error_message=f"JSON parse/schema error: {parse_err}",
+                count_429=count_429,
+            )
+
+        validated, error_message = wrapper.validate_infringing_product_detail()
+        if not validated:
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.get_product_details(
+                product_content=product_content,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message,
+                count_429=count_429,
             )
         return wrapper
 

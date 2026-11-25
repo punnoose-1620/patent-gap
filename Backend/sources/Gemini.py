@@ -2,6 +2,7 @@ import json
 from sources.Prompts import *
 from env_controller import getEnvKey
 from google import genai
+from google.genai import types
 from typing_extensions import TypedDict
 
 _client = None
@@ -9,7 +10,11 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        _client = genai.Client(api_key=getEnvKey('gemini'))
+        # JSON mode requires v1beta; google-genai>=3 defaults Developer API to v1.
+        _client = genai.Client(
+            api_key=getEnvKey('gemini'),
+            http_options=types.HttpOptions(api_version='v1beta'),
+        )
     return _client
 
 """

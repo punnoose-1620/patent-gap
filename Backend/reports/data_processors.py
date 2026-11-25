@@ -1267,16 +1267,20 @@ def collect_infringement_document_pdfs(
     seen_urls = set()
 
     def _append_listing(url: str, *, label: str) -> None:
-        try:
-            parts.append(load_html_listing_as_pdf_pages(url, timeout_ms=html_timeout_ms))
-            notes.append(f'Appended listing pages for: {label or url}')
-            seen_urls.add(url)
-        except ListingFetchBlockedError:
-            notes.append(_manual_access_note(url, label=label))
-            seen_urls.add(url)
-        except Exception as e:
-            notes.append(f'Skipped listing {url}: {e}')
-            seen_urls.add(url)
+        # TEMP: Chromium listing→PDF disabled — keep URLs only in the documents section.
+        # try:
+        #     parts.append(load_html_listing_as_pdf_pages(url, timeout_ms=html_timeout_ms))
+        #     notes.append(f'Appended listing pages for: {label or url}')
+        #     seen_urls.add(url)
+        # except ListingFetchBlockedError:
+        #     notes.append(_manual_access_note(url, label=label))
+        #     seen_urls.add(url)
+        # except Exception as e:
+        #     notes.append(f'Skipped listing {url}: {e}')
+        #     seen_urls.add(url)
+        label_bit = f'{label}: ' if label else ''
+        notes.append(f'Listing URL (page capture disabled): {label_bit}{url}')
+        seen_urls.add(url)
 
     for i, doc in enumerate(hit.documents or [], start=1):
         if not isinstance(doc, dict):
@@ -1297,7 +1301,7 @@ def collect_infringement_document_pdfs(
         except Exception as e:
             notes.append(f'Skipped stored PDF for {title}: {e}')
 
-        # HTML / listing URL via Chromium (+ GET fallback)
+        # HTML / listing URL — Chromium capture disabled for now; record URL only
         if include_html_listings and url and url not in seen_urls:
             if file_type.startswith('application/pdf'):
                 notes.append(f'Skipped PDF URL without stored bytes: {title or url}')

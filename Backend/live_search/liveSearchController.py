@@ -44,7 +44,7 @@ from live_search.caseDataUrlFromSearchResults import CaseDataUrlFromSearchResult
 
 from web_scraper.free_patents_online import FreePatentsOnline
 from web_scraper.google_patents import GooglePatents
-from web_search import check_html_for_runtime_errors
+from web_search import check_html_for_runtime_errors, convertHtmlToString
 
 TITLE_SIMILARITY_THRESHOLD = 0.85
 PRODUCT_TITLE_SIMILARITY_THRESHOLD = 0.10
@@ -875,15 +875,27 @@ def _discover_products_via_gemini(
                 print(f"\nERROR: Error getting HTML content for URL: {url} — {str(e)}")
                 error_results[url] = str(e)
                 continue
-            is_error_page, error_keyword = check_html_for_runtime_errors(html_content, url=url)
+            try:
+                is_error_page, error_keyword = check_html_for_runtime_errors(
+                    html_content, url=url
+                )
+            except Exception as e:
+                print(f"\nERROR: Blocked page content for URL: {url} — markup rejected: {e}")
+                error_results[url] = f"markup rejected: {e}"
+                continue
             if is_error_page:
                 print(
                     f"\nERROR: Blocked page content for URL: {url} — {error_keyword}"
                 )
                 error_results[url] = "Bot check blocked page content"
                 continue
+            # Prefer plain text over raw HTML for extraction (cleaner claims, fewer parser issues).
             try:
-                product_details = Gemini().get_product_details(html_content)
+                page_text = convertHtmlToString(html_content) or html_content
+            except Exception:
+                page_text = html_content
+            try:
+                product_details = Gemini().get_product_details(page_text)
             except Exception as e:
                 print(f"\nERROR: Product details extraction failed for {url}: {str(e)}")
                 continue

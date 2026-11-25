@@ -238,7 +238,16 @@ def __getSearchContent(result_url: str) -> str | None:
 
 
 def __isolateProductDetails(search_content: str) -> InfringingProductDetail:
-    return Gemini().get_product_details(search_content)
+    # Prefer plain text when content looks like HTML (extract robustness).
+    content = search_content
+    if isinstance(search_content, str) and "<" in search_content and ">" in search_content:
+        try:
+            text = convertHtmlToString(search_content)
+            if text and text.strip():
+                content = text
+        except Exception:
+            content = search_content
+    return Gemini().get_product_details(content)
 
 
 def productGoogleSearch(

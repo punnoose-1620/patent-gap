@@ -152,15 +152,29 @@ def check_html_for_runtime_errors(html_content, url: str = ""):
     if html_signal:
         return True, html_signal
 
-    plain_text = convertHtmlToString(html_content)
+    try:
+        plain_text = convertHtmlToString(html_content)
+    except Exception as e:
+        # Never let BeautifulSoup ParserRejectedMarkup (or similar) abort the search.
+        return True, f"markup rejected: {e}"
     return check_content_for_runtime_errors(plain_text, url=url)
 
 
 def convertHtmlToString(content):
     if not isinstance(content, str):
         return ""
-    soup = BeautifulSoup(content, "html.parser")
-    return soup.get_text(separator=" ", strip=True)
+    # Prefer forgiving parsers; some retail pages (Gardena etc.) reject html.parser.
+    for parser in ("html.parser", "lxml", "html5lib"):
+        try:
+            soup = BeautifulSoup(content, parser)
+            return soup.get_text(separator=" ", strip=True)
+        except Exception:
+            continue
+    # Last resort: crude tag strip so callers still get usable text.
+    import re
+    text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", content)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 html_to_string = convertHtmlToString

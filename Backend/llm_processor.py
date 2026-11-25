@@ -1,5 +1,6 @@
 import openai
 from google import genai
+from google.genai import types
 from env_controller import getEnvKey
 
 title_prompt = "You are given two documents: Document A and Document B. Generate a clear and informative title describing the comparison between these two documents in 10 words or fewer. Use only information from the documents and no external references. Do not add any formatting. Strictly stay within the word limit."
@@ -35,7 +36,11 @@ def getModelClient(model_name='gemini-2.5-flash'):
         if api_key is None:
             print("GEMINI_API_KEY is not set in environment variables")
             return None
-        client = genai.Client(api_key=api_key)
+        # JSON mode requires v1beta; google-genai>=3 defaults Developer API to v1.
+        client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(api_version='v1beta'),
+        )
     elif 'gpt' in model_name:
         api_key = getEnvKey('openai')
         if api_key is None:

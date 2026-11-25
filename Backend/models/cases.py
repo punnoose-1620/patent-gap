@@ -144,6 +144,40 @@ def _exact_dedupe_strings(values, key_fn=None) -> list:
         result.append(text)
     return result
 
+
+def _other_id_value_nonempty(value) -> bool:
+    if isinstance(value, list):
+        return any(str(v).strip() for v in value if v is not None)
+    if isinstance(value, dict):
+        return any(_other_id_value_nonempty(v) for v in value.values())
+    if value is None:
+        return False
+    return bool(str(value).strip())
+
+
+def _merge_other_ids(values) -> list:
+    """
+    Merge other_ids entries shaped as {title, value, source?}.
+    Prefer nonempty value lists when the same title appears more than once.
+    """
+    by_title = {}
+    for raw in values or []:
+        if not isinstance(raw, dict):
+            continue
+        title = str(raw.get('title') or '').strip()
+        if not title:
+            continue
+        incoming = copy.deepcopy(raw)
+        prev = by_title.get(title)
+        if prev is None:
+            by_title[title] = incoming
+            continue
+        if _other_id_value_nonempty(incoming.get('value')) and not _other_id_value_nonempty(
+            prev.get('value')
+        ):
+            by_title[title] = incoming
+    return list(by_title.values())
+
 def _claim_entry_is_filled(claim_data) -> bool:
     if not isinstance(claim_data, dict):
         return False
@@ -382,7 +416,7 @@ def get_similar_cases(patent_id: str, user_id: str):
     combined['current_assignee'] = _fuzzy_dedupe_strings(
         [value for case in cases for value in (case.get('current_assignee') or [])]
     )
-    combined['other_ids'] = _exact_dedupe_strings(
+    combined['other_ids'] = _merge_other_ids(
         [value for case in cases for value in (case.get('other_ids') or [])]
     )
 

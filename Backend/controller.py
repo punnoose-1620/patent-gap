@@ -1051,8 +1051,9 @@ def __complete_product_search(
 
         return productResults, errorResults, product_ids, infringement_details
     except Exception as e:
+        # Re-raise so start_product_analysis marks Error instead of false-completing.
         print(f'LOG: Case {case_id}: Error completing product search: {str(e)}')
-        return productResults, errorResults, product_ids, infringement_details
+        raise
 
 def start_product_analysis(
     app,
