@@ -34,6 +34,7 @@ from reports.data_processors import (
     ClaimItem,
     IndexEntry,
     InfringementHit,
+    MatrixClaimBlock,
     MatrixTable,
     PatentInfo,
 )
@@ -464,15 +465,79 @@ def _matrix_table_style(cols: int) -> TableStyle:
         ('FONTNAME', (0, 0), (-1, 0), S.FONTS['body_bold']),
         ('FONTSIZE', (0, 0), (-1, -1), 7.5),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('GRID', (0, 0), (-1, -1), S.TABLE_BORDER_WIDTH, S.TABLE_BORDER),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('BACKGROUND', (0, 1), (0, -1), S.SURF),
-        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('BACKGROUND', (0, 1), (1, -1), S.SURF),
+        ('ALIGN', (0, 1), (1, -1), 'LEFT'),
     ])
+
+
+def _feature_subtable_style() -> TableStyle:
+    return TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), S.DEEP),
+        ('TEXTCOLOR', (0, 0), (-1, 0), S.WHITE),
+        ('FONTNAME', (0, 0), (-1, 0), S.FONTS['body_bold']),
+        ('FONTSIZE', (0, 0), (-1, -1), 6.5),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), S.TABLE_BORDER_WIDTH, S.TABLE_BORDER),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('VALIGN', (0, 1), (0, -1), 'TOP'),
+    ])
+
+
+def _feature_compact_paragraph(text: str, styles: dict) -> Paragraph:
+    compact_style = ParagraphStyle(
+        'PGMatrixFeature',
+        parent=styles['table_cell_left'],
+        fontSize=6.5,
+        leading=8,
+    )
+    safe = _escape_xml(text or '—').replace('\n', '<br/>')
+    return Paragraph(safe, compact_style)
+
+
+def _build_feature_hit_subtable(
+    block: MatrixClaimBlock,
+    hits_chunk: Sequence[InfringementHit],
+    styles: dict,
+    *,
+    sub_width: float,
+) -> Table:
+    """
+    Nested Feature | product… table for one claim row.
+    Sub-rows are index-aligned across feature and product columns.
+    """
+    header = [_p('Feature', 'table_header', styles)]
+    for h in hits_chunk:
+        header.append(_p(_dash(h.entry_id), 'table_header', styles))
+
+    data = [header]
+    for fro in block.feature_rows:
+        row = [_feature_compact_paragraph(fro.feature or '—', styles)]
+        for h in hits_chunk:
+            cell = fro.cells.get(h.entry_id)
+            if cell is None or cell.score is None:
+                row.append(_p('✗', 'table_cell', styles))
+            else:
+                row.append(_p(_tick_cross(cell.matched, cell.score), 'table_cell', styles))
+        data.append(row)
+
+    feat_w = sub_width * 0.40
+    rest = sub_width - feat_w
+    hit_w = rest / max(len(hits_chunk), 1)
+    col_widths = [feat_w] + [hit_w] * len(hits_chunk)
+    table = Table(data, colWidths=col_widths)
+    table.setStyle(_feature_subtable_style())
+    return table
 
 
 def claim_matrix_section(
@@ -482,18 +547,14 @@ def claim_matrix_section(
     available_width: float,
 ) -> List:
     """
-    Full or single-hit claim matrix as a bordered table.
-    Empty cells remain visible (bordered) with ✗ / —.
-
-    Left column shows full reference claim text (Claim N + body).
-    Wide hit sets are chunked so headers stay readable on the page.
+    Claim matrix: one outer row per reference claim; Feature + product scores
+    live in an index-aligned nested sub-table (not a separate matrix section).
     """
     story: List = [_p('Claim Matrix', 'section_title', styles)]
-    if not matrix.ref_claims or not matrix.hits:
+    if not matrix.claim_blocks or not matrix.hits:
         story.append(_p('No matrix data.', 'body_center', styles))
         return story
 
-    # Fewer hit columns when embedding full claim text so rows fit landscape height
     max_hits_per_table = 4 if not matrix.include_notes_column else 1
     hit_chunks = [
         matrix.hits[i:i + max_hits_per_table]
@@ -510,50 +571,56 @@ def claim_matrix_section(
                 styles,
             ))
 
-        header = [_p('Reference Claim', 'table_header', styles)]
-        for h in hits_chunk:
-            header.append(_p(_dash(h.entry_id), 'table_header', styles))
+        header = [
+            _p('Claim #', 'table_header', styles),
+            _p('Claim', 'table_header', styles),
+            _p('Features / Products', 'table_header', styles),
+        ]
         if matrix.include_notes_column:
             header.append(_p('Attorney Notes', 'table_header', styles))
 
-        data = [header]
-        for claim in matrix.ref_claims:
-            left = _claim_label_paragraph(
-                claim.index,
-                claim.text or '—',
-                styles,
-                compact=multi,
-            )
-            row = [left]
-            note_for_row = ''
-            for h in hits_chunk:
-                cell = matrix.cells.get((claim.index, h.entry_id))
-                if cell is None:
-                    row.append(_p('✗', 'table_cell', styles))
-                else:
-                    row.append(_p(_tick_cross(cell.matched, cell.score), 'table_cell', styles))
-                    if matrix.include_notes_column and cell.note:
-                        note_for_row = cell.note
-            if matrix.include_notes_column:
-                row.append(_p(note_for_row or '', 'table_cell_left', styles))
-            data.append(row)
-
-        # Single-hit matrix (one product/patent): 70% claim / 30% product(+notes)
-        # Multi-hit chunks: give claim column enough room, share the rest across hits
-        if len(matrix.hits) == 1:
-            claim_w = available_width * 0.70
-            rest = available_width - claim_w
-            if matrix.include_notes_column:
-                hit_w = rest * 0.40
-                note_w = rest * 0.60
-                col_widths = [claim_w, hit_w, note_w]
-            else:
-                col_widths = [claim_w, rest]
+        # Widths: claim# | claim text | nested feature/products [| notes]
+        if matrix.include_notes_column:
+            num_w = available_width * 0.08
+            claim_w = available_width * 0.32
+            note_w = available_width * 0.20
+            sub_w = available_width - num_w - claim_w - note_w
+            col_widths = [num_w, claim_w, sub_w, note_w]
+        elif len(matrix.hits) == 1:
+            num_w = available_width * 0.08
+            claim_w = available_width * 0.42
+            sub_w = available_width - num_w - claim_w
+            col_widths = [num_w, claim_w, sub_w]
         else:
-            claim_w = available_width * 0.30
-            rest = available_width - claim_w
-            hit_w = rest / max(len(hits_chunk), 1)
-            col_widths = [claim_w] + [hit_w] * len(hits_chunk)
+            num_w = available_width * 0.07
+            claim_w = available_width * 0.28
+            sub_w = available_width - num_w - claim_w
+            col_widths = [num_w, claim_w, sub_w]
+
+        data = [header]
+        for block in matrix.claim_blocks:
+            claim = block.claim
+            num_cell = _p(str(claim.index + 1), 'table_cell', styles)
+            # Claim # is its own column — body is claim text only.
+            claim_body = _escape_xml(claim.text or '—').replace('\n', '<br/>')
+            if multi:
+                compact_style = ParagraphStyle(
+                    'PGMatrixClaimBody',
+                    parent=styles['table_cell_left'],
+                    fontSize=6.5,
+                    leading=8,
+                )
+                claim_cell = Paragraph(claim_body, compact_style)
+            else:
+                claim_cell = _p_markup(claim_body, 'table_cell_left', styles)
+
+            sub = _build_feature_hit_subtable(
+                block, hits_chunk, styles, sub_width=sub_w,
+            )
+            row = [num_cell, claim_cell, sub]
+            if matrix.include_notes_column:
+                row.append(_p(block.note or '', 'table_cell_left', styles))
+            data.append(row)
 
         table = Table(data, colWidths=col_widths, repeatRows=1)
         table.setStyle(_matrix_table_style(len(header)))
