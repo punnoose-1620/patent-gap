@@ -847,3 +847,130 @@ class Gemini:
                 error_message=error_message
             )
         return wrapper.items
+
+    def extract_claim_features(
+        self,
+        claim_text: str,
+        model_name: str = "gemini-2.5-flash",
+        count: int = 0,
+        error_message: str = "",
+    ) -> list[str]:
+        """Split one patent claim into constituent features (AI-only)."""
+        if count >= MAX_ATTEMPTS:
+            raise Exception(
+                "Claim_FeatureExtraction_Error: Failed to extract claim features "
+                f"after {MAX_ATTEMPTS} attempts.\n\t{error_message}"
+            )
+        text = (claim_text or "").strip()
+        if not text:
+            raise Exception("Claim_FeatureExtraction_Error: claim text is empty")
+
+        final_prompt = CLAIM_FEATURE_EXTRACTOR.replace("<claim_replacement>", text)
+        if error_message:
+            final_prompt += (
+                "\n\nYour previous response failed validation with the error message: "
+                + error_message
+                + "\nDo not repeat the same mistake and try again."
+            )
+
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": ClaimFeatureList.model_json_schema(),
+            },
+        )
+        wrapper = ClaimFeatureList.model_validate_json(response.text)
+        validated, error_message = wrapper.validate_claim_feature_list()
+        if not validated:
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.extract_claim_features(
+                claim_text=text,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message,
+            )
+        return list(wrapper.features)
+
+    def analyze_claim_features_vs_infringing_claim(
+        self,
+        *,
+        ref_claim_index: int,
+        features: list[str],
+        infringing_claim: str,
+        product_id: str,
+        model_name: str = "gemini-2.5-flash",
+        count: int = 0,
+        error_message: str = "",
+        features_subset: list[str] | None = None,
+    ) -> list:
+        """
+        Evaluate features from patent claim i against one infringing claim j.
+
+        When ``features_subset`` is set (batch retry), only those features are
+        sent to the model; otherwise all ``features`` are evaluated.
+        """
+        if count >= MAX_ATTEMPTS:
+            raise Exception(
+                "Claim_FeatureInfringement_Error: Failed to analyze features "
+                f"after {MAX_ATTEMPTS} attempts.\n\t{error_message}"
+            )
+        feature_list = [
+            f.strip()
+            for f in (features_subset if features_subset is not None else features or [])
+            if isinstance(f, str) and f.strip()
+        ]
+        inf_text = (infringing_claim or "").strip()
+        pid = str(product_id or "").strip()
+        if not feature_list:
+            raise Exception("Claim_FeatureInfringement_Error: features list is empty")
+        if not inf_text:
+            raise Exception("Claim_FeatureInfringement_Error: infringing claim is empty")
+        if not pid:
+            raise Exception("Claim_FeatureInfringement_Error: product_id is empty")
+
+        try:
+            idx = int(ref_claim_index)
+        except (TypeError, ValueError):
+            raise Exception(
+                "Claim_FeatureInfringement_Error: ref_claim_index must be an integer"
+            )
+
+        features_block = "\n".join(f"- {f}" for f in feature_list)
+        final_prompt = CLAIM_FEATURE_INFRINGEMENT_ANALYZER.replace(
+            "<ref_claim_index_replacement>", str(idx)
+        )
+        final_prompt = final_prompt.replace("<features_replacement>", features_block)
+        final_prompt = final_prompt.replace("<infringing_claim_replacement>", inf_text)
+        final_prompt = final_prompt.replace("<product_id_replacement>", pid)
+        if error_message:
+            final_prompt += (
+                "\n\nYour previous response failed validation with the error message: "
+                + error_message
+                + "\nDo not repeat the same mistake and try again."
+            )
+
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=final_prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": FeatureInfringementRowList.model_json_schema(),
+            },
+        )
+        wrapper = FeatureInfringementRowList.model_validate_json(response.text)
+        validated, error_message = wrapper.validate_feature_infringement_row_list()
+        if not validated:
+            time.sleep(DEFAULT_LLM_DELAY)
+            return self.analyze_claim_features_vs_infringing_claim(
+                ref_claim_index=idx,
+                features=features,
+                infringing_claim=inf_text,
+                product_id=pid,
+                model_name=model_name,
+                count=count + 1,
+                error_message=error_message,
+                features_subset=feature_list,
+            )
+        return list(wrapper.items)

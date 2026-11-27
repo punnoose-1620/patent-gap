@@ -1045,6 +1045,23 @@ def get_infringement_chart(case_id=None, case_data=None, persist=True):
             f"LOG: Serving infringement chart from stored scores "
             f"(skip rebuild) case_id={case_id or caseData.get('_id')}"
         )
+        # Still build feature matrix once if missing (sibling AI step; independent of scores).
+        existing_fm = caseData.get('feature_matrix')
+        if not isinstance(existing_fm, list) or len(existing_fm) == 0:
+            try:
+                from feature_matrix import build_and_attach_feature_matrix
+                if build_and_attach_feature_matrix(caseData) and persist and case_id:
+                    update_case(case_id, {
+                        'feature_matrix': caseData.get('feature_matrix') or [],
+                        'claim_features': caseData.get('claim_features') or {},
+                        **(
+                            {'claims': caseData['claims']}
+                            if isinstance(caseData.get('claims'), dict)
+                            else {}
+                        ),
+                    })
+            except Exception as fm_err:
+                print(f'LOG: feature matrix build failed (stored-score path): {fm_err}')
         return _build_chart_from_stored_scores(infringements)
 
     chart_data = []
@@ -1126,8 +1143,27 @@ def get_infringement_chart(case_id=None, case_data=None, persist=True):
             infringement_entry.update(filtered_entry)
             has_updates = True
 
+    # Sibling step: AI-only feature × product matrix (does not affect chart scores).
+    # Rebuild when missing or when infringement scores just changed.
+    existing_fm = caseData.get('feature_matrix')
+    need_feature_matrix = has_updates or not isinstance(existing_fm, list) or len(existing_fm) == 0
+    if need_feature_matrix:
+        try:
+            from feature_matrix import build_and_attach_feature_matrix
+            if build_and_attach_feature_matrix(caseData):
+                has_updates = True
+        except Exception as fm_err:
+            print(f'LOG: feature matrix build failed: {fm_err}')
+
     if persist and has_updates and case_id:
-        update_case(case_id, {'infringements': infringements})
+        persist_payload = {'infringements': infringements}
+        if isinstance(caseData.get('feature_matrix'), list):
+            persist_payload['feature_matrix'] = caseData.get('feature_matrix')
+        if isinstance(caseData.get('claim_features'), dict):
+            persist_payload['claim_features'] = caseData.get('claim_features')
+        if isinstance(caseData.get('claims'), dict):
+            persist_payload['claims'] = caseData.get('claims')
+        update_case(case_id, persist_payload)
 
     if len(chart_data) == 0:
         return [], [], [], 'NO_MATCHES_ABOVE_THRESHOLD'
