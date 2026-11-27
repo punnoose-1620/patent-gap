@@ -28,3 +28,4 @@ Backend/.env
 /Backend/vector_store
 /tester_scripts
 mcp-rag-vector-prompt.md
+/canvases

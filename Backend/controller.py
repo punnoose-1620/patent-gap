@@ -552,6 +552,48 @@ def isolate_claims(case_id):
 
     existing_claims = case_data.get('claims', [])
     if _claims_already_populated(existing_claims):
+      # Sync features onto existing bucketed claims (from claim_features or Gemini fill).
+      if isinstance(existing_claims, dict):
+        from feature_matrix import fill_missing_features_on_claims
+
+        claims = {
+            str(k): (dict(v) if isinstance(v, dict) else v)
+            for k, v in existing_claims.items()
+        }
+        prior_cf = case_data.get('claim_features')
+        if isinstance(prior_cf, dict):
+          for key, feats in prior_cf.items():
+            if key not in claims or not isinstance(claims[key], dict):
+              continue
+            existing_f = claims[key].get('features')
+            if isinstance(existing_f, list) and any(
+                isinstance(f, str) and f.strip() for f in existing_f
+            ):
+              continue
+            if isinstance(feats, list) and any(
+                isinstance(f, str) and f.strip() for f in feats
+            ):
+              claims[key]['features'] = [
+                  f.strip() for f in feats if isinstance(f, str) and f.strip()
+              ]
+        claim_features = fill_missing_features_on_claims(claims)
+        prior_cf_norm = {
+            str(k): [f.strip() for f in v if isinstance(f, str) and f.strip()]
+            for k, v in (prior_cf or {}).items()
+            if isinstance(v, list)
+        } if isinstance(prior_cf, dict) else {}
+        if claims != existing_claims or claim_features != prior_cf_norm:
+          update_case(case_id, {
+              'claims': claims,
+              'claim_features': claim_features,
+              'last_updated': dt.now(),
+          })
+        return {
+            'success': True,
+            'message': 'Claims already exist',
+            'claims': claims,
+            'claim_features': claim_features,
+        }
       return {'success': True, 'message': 'Claims already exist', 'claims': existing_claims}
 
     description = case_data.get('description', '')
@@ -622,10 +664,23 @@ def isolate_claims(case_id):
       print(f'\nERROR: Error getting claims: No claims found')
       return {'success': False, 'message': 'No claims found'}
 
+    # Ensure features on every claim (isolator should provide them; fill gaps via extract).
+    from feature_matrix import fill_missing_features_on_claims
+    claim_features = fill_missing_features_on_claims(claims)
+
     # Update Claims in Case Data
-    result = update_case(case_id, {'claims': claims, 'last_updated': dt.now()})
+    result = update_case(case_id, {
+        'claims': claims,
+        'claim_features': claim_features,
+        'last_updated': dt.now(),
+    })
     if result['success']:
-      return {'success': True, 'message': 'Claims updated successfully', 'claims': claims}
+      return {
+          'success': True,
+          'message': 'Claims updated successfully',
+          'claims': claims,
+          'claim_features': claim_features,
+      }
     else:
       print(f'\nERROR: Error updating claims: {result["message"]}')
       return {'success': False, 'message': result['message']}

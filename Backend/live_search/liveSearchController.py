@@ -338,6 +338,9 @@ def _normalize_isolated_claims_for_import(isolated_claims):
             claim.market_language_claim = claim.documented_claim
         if str(claim.claim_type or "").strip().lower() not in allowed:
             claim.claim_type = "independent_claim" if i == 0 else "pivotal_claim"
+        # Keep features list typed; empty lists are filled later via extract.
+        if not isinstance(getattr(claim, "features", None), list):
+            claim.features = []
 
 def passToGeminiForMetadata(
     text: str,
@@ -384,6 +387,8 @@ def passToGeminiForMetadata(
                 for i in range(len(isolated_claims.claims)):
                     claim = isolated_claims.claims[i]
                     final_claims[str(i)] = claim.model_dump()
+                from feature_matrix import fill_missing_features_on_claims
+                fill_missing_features_on_claims(final_claims)
                 case_data.claims = final_claims
             return case_data
         except Exception as e:

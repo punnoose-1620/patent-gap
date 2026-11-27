@@ -130,11 +130,16 @@ Rules:
 CLAIM_ISOLATOR = """
 I am providing all the content from all documents related to a patent below.
 Extract all the claims from the documents in their original language and also translate them to market language using relevant wordings.
+For each claim, also split the documented_claim into its constituent technical/legal features (limitations / elements).
 Return the claims in the following format: List of <ISOLATED_CLAIMS_RETURN_FORMAT>
 
 Rules:
 - Do not include any other text or comments.
 - All claims must be translated to english language. Original language refers to terminology used and not the language itself.
+- Every claim must include a non-empty features list derived only from that claim's documented_claim.
+- Do not invent features that are not in the claim.
+- Do not merge unrelated elements into one feature.
+- Keep each feature concise (typically under 200 characters).
 
 Allowed values for claim_type:
 - "asserted_claim" : This specific claim is often selected for a lawsuit because a competitor's product actively infringes them.
@@ -511,6 +516,70 @@ Reference Claims (flag=<ref_claim_flag_replacement>):
 
 Infringing Claims :
 <infringing_claims_replacement>
+"""
+
+CLAIM_FEATURE_EXTRACTOR = """
+Split the patent claim below into its constituent technical/legal features
+(limitations / elements). Each feature must be a short, self-contained phrase
+that can be checked independently against a product description.
+
+Return JSON:
+{
+  "features": ["<string: feature 1>", "<string: feature 2>", ...]
+}
+
+Rules:
+- Extract every distinct required element of the claim.
+- Do not invent features that are not in the claim.
+- Do not merge unrelated elements into one feature.
+- Keep features concise (typically under 200 characters each).
+- Return only the JSON object.
+
+Patent claim:
+<claim_replacement>
+"""
+
+CLAIM_FEATURE_INFRINGEMENT_ANALYZER = """
+You are given:
+1) A fixed list of features extracted from one patent claim (index=<ref_claim_index_replacement>).
+2) One infringing/product claim text.
+
+For EVERY feature in the list, decide whether that feature is present in /
+supported by the infringing claim.
+
+Return JSON:
+{
+  "items": [
+    {
+      "ref_claim_index": <integer: must equal <ref_claim_index_replacement>>,
+      "feature": "<string: exact feature text from the provided list>",
+      "inf_claim": "<string: must equal the infringing claim text provided below>",
+      "product_id": "<string: must equal <product_id_replacement>>",
+      "possible_infringement": <boolean: true if the feature appears supported by the infringing claim>,
+      "possible_infringement_percentage": <integer 0-100: confidence that the feature is present>,
+      "possible_infringement_justification": "<string: concrete justification citing the infringing claim>"
+    }
+  ]
+}
+
+Rules:
+- Return exactly one item per feature, covering ALL features in the list.
+- feature must be copied exactly from the provided feature list (no paraphrasing).
+- inf_claim must be copied exactly from the Infringing Claim text below (no paraphrasing).
+- product_id must be exactly "<product_id_replacement>".
+- possible_infringement_percentage must be an integer from 0 to 100 inclusive.
+- possible_infringement_justification must be non-empty and explain the decision;
+  do not use filler or stop-word-only text.
+- Do not include any other text or comments.
+
+Features (from patent claim index=<ref_claim_index_replacement>):
+<features_replacement>
+
+Infringing Claim:
+<infringing_claim_replacement>
+
+Product ID:
+<product_id_replacement>
 """
 
 SOURCE_LISTER = """

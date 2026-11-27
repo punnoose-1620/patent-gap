@@ -4,7 +4,7 @@ import re
 from urllib.parse import urlparse
 
 import requests
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from web_search import match_runtime_block_keyword
 
@@ -263,7 +263,8 @@ class LiveSearchResults(BaseModel):
 class SingleClaim(BaseModel):
     documented_claim: str
     market_language_claim: str
-    claim_type:str
+    claim_type: str
+    features: list[str] = Field(default_factory=list)
 
     @field_validator("claim_type", mode="before")
     @classmethod
@@ -279,12 +280,22 @@ class SingleClaim(BaseModel):
             return normalized
         return normalized
 
+    @field_validator("features", mode="before")
+    @classmethod
+    def normalize_features(cls, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return value
+        return [str(f).strip() for f in value if isinstance(f, str) and str(f).strip()]
+
     def get_single_claim_description(self):
         return """
         {
             'documented_claim': str: The claim as documented in the patent.
             'market_language_claim': str: Claim translated in to market language using relevant wordings..
             'claim_type': str: The type of claim.
+            'features': list[str]: Distinct technical/legal features (limitations) of documented_claim.
         }
         """
 
@@ -324,6 +335,19 @@ class SingleClaim(BaseModel):
             return True, ""
         return False, "Invalid claim type"
 
+    def __verify_features(self):
+        if not isinstance(self.features, list):
+            return False, "Features must be a list"
+        cleaned = []
+        for index, feature in enumerate(self.features):
+            if not isinstance(feature, str) or not feature.strip():
+                return False, f"For feature item {index + 1}: feature text is required"
+            cleaned.append(feature.strip())
+        if not cleaned:
+            return False, "At least one feature is required"
+        self.features = cleaned
+        return True, ""
+
     def verify_single_claim(self):
         original_validated, original_error_message = self.__verify_original_claim()
         if not original_validated:
@@ -334,6 +358,9 @@ class SingleClaim(BaseModel):
         claim_type_validated, claim_type_error_message = self.__verify_claim_type()
         if not claim_type_validated:
             return False, claim_type_error_message
+        features_validated, features_error_message = self.__verify_features()
+        if not features_validated:
+            return False, features_error_message
         return True, ""
 
 class DocumentedClaims(BaseModel):
@@ -363,6 +390,7 @@ class IsolatedClaims(BaseModel):
             'documented_claim': str: The claim as documented in the patent. Translated to english if in foreign language.
             'market_language_claim': str: Claim translated in to market language using relevant wordings..
             'claim_type': str: The type of claim.
+            'features': list[str]: Distinct technical/legal features (limitations / elements) of the documented_claim. Each feature is a short self-contained phrase that can be checked independently against a product description. Do not invent features not in the claim.
         }
         """
     
@@ -1047,3 +1075,89 @@ class ClaimTypes(BaseModel):
           'pivotal_claims': list<str>: The claims that best survive "prior art" challenges while still catching the infringer.
         }
         """
+
+
+class ClaimFeatureList(BaseModel):
+    """Features extracted from a single patent claim."""
+    features: list[str]
+
+    def validate_claim_feature_list(self):
+        if self.features is None:
+            return False, "Features are required"
+        if not isinstance(self.features, list):
+            return False, "Features must be a list"
+        cleaned = []
+        for index, feature in enumerate(self.features):
+            if not isinstance(feature, str) or not feature.strip():
+                return False, f"For feature item {index + 1}: feature text is required"
+            cleaned.append(feature.strip())
+        if not cleaned:
+            return False, "At least one feature is required"
+        self.features = cleaned
+        return True, ""
+
+
+class FeatureInfringementRow(BaseModel):
+    """One cell in the secondary feature × product claim matrix."""
+    ref_claim_index: int
+    feature: str
+    inf_claim: str
+    product_id: str
+    possible_infringement: bool
+    possible_infringement_percentage: int
+    possible_infringement_justification: str
+
+    def validate_feature_infringement_row(self):
+        try:
+            self.ref_claim_index = int(self.ref_claim_index)
+        except (TypeError, ValueError):
+            return False, "ref_claim_index must be an integer"
+        if not isinstance(self.feature, str) or not self.feature.strip():
+            return False, "feature is required"
+        if not isinstance(self.inf_claim, str) or not self.inf_claim.strip():
+            return False, "inf_claim is required"
+        if not isinstance(self.product_id, str) or not str(self.product_id).strip():
+            return False, "product_id is required"
+        if not isinstance(self.possible_infringement, bool):
+            # Accept common string/int coercions from the model
+            if str(self.possible_infringement).strip().lower() in ("true", "1", "yes"):
+                self.possible_infringement = True
+            elif str(self.possible_infringement).strip().lower() in ("false", "0", "no"):
+                self.possible_infringement = False
+            else:
+                return False, "possible_infringement must be a boolean"
+        try:
+            pct = int(self.possible_infringement_percentage)
+        except (TypeError, ValueError):
+            return False, "possible_infringement_percentage must be an integer"
+        if pct < 0 or pct > 100:
+            return False, "possible_infringement_percentage must be between 0 and 100"
+        self.possible_infringement_percentage = pct
+        if (
+            not isinstance(self.possible_infringement_justification, str)
+            or not self.possible_infringement_justification.strip()
+        ):
+            return False, "possible_infringement_justification is required"
+        self.feature = self.feature.strip()
+        self.inf_claim = self.inf_claim.strip()
+        self.product_id = str(self.product_id).strip()
+        self.possible_infringement_justification = (
+            self.possible_infringement_justification.strip()
+        )
+        return True, ""
+
+
+class FeatureInfringementRowList(BaseModel):
+    """Wrapper so Gemini receives an object schema (required), not an array."""
+    items: list[FeatureInfringementRow]
+
+    def validate_feature_infringement_row_list(self):
+        if self.items is None:
+            return False, "Items are required"
+        if not isinstance(self.items, list):
+            return False, "Items must be a list"
+        for index, item in enumerate(self.items):
+            ok, err = item.validate_feature_infringement_row()
+            if not ok:
+                return False, f"For item {index + 1}: {err}"
+        return True, ""
