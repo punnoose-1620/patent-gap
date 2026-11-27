@@ -79,19 +79,38 @@ class InfringementHit:
 class MatrixCell:
     ref_claim_index: int
     entry_id: str
-    score: Optional[float]
+    score: Optional[float]  # 0–1 unit score (feature avg or legacy embedding)
     matched: bool
     note: Optional[str] = None
+    feature: str = ''
+
+
+@dataclass
+class MatrixFeatureRow:
+    """One feature line inside a claim block (feature may be blank)."""
+    feature: str
+    cells: Dict[str, MatrixCell] = field(default_factory=dict)  # entry_id -> cell
+
+
+@dataclass
+class MatrixClaimBlock:
+    """One reference claim with feature sub-rows for the claim matrix."""
+    claim: ClaimItem
+    feature_rows: List[MatrixFeatureRow] = field(default_factory=list)
+    note: Optional[str] = None  # single-hit attorney note for this claim
 
 
 @dataclass
 class MatrixTable:
-    """Ref claims × one or more hits."""
-    ref_claims: List[ClaimItem]
+    """Ref claims × features × one or more hits (restructured claim matrix)."""
+    claim_blocks: List[MatrixClaimBlock]
     hits: List[InfringementHit]
-    cells: Dict[Tuple[int, str], MatrixCell]  # (ref_index, entry_id) -> cell
-    include_notes_column: bool = False  # single-hit 3-col layout
+    include_notes_column: bool = False  # single-hit notes column
     attorney_notes: List[str] = field(default_factory=list)
+
+    @property
+    def ref_claims(self) -> List[ClaimItem]:
+        return [block.claim for block in self.claim_blocks]
 
 
 @dataclass
@@ -684,6 +703,96 @@ def _score_for_ref_vs_entry(entry: dict, ref_index: int) -> Optional[float]:
     return best
 
 
+def _normalize_feature_key(text: str) -> str:
+    return ' '.join((text or '').strip().lower().split())
+
+
+def _features_for_ref_claim(case: dict, ref_index: int) -> List[str]:
+    """Features for a reference claim from claim_features or claims[*].features."""
+    cache = (case or {}).get('claim_features') or {}
+    if isinstance(cache, dict):
+        raw = cache.get(str(ref_index))
+        if raw is None:
+            raw = cache.get(ref_index)
+        if isinstance(raw, list):
+            cleaned = [_clean_text(f) for f in raw if _clean_text(f)]
+            if cleaned:
+                return cleaned
+    claims = (case or {}).get('claims')
+    if isinstance(claims, dict):
+        entry = claims.get(str(ref_index))
+        if entry is None:
+            entry = claims.get(ref_index)
+        if isinstance(entry, dict):
+            raw = entry.get('features')
+            if isinstance(raw, list):
+                cleaned = [_clean_text(f) for f in raw if _clean_text(f)]
+                if cleaned:
+                    return cleaned
+    return []
+
+
+def _feature_matrix_rows(case: dict) -> List[dict]:
+    raw = (case or {}).get('feature_matrix')
+    if not isinstance(raw, list):
+        return []
+    return [r for r in raw if isinstance(r, dict)]
+
+
+def _feature_pct_to_unit(value) -> Optional[float]:
+    """Convert feature_matrix percentage (0–100) or unit score to 0–1."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v > 1.0:
+        v = v / 100.0
+    if v < 0:
+        return None
+    return v
+
+
+def _average_feature_score_for_product(
+    feature_rows: Sequence[dict],
+    *,
+    ref_claim_index: int,
+    feature: str,
+    product_id: str,
+) -> Optional[float]:
+    """
+    Mean of (feature × product-claim) unit scores for one product.
+
+    Scores at or below CLAIM_SIMILARITY_THRESHOLD (0.10) are excluded,
+    matching claim-matrix filtering.
+    """
+    from infringement_score_filters import score_meets_threshold
+
+    if not feature or not product_id:
+        return None
+    feat_key = _normalize_feature_key(feature)
+    pid = str(product_id).strip()
+    scores: List[float] = []
+    for row in feature_rows:
+        try:
+            idx = int(row.get('ref_claim_index'))
+        except (TypeError, ValueError):
+            continue
+        if idx != int(ref_claim_index):
+            continue
+        if str(row.get('product_id') or '').strip() != pid:
+            continue
+        if _normalize_feature_key(str(row.get('feature') or '')) != feat_key:
+            continue
+        unit = _feature_pct_to_unit(row.get('possible_infringement_percentage'))
+        if unit is None:
+            continue
+        if score_meets_threshold(unit):
+            scores.append(unit)
+    if not scores:
+        return None
+    return sum(scores) / len(scores)
+
+
 def build_matrix(
     case: dict,
     entries: Sequence[dict],
@@ -691,39 +800,87 @@ def build_matrix(
     *,
     single_hit_notes_column: bool = False,
 ) -> MatrixTable:
+    """
+    Build the claim matrix as claim × feature × hit cells.
+
+    Product cell values are averages of feature_matrix scores for that
+    feature vs each of the product's claims (excluding scores ≤ 0.10).
+    Tick/cross still uses MATCH_TICK_THRESHOLD (0.8).
+    """
     notes_map = notes_map or {}
     ref_claims = extract_claims(case)
     hits = [extract_hit(e, notes_map=notes_map) for e in entries]
-    cells: Dict[Tuple[int, str], MatrixCell] = {}
+    fm_rows = _feature_matrix_rows(case)
     attorney_notes: List[str] = []
     any_inline_note = False
+    claim_blocks: List[MatrixClaimBlock] = []
 
-    for hit, entry in zip(hits, entries):
-        for claim in ref_claims:
-            score = _score_for_ref_vs_entry(entry, claim.index)
-            matched = score is not None and score >= MATCH_TICK_THRESHOLD
-            note = (
-                _note_text(notes_map, f'claim_matrix:{hit.entry_id}:{claim.index}')
-                or _note_text(notes_map, f'claim_chart:{hit.entry_id}:{claim.index}')
+    for claim in ref_claims:
+        features = _features_for_ref_claim(case, claim.index)
+        # Rare: no features → one blank feature row (legacy claim score fallback).
+        feature_labels = features if features else ['']
+
+        claim_note = ''
+        if len(hits) == 1:
+            claim_note = (
+                _note_text(notes_map, f'claim_matrix:{hits[0].entry_id}:{claim.index}')
+                or _note_text(notes_map, f'claim_chart:{hits[0].entry_id}:{claim.index}')
             )
-            if note:
+            if claim_note:
                 any_inline_note = True
                 attorney_notes.append(
-                    f'claim {claim.index + 1} - {hit.entry_id} : {note}'
+                    f'claim {claim.index + 1} - {hits[0].entry_id} : {claim_note}'
                 )
-            cells[(claim.index, hit.entry_id)] = MatrixCell(
-                ref_claim_index=claim.index,
-                entry_id=hit.entry_id,
-                score=score,
-                matched=matched,
-                note=note,
+        else:
+            for hit in hits:
+                note = (
+                    _note_text(notes_map, f'claim_matrix:{hit.entry_id}:{claim.index}')
+                    or _note_text(notes_map, f'claim_chart:{hit.entry_id}:{claim.index}')
+                )
+                if note:
+                    attorney_notes.append(
+                        f'claim {claim.index + 1} - {hit.entry_id} : {note}'
+                    )
+
+        feature_rows: List[MatrixFeatureRow] = []
+        for feature in feature_labels:
+            cells: Dict[str, MatrixCell] = {}
+            for hit, entry in zip(hits, entries):
+                if feature:
+                    score = _average_feature_score_for_product(
+                        fm_rows,
+                        ref_claim_index=claim.index,
+                        feature=feature,
+                        product_id=hit.entry_id,
+                    )
+                else:
+                    # No features extracted — fall back to claim-level embedding score.
+                    score = _score_for_ref_vs_entry(entry, claim.index)
+                matched = score is not None and score >= MATCH_TICK_THRESHOLD
+                cells[hit.entry_id] = MatrixCell(
+                    ref_claim_index=claim.index,
+                    entry_id=hit.entry_id,
+                    score=score,
+                    matched=matched,
+                    note=claim_note or None,
+                    feature=feature,
+                )
+            feature_rows.append(MatrixFeatureRow(feature=feature, cells=cells))
+
+        claim_blocks.append(
+            MatrixClaimBlock(
+                claim=claim,
+                feature_rows=feature_rows,
+                note=claim_note or None,
             )
+        )
 
     return MatrixTable(
-        ref_claims=ref_claims,
+        claim_blocks=claim_blocks,
         hits=hits,
-        cells=cells,
-        include_notes_column=bool(single_hit_notes_column and any_inline_note and len(hits) == 1),
+        include_notes_column=bool(
+            single_hit_notes_column and any_inline_note and len(hits) == 1
+        ),
         attorney_notes=attorney_notes,
     )
 
